@@ -6,18 +6,35 @@
 <title>Little Lake</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="on-title">
 <div class="app">
   <div class="top">
     <div class="title wood" id="title">LITTLE LAKE</div>
     <div class="sign wood"><span class="coins" id="coinTop">0</span></div>
   </div>
 
+  <!-- TITLE -->
+  <section class="screen active" id="titleScreen">
+    <div class="hero">
+      <div class="water" aria-hidden="true"></div>
+      <h1 class="logo wood">LITTLE LAKE<small>a pixel fishing adventure</small></h1>
+    </div>
+    <div class="btns">
+      <button class="btn green" id="newBtn">NEW GAME</button>
+      <button class="btn blue" id="contBtn">CONTINUE</button>
+      <button class="btn" id="howBtn">HOW TO PLAY</button>
+      <button class="btn" id="soundBtn" aria-pressed="true">🔊 SOUND: ON</button>
+    </div>
+  </section>
+
   <!-- HOME -->
-  <section class="screen active" id="home">
+  <section class="screen" id="home">
     <div class="spacer"></div>
     <div class="panel wood">
-      <h2 id="homeName">Angler</h2>
+      <div class="head">
+        <h2 id="homeName">Angler</h2>
+        <button class="btn small" id="menuBtn" data-go="titleScreen" title="Back to the title screen">☰ MENU</button>
+      </div>
       <div class="grid2">
         <div class="stat"><div class="l">COINS</div><div class="v" id="hCoins"></div></div>
         <div class="stat"><div class="l">FISH CAUGHT</div><div class="v" id="hCaught"></div></div>
@@ -133,6 +150,38 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="banner" id="banner"><div class="panel wood"><h2 id="banTitle"></h2><p id="banText"></p><button class="btn green" id="banOk">GREAT!</button></div></div>
+
+<!-- TITLE DIALOGS -->
+<div class="banner modal" id="confirmBox" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="panel wood">
+    <h2 id="confirmTitle">Start a new game?</h2>
+    <p id="confirmText">This will delete your current progress.</p>
+    <div class="btns"><button class="btn" id="confirmNo">CANCEL</button><button class="btn red" id="confirmYes">DELETE &amp; START</button></div>
+  </div>
+</div>
+<div class="banner modal" id="nameBox" role="dialog" aria-modal="true" aria-labelledby="nameTitle">
+  <form class="panel wood" id="nameForm" novalidate>
+    <h2 id="nameTitle">New Game</h2>
+    <label for="nameInput">What's your name, angler?</label>
+    <input class="field" id="nameInput" maxlength="12" autocomplete="off" spellcheck="false" placeholder="1-12 characters">
+    <div class="err" id="nameErr" role="alert"></div>
+    <div class="btns"><button type="button" class="btn" id="nameCancel">CANCEL</button><button type="submit" class="btn green" id="nameStart">START</button></div>
+  </form>
+</div>
+<div class="banner modal" id="howBox" role="dialog" aria-modal="true" aria-labelledby="howTitle">
+  <div class="panel wood how" id="howPanel" tabindex="-1">
+    <h2 id="howTitle">How to Play</h2>
+    <dl>
+      <dt>🎣 Cast</dt><dd>Pick an island on the Town Map and press CAST. Then wait for a bite.</dd>
+      <dt>❗ Bite</dt><dd>When a big "!" pops up over the bobber, press HOOK! within 1 second or the fish swims away.</dd>
+      <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Miss too often and it escapes. A better rod allows more misses.</dd>
+      <dt>🎒 Bag</dt><dd>Keep your catch in the bag and sell it for coins. You can't cast while the bag is full.</dd>
+      <dt>🛒 Shop</dt><dd>Spend coins on rod upgrades, bait (better odds of rare fish) and a bigger bag.</dd>
+      <dt>⭐ Island Mastery</dt><dd>Find all 10 fish on an island to unlock its reward. Master all four islands to discover a secret lake.</dd>
+    </dl>
+    <button class="btn green" id="howOk">GOT IT!</button>
+  </div>
+</div>
 
 <script src="js/data.js"></script>
 <script src="js/state.js"></script>

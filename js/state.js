@@ -1,7 +1,7 @@
 // Save data, shared helpers (toast, sound, confetti, banner, fish drawing) and progress checks. Loaded after data.js.
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
-const DEFAULT = () => ({ name: "Angler", coins: 300, rod: 1, bait: 0, bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false });
+const DEFAULT = () => ({ name: "Angler", coins: 300, rod: 1, bait: 0, bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
@@ -15,12 +15,23 @@ function load() {
     records: raw.records && typeof raw.records === "object" ? raw.records : {},
     mastery: raw.mastery && typeof raw.mastery === "object" ? raw.mastery : {},
     totalCaught: num(raw.totalCaught, 0), mythical: raw.mythical === true,
+    sound: raw.sound !== false,                       // older saves have no sound setting: default on
   };
   s.bag = s.bag.slice(0, s.bagMax);
   return s;
 }
 let S = load();
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
+// A game exists if the save holds anything besides the sound setting (toggling sound on the
+// Title screen before starting a game stores only { sound }).
+function hasSave() {
+  try { const raw = JSON.parse(localStorage.getItem(SAVE_KEY)); return !!raw && typeof raw === "object" && Object.keys(raw).some(k => k !== "sound"); }
+  catch (e) { return false; }
+}
+function saveSound() {
+  if (hasSave()) return save();
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sound: S.sound })); } catch (e) {}
+}
 
 /* ===================== HELPERS ===================== */
 const $ = id => document.getElementById(id);
@@ -30,6 +41,7 @@ function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("sh
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 let AC;
 function beep(freq, dur = .12, type = "square", vol = .06) {
+  if (!S.sound) return;                               // every sfx goes through beep()
   try {
     AC = AC || new (window.AudioContext || window.webkitAudioContext)();
     const o = AC.createOscillator(), g = AC.createGain();

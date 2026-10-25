@@ -24,7 +24,7 @@ js/state.js       Save/load (S, load, save), helpers ($, fmt, toast, sfx, confet
                   checkMastery
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
-js/screens.js     Navigation (go, render) and the Map, Bag, Shop, Collection and Demo screens;
+js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Collection and Demo screens;
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image
 play_test.py      Playwright end-to-end tests
@@ -39,8 +39,19 @@ Keep those names global. Don't wrap the files in IIFEs or modules.
 
 ## Game rules
 
-**Screens:** Home, Town Map, Fishing, Result, Bag, Shop, Collection Book. Move between them with `go(id)`
-or with any element that has `data-go="<screen id>"`.
+**Screens:** Title (`titleScreen`), Home, Town Map, Fishing, Result, Bag, Shop, Collection Book. Move between
+them with `go(id)` or with any element that has `data-go="<screen id>"`.
+
+**Title screen** (shown first; the top bar is hidden here):
+- **NEW GAME** asks for a name (trimmed, 1–12 characters). If a save exists, it first shows a confirm dialog
+  ("This will delete your current progress"). Nothing is reset until START is pressed with a valid name.
+- **CONTINUE** loads the save and goes to Home. It is disabled when `hasSave()` is false.
+- **HOW TO PLAY** opens a short help panel. **SOUND** toggles `S.sound`.
+- The **☰ MENU** button on Home returns to the Title screen.
+
+**Sound:** `S.sound` (default `true`; old saves without it load as on). Every sound effect goes through
+`beep()`, which does nothing when sound is off. A save that holds only `{ sound }` (sound toggled before
+any game was started) does not count as a game, so CONTINUE stays disabled.
 
 **New save:** 300 coins, rod level 1, 0 bait, bag capacity 5.
 
@@ -75,7 +86,7 @@ Bigger bag +5 for 150 coins.
 
 Catching the Lake Guardian sets `S.mythical`. The Home screen then shows the "Lake Legend" trophy title.
 
-**Demo mode** (for presenting): tap the **LITTLE LAKE** title 5 times. Its buttons give +1000 coins,
+**Demo mode** (for presenting): on any screen except Title, tap the **LITTLE LAKE** title 5 times. Its buttons give +1000 coins,
 complete Harbor, complete 4 islands, fill the bag, or reset the save.
 
 ## Testing

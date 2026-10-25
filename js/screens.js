@@ -1,16 +1,18 @@
-// Screen navigation and the Home, Map, Bag, Shop, Collection and Demo screens. Loaded last; starts the game.
+// Screen navigation and the Title, Home, Map, Bag, Shop, Collection and Demo screens. Loaded last; starts the game.
 /* ===================== NAVIGATION ===================== */
-let current = "home", prevScreen = "home";
+let current = "titleScreen", prevScreen = "home";
 function go(id) {
   if (current === "fishing" && id !== "fishing") stopFishing();
   if (id === "bag") prevScreen = current;
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
-  current = id; document.body.classList.toggle("plain", id === "fishing"); render(); window.scrollTo(0, 0);
+  current = id; document.body.classList.toggle("plain", id === "fishing"); document.body.classList.toggle("on-title", id === "titleScreen");
+  render(); window.scrollTo(0, 0);
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) go(b.dataset.go); });
 
 function render() {
   $("coinTop").textContent = fmt(S.coins);
+  if (current === "titleScreen") renderTitle();
   if (current === "home") {
     $("homeName").textContent = S.mythical ? `🏆 ${S.name} – Lake Legend` : S.name;
     $("hCoins").textContent = fmt(S.coins); $("hCaught").textContent = fmt(S.totalCaught);
@@ -23,6 +25,46 @@ function render() {
   if (current === "shop") renderShop();
   if (current === "collection") renderCollection();
 }
+
+/* ===================== TITLE ===================== */
+function renderTitle() {
+  $("contBtn").disabled = !hasSave();
+  $("soundBtn").textContent = S.sound ? "🔊 SOUND: ON" : "🔇 SOUND: OFF";
+  $("soundBtn").setAttribute("aria-pressed", S.sound);
+}
+let modalReturn = null;
+function openModal(id, focusId) {
+  modalReturn = document.activeElement; $(id).classList.add("show"); $(focusId).focus();
+}
+function closeModal(id) {
+  $(id).classList.remove("show"); if (modalReturn && document.contains(modalReturn)) modalReturn.focus(); modalReturn = null;
+}
+function openNameBox() { $("nameInput").value = ""; $("nameErr").textContent = ""; openModal("nameBox", "nameInput"); }
+function startNewGame(name) {
+  const sound = S.sound;                              // keep the player's sound choice
+  S = DEFAULT(); S.name = name; S.sound = sound; save();
+  lastCatch = null; island = "harbor"; collTab = "harbor";
+  go("home"); toast(`Welcome to Little Lake, ${name}!`);
+}
+$("newBtn").onclick = () => hasSave() ? openModal("confirmBox", "confirmNo") : openNameBox();
+$("confirmNo").onclick = () => closeModal("confirmBox");
+$("confirmYes").onclick = () => { $("confirmBox").classList.remove("show"); openNameBox(); };
+$("nameCancel").onclick = () => closeModal("nameBox");
+$("nameForm").onsubmit = e => {
+  e.preventDefault();
+  const name = $("nameInput").value.trim();
+  if (!name) { $("nameErr").textContent = "Please enter a name."; $("nameInput").focus(); return; }
+  if (name.length > 12) { $("nameErr").textContent = "Names can be at most 12 characters."; $("nameInput").focus(); return; }
+  $("nameBox").classList.remove("show"); modalReturn = null; startNewGame(name);
+};
+$("contBtn").onclick = () => { if (!hasSave()) return; S = load(); go("home"); };
+$("howBtn").onclick = () => openModal("howBox", "howPanel");
+$("howOk").onclick = () => closeModal("howBox");
+$("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); renderTitle(); sfx.coin(); };
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  ["confirmBox", "nameBox", "howBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
+});
 
 /* ===================== MAP ===================== */
 function renderMap() {
