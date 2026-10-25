@@ -1,7 +1,7 @@
 // Save data, shared helpers (toast, sound, confetti, banner, fish drawing) and progress checks. Loaded after data.js.
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
-const DEFAULT = () => ({ name: "Angler", coins: 300, rod: 1, bait: 0, bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true });
+const DEFAULT = () => ({ name: "Angler", coins: 300, rod: 1, bait: 0, bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, useBait: true, pending: null });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
@@ -16,10 +16,14 @@ function load() {
     mastery: raw.mastery && typeof raw.mastery === "object" ? raw.mastery : {},
     totalCaught: num(raw.totalCaught, 0), mythical: raw.mythical === true,
     sound: raw.sound !== false,                       // older saves have no sound setting: default on
+    useBait: raw.useBait !== false,                   // older saves have no bait toggle: default on
+    pending: validCatch(raw.pending) ? raw.pending : null,   // a catch still waiting for KEEP / RELEASE
   };
   s.bag = s.bag.slice(0, s.bagMax);
   return s;
 }
+// The fish shown on the Result screen stays in the save until KEEP or RELEASE, so closing the page can't lose it.
+function validCatch(p) { return !!p && typeof p === "object" && !!fishById(p.fishId) && Number.isFinite(p.weight) && Number.isFinite(p.price); }
 let S = load();
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
 // A game exists if the save holds anything besides the sound setting (toggling sound on the
@@ -33,11 +37,19 @@ function saveSound() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sound: S.sound })); } catch (e) {}
 }
 
+// Another tab of the game saved: reload, so this tab doesn't later overwrite that progress with its old copy.
+window.addEventListener("storage", e => {
+  if (e.key !== SAVE_KEY && e.key !== null) return;
+  S = load(); if (typeof render === "function") render();
+});
+
 /* ===================== HELPERS ===================== */
 const $ = id => document.getElementById(id);
 const fmt = n => Math.round(n).toLocaleString("en-US");
 let toastT;
 function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1600); }
+// short bounce on a number that just changed (e.g. the bag counter after KEEP)
+function bump(id) { const e = $(id); e.classList.remove("bump"); void e.offsetWidth; e.classList.add("bump"); }
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 let AC;
 function beep(freq, dur = .12, type = "square", vol = .06) {
@@ -192,13 +204,21 @@ const masteredCount = () => ISLAND_IDS.filter(i => S.mastery[i]).length;
 const secretOpen = () => masteredCount() === 4;
 const allowedMiss = () => S.rod + (S.mastery.forest ? 1 : 0);
 const bagFull = () => S.bag.length >= S.bagMax;
+// rarity weights (Common, Rare, Epic, Legendary) for one cast
+function rarityWeights(withBait) {
+  const w = withBait ? [40, 30, 24, 6] : [60, 30, 8, 2];
+  return S.mastery.desert ? [w[0] - 8, w[1], w[2] + 5, w[3] + 3] : w;
+}
+// chance (%) of a Rare or better fish
+const rarePlus = withBait => { const w = rarityWeights(withBait); return Math.round((w[1] + w[2] + w[3]) / w.reduce((a, b) => a + b) * 100); };
+const misses = n => `${n} miss${n === 1 ? "" : "es"}`;
 
 function checkMastery() {
   for (const isl of ISLAND_IDS) {
     if (!S.mastery[isl] && discCount(isl) === 10) {
       S.mastery[isl] = true; save();
       const I = ISLANDS[isl];
-      banner(`${I.name} Mastered!`, `Reward unlocked: ${I.reward}. ${I.effect}.`);
+      banner(`${I.name} Mastered!`, `Reward unlocked: ${I.reward}. ${I.effect}. It works automatically – see your Tackle Box.`);
       if (secretOpen()) setTimeout(() => banner("Secret island found!", "All four islands are mastered. The Town Map now shows Little Lake, home of a mythical fish."), 2400);
       return;
     }

@@ -21,14 +21,15 @@ css/style.css     All styles
 js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fishById, DIFF
 js/state.js       Save/load (S, load, save), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
-                  checkMastery
+                  rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
-js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Collection and Demo screens;
+js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens;
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image
 assets/fonts/     Pixelify Sans (PixelifySans.woff2) + its licence OFL.txt (SIL Open Font License 1.1)
 play_test.py      Playwright end-to-end tests
+docs/bug_log.md   Playtest bugs: problem, cause, fix and the test that covers each one
 ```
 
 ### Script load order matters
@@ -40,7 +41,7 @@ Keep those names global. Don't wrap the files in IIFEs or modules.
 
 ## Game rules
 
-**Screens:** Title (`titleScreen`), Home, Town Map, Fishing, Result, Bag, Shop, Collection Book. Move between
+**Screens:** Title (`titleScreen`), Home, Town Map, Fishing, Result, Bag, Shop, Tackle Box (`tackle`), Collection Book. Move between
 them with `go(id)` or with any element that has `data-go="<screen id>"`.
 
 **Title screen** (shown first; the top bar is hidden here):
@@ -54,36 +55,47 @@ them with `go(id)` or with any element that has `data-go="<screen id>"`.
 `beep()`, which does nothing when sound is off. A save that holds only `{ sound }` (sound toggled before
 any game was started) does not count as a game, so CONTINUE stays disabled.
 
-**New save:** 300 coins, rod level 1, 0 bait, bag capacity 5.
+**New save:** 300 coins, rod level 1, 0 bait, bag capacity 5, `useBait: true`, `pending: null`.
+Other save fields added later: `useBait` (older saves load as `true`) and `pending` (the catch waiting on the
+Result screen, or `null`). If another tab saves, the `storage` listener reloads `S` so tabs don't overwrite each other.
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all
 4 islands are mastered.
 
 **Fishing:**
-1. **CAST**. You can't cast if the bag is full. One bait is used per cast if you have any.
+1. **CAST**. You can't cast if the bag is full. One bait is used per cast only while **USE BAIT** is ON
+   (`S.useBait`, toggled on the fishing screen or in the Tackle Box; it can't change mid-cast).
 2. A bite comes after a random **1–5 s** wait. Press **HOOK!** within **1 s** or the fish swims away.
 3. **Reel minigame:** a marker moves across a meter. Press **REEL** while it is inside the green zone.
    **3 hits** = caught. You may miss up to `allowedMiss()` times (= rod level, +1 with the Forest reward).
-   One more miss and the fish escapes. After every press the marker resets and the zone moves.
+   One more miss and the fish escapes. The HUD shows one heart per allowed miss; each miss empties one. After every press the marker resets and the zone moves.
    Marker speed and zone width depend on rarity (`DIFF`).
 4. **Rarity odds** (Common/Rare/Epic/Legendary): 60/30/8/2 without bait, 40/30/24/6 with bait.
-   The Desert reward changes them by −8/0/+5/+3.
+   The Desert reward changes them by −8/0/+5/+3. They live in `rarityWeights(withBait)` (also used for the % text).
 5. **Weight** is random between the fish's min and max (skewed toward light). **Price** = base ×
    (0.7 + 0.3 × weight / mid-weight), ×1.2 with the Harbor reward. Heavier than your best = **NEW RECORD**.
-6. Every catch is added to the Collection Book. On the Result screen, **KEEP** puts the fish in the bag;
-   **RELEASE** throws it back.
+6. Every catch is added to the Collection Book and saved as `S.pending` until the player decides, so a reload
+   can't lose it (CONTINUE returns to it, and `go()` only allows the Result, Bag and Title screens meanwhile).
+   On the Result screen, **KEEP** puts the fish in the bag ("+1 Name added to bag"); **RELEASE** throws it back.
+   If the bag is full, KEEP is replaced by **SELL A FISH** (sells the cheapest fish, keeps the new one),
+   **OPEN BAG** (BACK returns to the catch) or **RELEASE**. A fish is never dropped silently.
 
 **Bag:** sell fish one at a time or **SELL ALL** for coins.
 
 **Shop:** Rod upgrade 200 coins (+1 allowed miss), Bait pack ×5 for 100 coins (better rare odds),
-Bigger bag +5 for 150 coins.
+Bigger bag +5 for 150 coins. Each item shows its effect before buying, e.g. "Rod Lv.2: 2 misses allowed (now 1)".
+
+**Tackle Box** (button on Home): rod level and misses allowed, bait count and USE BAIT, bag, and each island
+reward with icon, effect and UNLOCKED / LOCKED (with progress). Rewards are automatic; there is no equip system.
 
 **Mastery:** find all 10 fish on an island to master it and unlock its reward:
 - Harbor → *Golden Hook*: fish sell for 20% more
 - Frost → *Steady Hands*: marker moves 20% slower
 - Desert → *Lucky Lure*: higher Epic/Legendary chance
-- Forest → *Master Rod*: one extra allowed miss
+- Forest → *Master's Charm*: one extra allowed miss (renamed from "Master Rod" so it isn't confused with the shop rod)
+
+Active rewards also show as small icons on the fishing screen (hover or tap for the effect).
 
 Catching the Lake Guardian sets `S.mythical`. The Home screen then shows the "Lake Legend" trophy title.
 
@@ -96,7 +108,9 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   small text and numbers. The `@font-face` leaves out the digits (`unicode-range`) because the font's 5 and 7 look
   like letters. Ligatures are off because "fi" turned into one odd glyph.
 - **Icons:** 12x12 pixel art in `css/style.css` as inline SVG data URIs (`.ico .i-coin`, `i-fish`, `i-book`,
-  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`). Use `<span class="ico i-NAME"></span>` inside a button or card.
+  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`, `i-box`, `i-bait`, `i-heart`, `i-heart0`, `i-lock`, and the reward icons
+  `i-hook`, `i-hands`, `i-lure`, `i-charm` named by `ISLANDS[id].icon`). Icon rules must come after the `.ico` rule,
+  because its `background` shorthand resets `background-image`. Use `<span class="ico i-NAME"></span>` inside a button or card.
 - **Rarity colours:** Common `#cfd8dc`, Rare `#64b5f6`, Epic `#ce93d8`, Legendary `#ffd54f`, Mythical `#ff80ab`.
   The Result screen reads them from `#result[data-rarity]`, Collection cards from `.cell.r-<Rarity>`.
 - **Island scenes** (`js/fishing.js`, `SCENES`): Harbor uses `assets/harbor.jpg`; Frost, Desert, Forest and

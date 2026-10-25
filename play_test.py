@@ -236,7 +236,7 @@ with sync_playwright() as p:
     check("pixel font loads from assets/fonts", t.evaluate("document.fonts.check('700 20px \"Pixelify Sans\"')")
           and "Pixelify Sans" in t.evaluate("getComputedStyle(document.querySelector('.btn')).fontFamily"))
     check("Home stat cards and buttons have pixel icons",
-          t.evaluate("document.querySelectorAll('#home .stat > .ico').length") == 6 and t.evaluate("document.querySelectorAll('#home .btns .ico').length") == 4)
+          t.evaluate("document.querySelectorAll('#home .stat > .ico').length") == 6 and t.evaluate("document.querySelectorAll('#home .btns .ico').length") == 5)
     check("Home shows drifting clouds + water shimmer", t.is_visible(".bgfx")
           and t.evaluate("getComputedStyle(document.querySelector('.bgfx .clouds'), '::before').animationName") == "drift-x")
     t.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_9') }; caught(); }"); t.wait_for_timeout(400)
@@ -287,6 +287,133 @@ with sync_playwright() as p:
     check("prefers-reduced-motion stops the background animations",
           rm.evaluate("['.hero .clouds', '.hero .water'].every(s => getComputedStyle(document.querySelector(s), '::before').animationName === 'none')")
           and rm.evaluate("getComputedStyle(document.querySelector('.screen.active')).animationName") == "none")
+
+    # ---------- playtest fixes: missing fish, Tackle Box, bait toggle, hearts, shop effects (see docs/bug_log.md) ----------
+    qc = b.new_context(viewport={"width": 1280, "height": 800}); q = qc.new_page()   # own context so a 2nd tab can share its storage
+    q.on("pageerror", lambda e: errs.append(str(e)))
+    q.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    q.goto(URL); q.evaluate("localStorage.clear()"); q.reload(); q.wait_for_timeout(300)
+    start_new(q, "Fixer")
+    def toast_text(pg): return pg.inner_text("#toast")
+    def fake_catch(pg, fish_id): pg.evaluate(f"() => {{ F = {{ phase: 'idle', fish: fishById('{fish_id}') }}; caught(); }}"); pg.wait_for_timeout(150)
+
+    # BUG-1: the catch on the Result screen is saved, so a reload can't lose it
+    fake_catch(q, "harbor_2")
+    check("catch waiting on Result is stored in the save", q.evaluate(SAVED + ".pending.fishId") == "harbor_2")
+    q.reload(); q.wait_for_timeout(300); q.click("#contBtn"); q.wait_for_timeout(300)
+    check("reload + CONTINUE returns to the waiting catch", q.is_visible("#result") and "Sea Bream" in q.inner_text("#resName"))
+    q.evaluate("go('home')"); q.wait_for_timeout(150)
+    check("can't leave the Result screen without KEEP or RELEASE", q.is_visible("#result") and not q.is_visible("#home"))
+    q.click("#keepBtn"); q.wait_for_timeout(150)
+    check("KEEP shows '+1 Sea Bream added to bag' and bounces the bag count",
+          "+1 Sea Bream added to bag" in toast_text(q) and "bump" in q.get_attribute("#fBag", "class")
+          and q.evaluate("S.bag.length") == 1 and q.evaluate(SAVED + ".pending") is None, toast_text(q))
+    q.evaluate("() => { for (let i = 0; i < 4; i++) { F = { phase: 'idle', fish: fishById('harbor_0') }; caught(); keepCatch(); } }")
+    check("several catches in a row all stay in the bag (and after reload)",
+          q.evaluate("S.bag.length") == 5 and (q.reload() or True) and q.evaluate(SAVED + ".bag.length") == 5)
+    q.click("#contBtn"); q.wait_for_timeout(200)
+
+    # BUG-2: full bag on the Result screen -> clear choice instead of a silent release
+    q.evaluate("() => { S.bag[0].price = 7; save(); }")
+    fake_catch(q, "harbor_1"); q.wait_for_timeout(200)
+    check("full bag on Result shows SELL A FISH / OPEN BAG / RELEASE instead of KEEP",
+          q.is_visible("#fullBag") and not q.is_visible("#keepBtn") and q.is_visible("#sellOneBtn") and q.is_visible("#resBagBtn") and q.is_visible("#fullRelease"))
+    q.screenshot(path=str(SHOTS / "28_full_bag_choice.png"))
+    coins0 = q.evaluate("S.coins"); q.click("#sellOneBtn"); q.wait_for_timeout(150)
+    check("SELL A FISH sells the cheapest fish and keeps the new one",
+          q.evaluate("S.coins") == coins0 + 7 and q.evaluate("S.bag.length") == 5 and q.evaluate("S.bag.some(b => b.fishId === 'harbor_1')")
+          and q.evaluate("S.pending") is None and "Striped Mullet added to bag" in toast_text(q), toast_text(q))
+    fake_catch(q, "harbor_3"); q.click("#resBagBtn"); q.wait_for_timeout(200)
+    check("OPEN BAG from a full Result opens the bag", q.is_visible("#bag"))
+    q.click("#bagList .row .btn"); q.wait_for_timeout(100); q.click("#bagBack"); q.wait_for_timeout(200)
+    check("after selling in the bag, BACK returns to the catch with KEEP available", q.is_visible("#result") and q.is_visible("#keepBtn") and not q.is_visible("#fullBag"))
+    q.click("#keepBtn"); q.wait_for_timeout(100)
+    fake_catch(q, "harbor_0"); bag0 = q.evaluate("JSON.stringify(S.bag)"); q.click("#fullRelease"); q.wait_for_timeout(150)
+    check("RELEASE on a full bag leaves the bag unchanged", q.evaluate("JSON.stringify(S.bag)") == bag0 and q.evaluate("S.pending") is None and q.is_visible("#fishing"))
+    q.evaluate("() => { S.bag = []; save(); go('home'); }")
+
+    # BUG-3: two tabs of the game no longer overwrite each other's progress
+    q2 = qc.new_page(); q2.goto(URL); q2.wait_for_timeout(300); q2.click("#contBtn"); q2.wait_for_timeout(200)
+    q2.evaluate("() => { S.bag.push({ fishId: 'frost_0', weight: .1, price: 20, time: 1 }); save(); }"); q2.wait_for_timeout(300)
+    q.evaluate("() => { S.coins += 1; save(); }")
+    check("a fish kept in another tab is not wiped by this tab's next save", q.evaluate(SAVED + ".bag.length") == 1 and q.evaluate("S.bag.length") == 1)
+    q2.close()
+
+    # BUG-4: Tackle Box lists all gear with effects
+    q.evaluate("() => { S.rod = 2; S.bait = 3; S.mastery.harbor = true; S.mastery.forest = true; save(); go('home'); }")
+    q.click("#tackleBtn"); q.wait_for_timeout(300)
+    gear = q.inner_text("#gearList")
+    check("TACKLE BOX opens from Home and lists rod, misses, bait, bag", q.is_visible("#tackle")
+          and "Rod Lv.2" in gear and "3 misses allowed" in gear and "Bait x3" in gear and "Bag 1 / 5" in gear, gear[:120])
+    check("Tackle Box shows each island reward as unlocked or locked with progress",
+          q.evaluate("[...document.querySelectorAll('#gearList .gear-row')].filter(r => r.textContent.includes('UNLOCKED')).length") == 2
+          and q.evaluate("document.querySelectorAll('#gearList .gear-row.locked').length") == 2
+          and "Golden Hook" in gear and "Steady Hands" in gear and "Lucky Lure" in gear and "Master's Charm" in gear and "/ 10 Frost fish" in gear)
+    check("every Tackle Box row has an icon and a one-line effect",
+          q.evaluate("[...document.querySelectorAll('#gearList .gear-row')].every(r => r.querySelector('.ico') && r.querySelector('.fx').textContent.trim().length > 10)"))
+    q.screenshot(path=str(SHOTS / "29_tackle_box.png"), full_page=True)
+
+    # BUG-5: "Master Rod" renamed so it isn't confused with the shop rod
+    check("'Master Rod' is renamed to 'Master's Charm' everywhere",
+          q.evaluate("ISLANDS.forest.reward") == "Master's Charm" and "Master Rod" not in q.content()
+          and q.evaluate("(() => { go('collection'); collTab = 'forest'; renderCollection(); return document.getElementById('collHead').textContent; })()").count("Master's Charm") == 1)
+
+    # BUG-6: bait toggle and the last-bait bug
+    q.evaluate("() => { island = 'harbor'; go('fishing'); }"); q.wait_for_timeout(300)
+    check("fishing HUD shows USE BAIT: ON with the bait count", "USE BAIT: ON (3)" in q.inner_text("#baitBtn") and q.get_attribute("#baitBtn", "aria-pressed") == "true")
+    q.click("#baitBtn"); q.wait_for_timeout(100)
+    check("USE BAIT can be turned off and is saved", "OFF" in q.inner_text("#baitBtn") and q.evaluate(SAVED + ".useBait") is False)
+    q.click("#actBtn"); q.wait_for_timeout(100)
+    check("casting with USE BAIT off keeps the bait", q.evaluate("S.bait") == 3 and q.evaluate("F.usedBait") is False and q.is_disabled("#baitBtn"))
+    q.evaluate("() => stopFishing()"); q.evaluate("() => { go('fishing'); }"); q.wait_for_timeout(150)
+    q.click("#baitBtn"); q.evaluate("() => { S.bait = 1; save(); render(); window._wb = []; const o = pickFish; pickFish = w => { _wb.push(w); return o(w); }; }")
+    q.click("#actBtn"); q.wait_for_timeout(100)
+    check("the last bait still gives bait odds", q.evaluate("_wb") == [True] and q.evaluate("S.bait") == 0 and "NO BAIT" in q.inner_text("#baitBtn"))
+    q.evaluate("() => stopFishing()")
+    q.evaluate("localStorage.setItem('littleLakeSave', JSON.stringify({name:'Old', coins:50, rod:1, bait:2, bagMax:5, bag:[]}))")
+    q.reload(); q.wait_for_timeout(300)
+    check("older save without the bait toggle loads with USE BAIT on", q.evaluate("S.useBait") is True and q.evaluate("S.pending") is None)
+    q.click("#contBtn"); q.wait_for_timeout(200)
+
+    # BUG-7: hearts for misses left, bonus icons with tooltips
+    q.evaluate("() => { S.rod = 2; S.mastery.frost = true; save(); island = 'harbor'; go('fishing'); }"); q.wait_for_timeout(300)
+    bon = q.evaluate("[...document.querySelectorAll('#bonuses .bonus')].map(b => b.title)")
+    check("active rewards show as small icons with tooltips", len(bon) == 1 and "Steady Hands" in bon[0] and "20% slower" in bon[0], str(bon))
+    q.click("#bonuses .bonus"); q.wait_for_timeout(100)
+    check("tapping a reward icon explains it", "Steady Hands" in toast_text(q))
+    q.click("#actBtn"); q.wait_for_function("F.phase === 'bite'", timeout=8000); q.click("#actBtn"); q.wait_for_timeout(100)
+    hearts = lambda: q.evaluate("[document.querySelectorAll('#hearts .i-heart').length, document.querySelectorAll('#hearts .i-heart0').length]")
+    h0 = hearts()
+    q.wait_for_function("F.phase !== 'reeling' || (F.pos < F.zoneX - 0.05 || F.pos > F.zoneX + F.zoneW + 0.05)", timeout=8000, polling=5); q.click("#actBtn"); q.wait_for_timeout(60)
+    h1 = hearts()
+    check("reeling shows one heart per allowed miss and a miss empties one", h0 == [2, 0] and h1 == [1, 1] and "MISSES LEFT" in q.inner_text("#hearts"), f"{h0} {h1}")
+    q.screenshot(path=str(SHOTS / "30_hearts.png"))
+    q.evaluate("() => stopFishing()")
+    check("hearts are hidden when not reeling", q.evaluate("(() => { go('fishing'); return document.getElementById('hearts').children.length; })()") == 0)
+
+    # BUG-8: the Shop shows each item's effect before buying
+    q.evaluate("() => { S.rod = 1; S.mastery = {}; S.bagMax = 5; S.coins = 1000; save(); go('shop'); }"); q.wait_for_timeout(200)
+    check("Shop: rod shows 'Rod Lv.2: 2 misses allowed (now 1)'", q.inner_text("#sRodFx") == "Rod Lv.2: 2 misses allowed (now 1)", q.inner_text("#sRodFx"))
+    check("Shop: bait says it works while USE BAIT is on", "better chance of Rare+ fish while USE BAIT is on" in q.inner_text("#sBaitFx"))
+    check("Shop: bag shows new and current size", q.inner_text("#sBagFx") == "Bag: 10 slots (now 5)")
+    q.click("#buyRod"); q.wait_for_timeout(100)
+    check("Shop effect text updates after buying", q.inner_text("#sRodFx") == "Rod Lv.3: 3 misses allowed (now 2)")
+
+    q.click("section.active >> text=HOME"); q.click("#menuBtn"); q.click("#howBtn"); q.wait_for_timeout(200)
+    how = q.inner_text("#howBox")
+    check("HOW TO PLAY explains bait toggle, hearts, Tackle Box and Master's Charm",
+          all(w in how for w in ["USE BAIT", "heart", "Tackle Box", "Master's Charm", "separate saves"]))
+    q.click("#howOk")
+
+    # phones
+    m.evaluate("() => { S.bait = 2; S.mastery.harbor = true; save(); go('tackle'); }"); m.wait_for_timeout(300)
+    check("mobile Tackle Box no side scroll", m.is_visible("#tackle") and no_side_scroll(m))
+    m.screenshot(path=str(SHOTS / "31_mobile_tackle.png"), full_page=True)
+    m.evaluate("() => { S.bag = []; while (S.bag.length < S.bagMax) S.bag.push({fishId:'harbor_0',weight:.2,price:20,time:1}); F = { phase: 'idle', fish: fishById('harbor_5') }; caught(); }"); m.wait_for_timeout(300)
+    check("mobile full-bag choice no side scroll", m.is_visible("#sellOneBtn") and no_side_scroll(m))
+    m.screenshot(path=str(SHOTS / "32_mobile_full_bag.png"), full_page=True)
+    m.click("#fullRelease"); m.wait_for_timeout(200)
+    check("mobile fishing HUD (bait + bonuses) no side scroll", m.is_visible("#baitBtn") and m.is_visible("#bonuses .bonus") and no_side_scroll(m))
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

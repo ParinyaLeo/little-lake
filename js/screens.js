@@ -1,7 +1,12 @@
-// Screen navigation and the Title, Home, Map, Bag, Shop, Collection and Demo screens. Loaded last; starts the game.
+// Screen navigation and the Title, Home, Map, Bag, Shop, Tackle Box, Collection and Demo screens. Loaded last; starts the game.
 /* ===================== NAVIGATION ===================== */
 let current = "titleScreen", prevScreen = "home";
 function go(id) {
+  // a caught fish is waiting for KEEP / RELEASE: only the Result screen (and the Bag, to make room) can be opened
+  if (S.pending && !["result", "bag", "titleScreen"].includes(id)) {
+    if (current === "result") return;
+    id = "result"; setTimeout(() => toast(`Your ${fishById(S.pending.fishId).name} is waiting: keep it or release it.`), 50);
+  }
   if (current === "fishing" && id !== "fishing") stopFishing();
   if (id === "bag") prevScreen = current;
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
@@ -23,7 +28,9 @@ function render() {
   if (current === "map") renderMap();
   if (current === "fishing") renderFishingHud();
   if (current === "bag") renderBag();
+  if (current === "result") renderResult();
   if (current === "shop") renderShop();
+  if (current === "tackle") renderTackle();
   if (current === "collection") renderCollection();
 }
 
@@ -44,7 +51,7 @@ function openNameBox() { $("nameInput").value = ""; $("nameErr").textContent = "
 function startNewGame(name) {
   const sound = S.sound;                              // keep the player's sound choice
   S = DEFAULT(); S.name = name; S.sound = sound; save();
-  lastCatch = null; island = "harbor"; collTab = "harbor";
+  island = "harbor"; collTab = "harbor";
   go("home"); toast(`Welcome to Little Lake, ${name}!`);
 }
 $("newBtn").onclick = () => hasSave() ? openModal("confirmBox", "confirmNo") : openNameBox();
@@ -104,14 +111,38 @@ $("sellAll").onclick = () => sell(S.bag.map((_, i) => i));
 $("bagBack").onclick = () => go(prevScreen === "bag" ? "home" : prevScreen);
 
 /* ===================== SHOP ===================== */
+// every item says what it will do before you buy it
 function renderShop() {
-  $("sRod").textContent = S.rod; $("sBait").textContent = S.bait; $("sBag").textContent = S.bagMax;
+  $("sRodFx").textContent = `Rod Lv.${S.rod + 1}: ${misses(allowedMiss() + 1)} allowed (now ${allowedMiss()})`;
+  $("sRod").textContent = `Lv.${S.rod}`;
+  $("sBaitFx").textContent = `Bait: better chance of Rare+ fish while USE BAIT is on (${rarePlus(true)}% instead of ${rarePlus(false)}%). One bait per cast.`;
+  $("sBait").textContent = `${S.bait} · USE BAIT is ${S.useBait ? "ON" : "OFF"}`;
+  $("sBagFx").textContent = `Bag: ${S.bagMax + 5} slots (now ${S.bagMax})`;
+  $("sBag").textContent = `${S.bag.length} / ${S.bagMax}`;
   $("buyRod").disabled = S.coins < 200; $("buyBait").disabled = S.coins < 100; $("buyBag").disabled = S.coins < 150;
 }
 function buy(cost, fn, msg) { if (S.coins < cost) { toast("Not enough coins."); return; } S.coins -= cost; fn(); save(); sfx.coin(); toast(msg); render(); }
 $("buyRod").onclick = () => buy(200, () => S.rod++, "Rod upgraded!");
 $("buyBait").onclick = () => buy(100, () => S.bait += 5, "Bought 5 bait.");
 $("buyBag").onclick = () => buy(150, () => S.bagMax += 5, "Bag expanded by 5 slots.");
+
+/* ===================== TACKLE BOX ===================== */
+// all gear and island rewards in one place, each with its icon and a one-line effect
+function renderTackle() {
+  const row = (icon, name, fx, chip, cls = "") => `<div class="gear-row ${cls}"><span class="ico i-${icon}"></span>` +
+    `<div class="grow"><b>${name}</b><div class="fx">${fx}</div></div><span class="chip">${chip}</span></div>`;
+  const charm = S.mastery.forest ? ` (Lv.${S.rod} rod + 1 from Master's Charm)` : "";
+  $("gearList").innerHTML =
+    row("rod", `Rod Lv.${S.rod}`, `${misses(allowedMiss())} allowed while reeling${charm}. Upgrade in the Shop for one more.`, "ROD") +
+    row("bait", `Bait x${S.bait}`, `Raises the chance of Rare or better fish to ${rarePlus(true)}% (${rarePlus(false)}% without). One bait per cast while USE BAIT is on.`,
+        S.bait ? `USE BAIT: ${S.useBait ? "ON" : "OFF"}` : "NONE", S.bait && S.useBait ? "active" : "") +
+    row("bag", `Bag ${S.bag.length} / ${S.bagMax}`, `Holds up to ${S.bagMax} fish. Sell them in the Bag for coins.`, "BAG") +
+    `<h3>Island rewards <small>always on once unlocked – nothing to equip</small></h3>` +
+    ISLAND_IDS.map(i => { const I = ISLANDS[i], on = !!S.mastery[i];
+      return row(on ? I.icon : "lock", I.reward, I.effect + ".", on ? "UNLOCKED" : `LOCKED · ${discCount(i)} / 10 ${I.name} fish`, on ? "active" : "locked"); }).join("");
+  renderBaitBtn($("tbBait"));
+}
+$("tbBait").onclick = toggleBait;
 
 /* ===================== COLLECTION ===================== */
 let collTab = "harbor";

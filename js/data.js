@@ -1,10 +1,10 @@
 // Static game data: islands, fish species and minigame difficulty. Loaded first.
 /* ===================== DATA ===================== */
 const ISLANDS = {
-  harbor: { name: "Harbor", bg: "bg-harbor", reward: "Golden Hook", effect: "Fish sell for 20% more coins" },
-  frost:  { name: "Frost",  bg: "bg-frost",  reward: "Steady Hands", effect: "Minigame marker moves 20% slower" },
-  desert: { name: "Desert", bg: "bg-desert", reward: "Lucky Lure", effect: "Higher chance of Epic and Legendary fish" },
-  forest: { name: "Forest", bg: "bg-forest", reward: "Master Rod", effect: "One additional miss is allowed" },
+  harbor: { name: "Harbor", bg: "bg-harbor", reward: "Golden Hook", icon: "hook", effect: "Fish sell for 20% more coins" },
+  frost:  { name: "Frost",  bg: "bg-frost",  reward: "Steady Hands", icon: "hands", effect: "Minigame marker moves 20% slower" },
+  desert: { name: "Desert", bg: "bg-desert", reward: "Lucky Lure", icon: "lure", effect: "Higher chance of Epic and Legendary fish" },
+  forest: { name: "Forest", bg: "bg-forest", reward: "Master's Charm", icon: "charm", effect: "One additional miss is allowed" },
   secret: { name: "Little Lake", bg: "bg-secret", reward: "", effect: "" },
 };
 const ISLAND_IDS = ["harbor", "frost", "desert", "forest"];

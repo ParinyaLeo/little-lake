@@ -297,21 +297,35 @@ function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
 function stopFishing() { clearTimers(); F = { phase: "idle" }; $("meter").style.display = "none"; $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 
 function renderFishingHud() {
-  $("fBag").textContent = `${S.bag.length} / ${S.bagMax}`; $("fBait").textContent = S.bait;
+  $("fBag").textContent = `${S.bag.length} / ${S.bagMax}`;
+  renderBaitBtn($("baitBtn"), F.phase !== "idle");
+  // small icons for the island rewards that are active (tap for details; hover shows the same text)
+  $("bonuses").innerHTML = ISLAND_IDS.filter(i => S.mastery[i]).map(i => { const I = ISLANDS[i], tip = `${I.reward}: ${I.effect}`;
+    return `<button class="bonus" data-tip="${tip}" title="${tip}" aria-label="${tip}"><span class="ico i-${I.icon}"></span></button>`; }).join("");
   $("fBagBtn").classList.toggle("glow", bagFull());
   const a = $("actBtn");
   if (F.phase === "idle") {
     a.disabled = bagFull(); a.textContent = bagFull() ? "BAG FULL" : "CAST"; a.className = "btn green";
     $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag." : `${ISLANDS[island].name}: Ready? Cast your line!`;
-    $("dots").textContent = "";
+    $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
   fitCanvas(); startLoop();
 }
 
-function pickFish() {
+// USE BAIT button (fishing HUD and Tackle Box): shows on/off and how much bait is left
+function renderBaitBtn(b, busy) {
+  const on = S.useBait && S.bait > 0;
+  b.innerHTML = `<span class="ico i-bait"></span>` + (S.bait ? `USE BAIT: ${S.useBait ? "ON" : "OFF"} (${S.bait})` : "NO BAIT (SHOP)");
+  b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); b.disabled = !S.bait || !!busy;
+  b.title = `Bait: ${rarePlus(true)}% chance of Rare or better (${rarePlus(false)}% without). One bait per cast while ON.`;
+}
+function toggleBait() { if (F.phase !== "idle" || !S.bait) return; S.useBait = !S.useBait; save(); toast(S.useBait ? "Bait ON: better chance of Rare+ fish." : "Bait OFF: saving your bait."); render(); }
+$("baitBtn").onclick = toggleBait;
+$("bonuses").onclick = e => { const b = e.target.closest(".bonus"); if (b) toast(b.dataset.tip); };
+
+function pickFish(withBait) {
   if (island === "secret") return FISH.find(f => f.island === "secret");
-  let w = S.bait > 0 ? [40, 30, 24, 6] : [60, 30, 8, 2];
-  if (S.mastery.desert) w = [w[0] - 8, w[1], w[2] + 5, w[3] + 3];
+  const w = rarityWeights(withBait);
   const tiers = ["Common", "Rare", "Epic", "Legendary"];
   let r = Math.random() * w.reduce((a, b) => a + b), tier = tiers[0];
   for (let i = 0; i < 4; i++) { if (r < w[i]) { tier = tiers[i]; break; } r -= w[i]; }
@@ -326,10 +340,10 @@ $("actBtn").onclick = () => {
 };
 function cast() {
   if (bagFull()) { toast("Your bag is full."); return; }
-  const usedBait = S.bait > 0; if (usedBait) { S.bait--; save(); }
-  F = { phase: "casting", castAt: performance.now(), fish: pickFish() };
+  const usedBait = S.useBait && S.bait > 0; if (usedBait) { S.bait--; save(); }
+  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait };
   sfx.cast(); $("actBtn").disabled = true; $("actBtn").textContent = "...";
-  $("fMsg").textContent = usedBait ? "Cast with bait... waiting" : "Waiting for a bite..."; renderFishingHud();
+  $("fMsg").textContent = usedBait ? `Cast with bait (${S.bait} left)... waiting` : "Waiting for a bite..."; renderFishingHud();
   $("actBtn").disabled = true;
   later(() => { F.phase = "waiting"; }, 500);
   later(bite, 500 + 1000 + Math.random() * 4000);   // 1-5 s random wait
@@ -351,7 +365,14 @@ function hook() {
   $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit();
 }
 function newZone() { F.zoneX = .1 + Math.random() * (.8 - F.zoneW); $("zone").style.left = F.zoneX * 100 + "%"; $("zone").style.width = F.zoneW * 100 + "%"; }
-function updateDots() { $("dots").textContent = "HIT " + "●".repeat(F.hits) + "○".repeat(3 - F.hits) + "   MISS " + "✖".repeat(F.misses) + "·".repeat(Math.max(0, allowedMiss() + 1 - F.misses)); }
+// HIT dots, and one heart per miss you can still afford (a miss with no hearts left = the fish escapes)
+function updateDots() {
+  $("dots").textContent = "HIT " + "●".repeat(F.hits) + "○".repeat(3 - F.hits);
+  const max = allowedMiss(), left = Math.max(0, max - F.misses), H = $("hearts");
+  H.innerHTML = `<span class="l">${left ? "MISSES LEFT" : "NO MISSES LEFT!"}</span>` +
+    Array.from({ length: max }, (_, i) => `<span class="ico ${i < left ? "i-heart" : "i-heart0"}"></span>`).join("");
+  H.classList.toggle("last", !left); H.setAttribute("aria-label", `${misses(left)} left`);
+}
 function reel() {
   const inside = F.pos >= F.zoneX && F.pos <= F.zoneX + F.zoneW;
   if (inside) { F.hits++; sfx.hit(); vibrate(40); } else { F.misses++; sfx.miss(); vibrate([30, 30, 30]); }
@@ -364,7 +385,6 @@ function escape(text) {
   sfx.fail(); vibrate(300); $("meter").style.display = "none"; $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
-let lastCatch = null;
 function caught() {
   const f = F.fish; clearTimers(); F = { phase: "idle" }; $("meter").style.display = "none";
   const skew = Math.pow(Math.random(), 1.6);
@@ -373,24 +393,48 @@ function caught() {
   const price = Math.round(f.price * (0.7 + 0.6 * (weight / mid) / 2) * (S.mastery.harbor ? 1.2 : 1));
   const rec = !S.records[f.id] || weight > S.records[f.id];
   const isNew = !S.discovered[f.id];
-  lastCatch = { fishId: f.id, weight, price };
+  S.pending = { fishId: f.id, weight, price, isNew, rec };   // saved, so the catch survives a reload
   S.discovered[f.id] = true; S.totalCaught++; if (rec) S.records[f.id] = weight;
   if (f.rarity === "Mythical") S.mythical = true;
   save();
   sfx.catch(); vibrate([60, 40, 120]); confetti();
-  drawFish($("resCanvas"), f); $("result").dataset.rarity = f.rarity;   // frame + glow colour
-  $("resName").textContent = f.name + (isNew ? "  (NEW!)" : "");
-  $("resRarity").innerHTML = `<span class="rar-${f.rarity}">${f.rarity}</span> · ${ISLANDS[f.island].name}`;
-  $("resWeight").textContent = `Weight: ${weight} kg`;
-  $("resPrice").textContent = `Value: ${fmt(price)} coins` + (S.mastery.harbor ? " (Golden Hook +20%)" : "");
-  $("resRecord").textContent = rec ? "NEW RECORD!" : "";
   go("result");
   if (f.rarity === "Mythical") setTimeout(() => banner("You caught the Lake Guardian!", "You completed Little Lake. A trophy has been added to your Home screen."), 600);
   else setTimeout(checkMastery, 400);
 }
-$("keepBtn").onclick = () => {
-  if (lastCatch && !bagFull()) { S.bag.push({ ...lastCatch, time: Date.now() }); save(); toast("Saved to your bag."); }
-  else if (lastCatch) toast("Bag is full. The fish was released.");
-  lastCatch = null; go("fishing");
+function renderResult() {
+  const p = S.pending; if (!p) return;
+  const f = fishById(p.fishId), full = bagFull();
+  drawFish($("resCanvas"), f); $("result").dataset.rarity = f.rarity;   // frame + glow colour
+  $("resName").textContent = f.name + (p.isNew ? "  (NEW!)" : "");
+  $("resRarity").innerHTML = `<span class="rar-${f.rarity}">${f.rarity}</span> · ${ISLANDS[f.island].name}`;
+  $("resWeight").textContent = `Weight: ${p.weight} kg`;
+  $("resPrice").textContent = `Value: ${fmt(p.price)} coins` + (S.mastery.harbor ? " (Golden Hook +20%)" : "");
+  $("resRecord").textContent = p.rec ? "NEW RECORD!" : "";
+  // full bag: never drop the fish silently; offer a clear choice instead of KEEP
+  $("result").classList.toggle("full", full);
+  if (full) {
+    const c = cheapest(), cf = fishById(S.bag[c].fishId);
+    $("fullText").textContent = `Your bag is full (${S.bag.length} / ${S.bagMax}). Make room for the ${f.name} or let it go.`;
+    $("sellOneBtn").innerHTML = `<span class="ico i-coin"></span>SELL A FISH`;
+    $("sellOneInfo").textContent = `SELL A FISH sells your cheapest fish (${cf.name}, ${fmt(S.bag[c].price)} coins) and keeps the ${f.name}.`;
+  }
+}
+const cheapest = () => S.bag.reduce((m, b, i) => b.price < S.bag[m].price ? i : m, 0);
+// put the waiting catch in the bag, with a toast and a bouncing bag counter
+function keepCatch(prefix = "") {
+  const p = S.pending; if (!p) return go("fishing");
+  if (bagFull()) return renderResult();
+  S.bag.push({ fishId: p.fishId, weight: p.weight, price: p.price, time: Date.now() }); S.pending = null; save();
+  toast(`${prefix}+1 ${fishById(p.fishId).name} added to bag`); go("fishing"); bump("fBag");
+}
+$("keepBtn").onclick = () => keepCatch();
+$("sellOneBtn").onclick = () => {
+  if (!S.pending || !bagFull()) return keepCatch();
+  const i = cheapest(), b = S.bag[i]; S.bag.splice(i, 1); S.coins += b.price; sfx.coin();
+  keepCatch(`Sold ${fishById(b.fishId).name} for ${fmt(b.price)} coins. `);
 };
-$("releaseBtn").onclick = () => { lastCatch = null; toast("Released. It stays in your Collection Book."); go("fishing"); };
+$("resBagBtn").onclick = () => go("bag");
+function releaseCatch() { S.pending = null; save(); toast("Released. It stays in your Collection Book."); go("fishing"); }
+$("releaseBtn").onclick = releaseCatch;
+$("fullRelease").onclick = releaseCatch;

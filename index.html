@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body class="on-title">
 <div class="bgfx" aria-hidden="true"><div class="clouds"></div><div class="water"></div></div>
@@ -51,6 +51,7 @@
       <button class="btn blue" data-go="bag"><span class="ico i-bag"></span>OPEN BAG</button>
       <button class="btn" data-go="shop"><span class="ico i-shop"></span>SHOP</button>
       <button class="btn" data-go="collection"><span class="ico i-book"></span>COLLECTION</button>
+      <button class="btn" data-go="tackle" id="tackleBtn"><span class="ico i-box"></span>TACKLE BOX</button>
     </div>
     <div class="panel wood demo" id="demo">
       <h2>Demo mode</h2>
@@ -79,10 +80,14 @@
     <div class="panel wood">
       <div class="hud">
         <div class="msg" id="fMsg">Ready? Cast your line!</div>
-        <div class="msg">BAG: <span id="fBag"></span> &nbsp; BAIT: <span id="fBait"></span></div>
+        <div class="msg">BAG: <span class="count" id="fBag"></span></div>
+      </div>
+      <div class="gearbar">
+        <button class="btn small toggle" id="baitBtn" aria-pressed="true"></button>
+        <div class="bonuses" id="bonuses" aria-label="Active island rewards"></div>
       </div>
       <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div></div>
-      <div class="dots" id="dots"></div>
+      <div class="reelinfo"><div class="dots" id="dots"></div><div class="hearts" id="hearts" role="status"></div></div>
       <div class="actions" style="margin-top:10px">
         <button class="btn green" id="actBtn">CAST</button>
         <button class="btn blue" id="fBagBtn" data-go="bag"><span class="ico i-bag"></span>OPEN BAG</button>
@@ -106,9 +111,19 @@
         </div>
       </div>
     </div>
-    <div class="btns">
-      <button class="btn green" id="keepBtn">KEEP &amp; FISH AGAIN</button>
+    <div class="btns keepbtns">
+      <button class="btn green" id="keepBtn"><span class="ico i-bag"></span>KEEP &amp; FISH AGAIN</button>
       <button class="btn" id="releaseBtn">RELEASE</button>
+    </div>
+    <div class="panel wood fullbag" id="fullBag" role="alert">
+      <h2><span class="ico i-bag"></span>Bag full!</h2>
+      <p id="fullText"></p>
+      <div class="btns">
+        <button class="btn green" id="sellOneBtn">SELL A FISH</button>
+        <button class="btn blue" id="resBagBtn"><span class="ico i-bag"></span>OPEN BAG</button>
+        <button class="btn" id="fullRelease">RELEASE</button>
+      </div>
+      <p class="small" id="sellOneInfo"></p>
     </div>
   </section>
 
@@ -130,12 +145,26 @@
     <div class="panel wood">
       <h2>Shop</h2>
       <div class="shop">
-        <div class="item"><b><span class="ico i-rod"></span>Rod upgrade</b><span>One extra allowed miss. <br>Current level: <span id="sRod"></span></span><button class="btn green" id="buyRod">200 COINS</button></div>
-        <div class="item"><b><span class="ico i-fish"></span>Bait pack x5</b><span>Better chance of rare fish. <br>You have: <span id="sBait"></span></span><button class="btn green" id="buyBait">100 COINS</button></div>
-        <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span>Carry more fish. <br>Capacity: <span id="sBag"></span></span><button class="btn green" id="buyBag">150 COINS</button></div>
+        <div class="item"><b><span class="ico i-rod"></span>Rod upgrade</b><span class="fx" id="sRodFx"></span><span>Your rod: <span id="sRod"></span></span><button class="btn green" id="buyRod">200 COINS</button></div>
+        <div class="item"><b><span class="ico i-bait"></span>Bait pack x5</b><span class="fx" id="sBaitFx"></span><span>You have: <span id="sBait"></span></span><button class="btn green" id="buyBait">100 COINS</button></div>
+        <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span class="fx" id="sBagFx"></span><span>In your bag: <span id="sBag"></span></span><button class="btn green" id="buyBag">150 COINS</button></div>
       </div>
     </div>
     <div class="btns"><button class="btn" data-go="home">HOME</button></div>
+  </section>
+
+  <!-- TACKLE BOX -->
+  <section class="screen" id="tackle">
+    <div class="panel wood">
+      <h2><span class="ico i-box"></span>Tackle Box</h2>
+      <p class="small">Everything you own and what it does. Gear and rewards work automatically.</p>
+      <div class="gearlist" id="gearList"></div>
+    </div>
+    <div class="btns">
+      <button class="btn toggle" id="tbBait"></button>
+      <button class="btn" data-go="shop"><span class="ico i-shop"></span>SHOP</button>
+      <button class="btn" data-go="home">HOME</button>
+    </div>
   </section>
 
   <!-- COLLECTION -->
@@ -176,18 +205,21 @@
     <dl>
       <dt>🎣 Cast</dt><dd>Pick an island on the Town Map and press CAST. Then wait for a bite.</dd>
       <dt>❗ Bite</dt><dd>When a big "!" pops up over the bobber, press HOOK! within 1 second or the fish swims away.</dd>
-      <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Miss too often and it escapes. A better rod allows more misses.</dd>
-      <dt>🎒 Bag</dt><dd>Keep your catch in the bag and sell it for coins. You can't cast while the bag is full.</dd>
-      <dt>🛒 Shop</dt><dd>Spend coins on rod upgrades, bait (better odds of rare fish) and a bigger bag.</dd>
-      <dt>⭐ Island Mastery</dt><dd>Find all 10 fish on an island to unlock its reward. Master all four islands to discover a secret lake.</dd>
+      <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Each miss costs a ❤ heart; miss with no hearts left and the fish escapes. A better rod gives more hearts.</dd>
+      <dt>🎒 Bag</dt><dd>KEEP puts your catch in the bag; sell it there for coins. If the bag is full you can sell a fish, open the bag or release the new one. You can't cast while the bag is full.</dd>
+      <dt>🪱 Bait</dt><dd>While USE BAIT is ON (button on the fishing screen), each cast uses one bait and Rare or better fish bite more often. Turn it OFF to save bait.</dd>
+      <dt>🛒 Shop</dt><dd>Spend coins on rod upgrades (one more miss allowed), bait and a bigger bag. Each item shows what it will do before you buy.</dd>
+      <dt>⭐ Island Mastery</dt><dd>Find all 10 fish on an island to unlock its reward: Golden Hook, Steady Hands, Lucky Lure or Master's Charm. Rewards work automatically. Master all four islands to discover a secret lake.</dd>
+      <dt>🧰 Tackle Box</dt><dd>Open it from Home to see your rod, bait, bag and every island reward, with what each one does.</dd>
+      <dt>💾 Saving</dt><dd>Progress saves automatically in this browser. The downloaded game file and the website link keep separate saves.</dd>
     </dl>
     <button class="btn green" id="howOk">GOT IT!</button>
   </div>
 </div>
 
-<script src="js/data.js?v=6"></script>
-<script src="js/state.js?v=6"></script>
-<script src="js/fishing.js?v=6"></script>
-<script src="js/screens.js?v=6"></script>
+<script src="js/data.js?v=7"></script>
+<script src="js/state.js?v=7"></script>
+<script src="js/fishing.js?v=7"></script>
+<script src="js/screens.js?v=7"></script>
 </body>
 </html>
