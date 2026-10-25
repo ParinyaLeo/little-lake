@@ -99,6 +99,14 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`). Use `<span class="ico i-NAME"></span>` inside a button or card.
 - **Rarity colours:** Common `#cfd8dc`, Rare `#64b5f6`, Epic `#ce93d8`, Legendary `#ffd54f`, Mythical `#ff80ab`.
   The Result screen reads them from `#result[data-rarity]`, Collection cards from `.cell.r-<Rarity>`.
+- **Island scenes** (`js/fishing.js`, `SCENES`): Harbor uses `assets/harbor.jpg`; Frost, Desert, Forest and
+  Little Lake are pixel art painted on a small canvas (1 art pixel = 3 screen pixels), cached, and scaled up.
+  Only the light effects (snow, heat shimmer, waterfall, stars, water glints) are redrawn each frame.
+  To swap a painted island for a picture: `frost: { image: "assets/frost.jpg", rod: { x: .3, y: .3 } }`, where
+  `rod` is the rod-tip position in the picture as 0-1 fractions.
+- **Fish drawings** (`drawFish` in `js/state.js`, 24x16 grid): `fishShape(f)` picks slim / regular / flat / round /
+  long / eel / ray from the fish's `len` and `h` (named exceptions in `FISH_SHAPES`). Rare and better fish get glints;
+  Legendary and Mythical get sparkles. Keep the 24x16 size: it scales to exactly 8x (Result), 4x (Collection), 3x (Bag).
 - **Animation:** animate only `transform` and `opacity` so phones stay smooth, and add every new animation to
   the `prefers-reduced-motion` block.
 

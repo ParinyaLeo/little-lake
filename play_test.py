@@ -252,6 +252,36 @@ with sync_playwright() as p:
           and t.evaluate("[...document.querySelectorAll('#collGrid .cell.unknown')].every(c => getComputedStyle(c, '::after').content === '\"?\"')"))
     t.screenshot(path=str(SHOTS / "25_collection.png"))
 
+    # ---------- scene art + fish drawings (display only) ----------
+    t.evaluate("() => { ['harbor','frost','desert','forest'].forEach(i => S.mastery[i] = true); }")
+    looks = {}
+    for isl in ["frost", "desert", "forest", "secret"]:
+        t.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); t.wait_for_timeout(400)
+        looks[isl] = t.evaluate("""() => { const c = document.getElementById('sceneCanvas'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            const cols = new Set(); let r = 0, g = 0, b = 0, n = 0;
+            for (let i = 0; i < d.length; i += 4 * 97) { cols.add(d[i] >> 3 << 10 | d[i+1] >> 3 << 5 | d[i+2] >> 3); r += d[i]; g += d[i+1]; b += d[i+2]; n++; }
+            return [cols.size, Math.round(r / n), Math.round(g / n), Math.round(b / n)]; }""")
+        t.screenshot(path=str(SHOTS / f"26_scene_{isl}.png"))
+    avg = [tuple(v[1:]) for v in looks.values()]
+    check("each painted island is detailed and looks different",
+          all(v[0] >= 25 for v in looks.values()) and all(sum(abs(a - b) for a, b in zip(avg[i], avg[j])) > 40 for i in range(4) for j in range(i + 1, 4)), str(looks))
+    t.click("#actBtn"); t.wait_for_timeout(700)
+    check("casting on a painted island still works", t.evaluate("F.phase") == "waiting")
+    shapes = t.evaluate("[...new Set(FISH.map(fishShape))].sort()")
+    check("fish come in several body shapes", all(s in shapes for s in ["eel", "flat", "long", "round", "slim"]), str(shapes))
+    t.evaluate("() => { F = { phase: 'idle', fish: fishById('forest_9') }; caught(); }"); t.wait_for_timeout(100)
+    check("catch plays the fish-jump animation", t.evaluate("getComputedStyle(document.getElementById('resCanvas')).animationName") == "fish-jump")
+    t.click("#releaseBtn"); t.wait_for_timeout(200)
+    t.click("#actBtn"); t.wait_for_function("F.phase === 'bite'", timeout=8000); t.click("#actBtn"); t.wait_for_timeout(200)
+    check("reel gauge has a pulsing zone and glowing marker",
+          t.evaluate("getComputedStyle(document.getElementById('zone'), '::after').animationName") == "zone-pulse"
+          and "255, 235, 59" in t.evaluate("getComputedStyle(document.getElementById('marker')).boxShadow"))
+    t.screenshot(path=str(SHOTS / "27_reel_gauge.png"))
+    t.evaluate("() => stopFishing()"); t.evaluate("() => go('home')")
+    check("page background continues as water down to a sea floor",
+          t.evaluate("getComputedStyle(document.body).backgroundImage.split('url(').length - 1") >= 2
+          and t.evaluate("getComputedStyle(document.body).backgroundImage.includes('svg')"))
+
     rm = b.new_page(viewport={"width": 360, "height": 780}, reduced_motion="reduce")
     rm.goto(URL); rm.wait_for_timeout(300)
     check("prefers-reduced-motion stops the background animations",
