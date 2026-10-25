@@ -89,6 +89,13 @@ Catching the Lake Guardian sets `S.mythical`. The Home screen then shows the "La
 **Demo mode** (for presenting): on any screen except Title, tap the **LITTLE LAKE** title 5 times. Its buttons give +1000 coins,
 complete Harbor, complete 4 islands, fill the bag, or reset the save.
 
+## Releasing (cache-busting)
+
+Every `css/` and `js/` link in `index.html` ends in a version string such as `css/style.css?v=2`.
+**On every release, bump the number on all of these links together** (e.g. `?v=2` → `?v=3`). If you
+don't, browsers can load the new `index.html` with old cached CSS/JS, and the game breaks until a hard
+refresh. Use the same number on every link, and add it to any new CSS/JS file you link.
+
 ## Testing
 
 ```
