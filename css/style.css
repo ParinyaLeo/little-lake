@@ -112,8 +112,11 @@ body.plain { background: linear-gradient(#1f6f96, #0d4f72); }
 /* title */
 body.on-title { background: linear-gradient(#1f6f96, #0d4f72); }
 body.on-title .top { display: none; }
-.hero { position: relative; min-height: 300px; aspect-ratio: 16 / 7; border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold), 0 6px 0 rgba(0,0,0,.35);
-  background: url("../assets/harbor.jpg") 35% 30% / cover, #2aa9d8; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding-top: 8%; }
+body.on-title .app { max-width: 1240px; }
+/* fill the window and centre the scene + buttons vertically (28px = body padding) */
+#titleScreen { min-height: calc(100vh - 28px); justify-content: center; }
+.hero { position: relative; min-height: 300px; aspect-ratio: 2 / 1; max-height: calc(100vh - 120px); border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold), 0 6px 0 rgba(0,0,0,.35);
+  background: url("../assets/harbor.jpg") 25% center / cover, #2aa9d8; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding-top: 8%; }
 .logo { position: relative; margin: 0; padding: 14px 30px 12px; font-size: clamp(30px, 9vw, 72px); letter-spacing: clamp(2px, 1vw, 8px); white-space: nowrap; text-align: center;
   line-height: 1.05; animation: bob 3.2s ease-in-out infinite; }
 .logo small { display: block; font-size: clamp(11px, 2.6vw, 18px); letter-spacing: 2px; color: var(--gold); margin-top: 6px; }
@@ -154,6 +157,11 @@ body.on-title .top { display: none; }
   .scene { aspect-ratio: 3 / 2; }
   .title { padding: 10px 16px; letter-spacing: 2px; }
   .sign { padding: 10px 14px; }
-  .hero { min-height: 260px; aspect-ratio: auto; padding-top: 40px; }
-  .logo { padding: 12px 18px 10px; }
+  #titleScreen { min-height: calc(100svh - 28px); }
+  /* tall scene that follows the screen height; shifted left so the fisherman on the dock stays in view
+     below the logo (176px = two rows of buttons + gaps + body padding) */
+  .hero { aspect-ratio: auto; min-height: 0; max-height: none; height: clamp(340px, calc(100vh - 176px), 680px); height: clamp(340px, calc(100svh - 176px), 680px);
+    background-position: 11% center; padding-top: 22px; }
+  .logo { padding: 10px 16px 8px; font-size: clamp(26px, 8vw, 36px); }
+  .logo small { letter-spacing: 1px; }
 }
