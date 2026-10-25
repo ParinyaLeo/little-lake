@@ -137,6 +137,21 @@ with sync_playwright() as p:
     check("mobile fishing no side scroll", m.evaluate("document.documentElement.scrollWidth") <= 360)
     m.screenshot(path=str(SHOTS / "14_mobile_fishing.png"), full_page=True)
 
+    # mobile bite alert + toast position
+    for w in (360, 430):
+        m.set_viewport_size({"width": w, "height": 780}); m.wait_for_timeout(200)
+        m.click("#actBtn"); m.wait_for_function("F.phase === 'bite'", timeout=8000); m.wait_for_timeout(150)
+        bang = m.evaluate("(() => { const s = getComputedStyle(document.getElementById('bang')); return [parseFloat(s.fontSize), s.animationName]; })()")
+        hook = m.evaluate("getComputedStyle(document.getElementById('actBtn')).animationName")
+        if w == 360: m.screenshot(path=str(SHOTS / "22_mobile_bite.png"))
+        check(f"mobile {w}px: big shaking '!' and flashing HOOK", bang[0] >= 80 and "shake" in bang[1] and hook == "hookflash", f"{bang} {hook}")
+        m.wait_for_function("document.getElementById('toast').classList.contains('show')", timeout=3000)   # "Too slow" toast
+        pos = m.evaluate("[document.getElementById('toast').getBoundingClientRect().top, document.querySelector('.top').getBoundingClientRect().bottom]")
+        if w == 360: m.wait_for_timeout(250); m.screenshot(path=str(SHOTS / "23_mobile_toast.png"))
+        check(f"mobile {w}px: toast below the top bar", pos[0] >= pos[1], str(pos))
+        m.wait_for_timeout(1800)
+    m.set_viewport_size({"width": 360, "height": 780})
+
     # ---------- title screen (fresh browser, no save) ----------
     t = b.new_page(viewport={"width": 1280, "height": 800})
     t.on("pageerror", lambda e: errs.append(str(e)))

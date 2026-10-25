@@ -149,7 +149,7 @@ body.on-title .app { max-width: 1240px; }
 .how dt { font-weight: bold; color: var(--gold); margin-top: 10px; }
 .how dd { margin: 2px 0 0; line-height: 1.4; }
 .how .btn { width: 100%; }
-@media (prefers-reduced-motion: reduce) { .logo, .water, .water::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .logo, .water, .water::before { animation: none; } .bang { animation: pop .35s ease-out; } }
 
 @media (max-width: 700px) {
   .spacer { min-height: 40px; }
@@ -164,4 +164,20 @@ body.on-title .app { max-width: 1240px; }
     background-position: 11% center; padding-top: 22px; }
   .logo { padding: 10px 16px 8px; font-size: clamp(26px, 8vw, 36px); }
   .logo small { letter-spacing: 1px; }
+  /* bite alert: much bigger "!" that pops in then shakes, and a flashing HOOK button */
+  .bang { font: 900 120px Impact, "Arial Black", sans-serif; -webkit-text-stroke: 4px #b00; paint-order: stroke fill; text-shadow: 5px 5px 0 #6d0000, 0 0 22px #fff59d; animation: pop .3s ease-out, shake .45s .3s ease-in-out 2; }
+  #actBtn.red.glow { animation: hookflash .5s steps(1) infinite; }
+  /* toast sits below the top bar so it doesn't cover the LITTLE LAKE sign */
+  .toast { top: 80px; }
+}
+@keyframes shake {
+  0%, 100% { transform: translate(-50%, -100%) rotate(0); }
+  20% { transform: translate(-62%, -100%) rotate(-10deg); }
+  40% { transform: translate(-38%, -100%) rotate(10deg); }
+  60% { transform: translate(-58%, -100%) rotate(-6deg); }
+  80% { transform: translate(-42%, -100%) rotate(6deg); }
+}
+@keyframes hookflash {
+  0% { filter: none; outline-color: #ffd84a; }
+  50% { filter: brightness(1.5) saturate(1.3); outline-color: #fff; }
 }
