@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body class="on-title">
+<div class="bgfx" aria-hidden="true"><div class="clouds"></div><div class="water"></div></div>
 <div class="app">
   <div class="top">
     <div class="title wood" id="title">LITTLE LAKE</div>
@@ -16,6 +17,7 @@
   <!-- TITLE -->
   <section class="screen active" id="titleScreen">
     <div class="hero">
+      <div class="clouds" aria-hidden="true"></div>
       <div class="water" aria-hidden="true"></div>
       <h1 class="logo wood">LITTLE LAKE<small>a pixel fishing adventure</small></h1>
     </div>
@@ -36,19 +38,19 @@
         <button class="btn small" id="menuBtn" data-go="titleScreen" title="Back to the title screen">☰ MENU</button>
       </div>
       <div class="grid2">
-        <div class="stat"><div class="l">COINS</div><div class="v" id="hCoins"></div></div>
-        <div class="stat"><div class="l">FISH CAUGHT</div><div class="v" id="hCaught"></div></div>
-        <div class="stat"><div class="l">COLLECTION</div><div class="v" id="hColl"></div></div>
-        <div class="stat"><div class="l">BAG</div><div class="v" id="hBag"></div></div>
-        <div class="stat"><div class="l">ROD LEVEL</div><div class="v" id="hRod"></div></div>
-        <div class="stat"><div class="l">ISLANDS MASTERED</div><div class="v" id="hMastery"></div></div>
+        <div class="stat"><span class="ico i-coin"></span><div class="l">COINS</div><div class="v" id="hCoins"></div></div>
+        <div class="stat"><span class="ico i-fish"></span><div class="l">FISH CAUGHT</div><div class="v" id="hCaught"></div></div>
+        <div class="stat"><span class="ico i-book"></span><div class="l">COLLECTION</div><div class="v" id="hColl"></div></div>
+        <div class="stat"><span class="ico i-bag"></span><div class="l">BAG</div><div class="v" id="hBag"></div></div>
+        <div class="stat"><span class="ico i-rod"></span><div class="l">ROD LEVEL</div><div class="v" id="hRod"></div></div>
+        <div class="stat"><span class="ico i-star"></span><div class="l">ISLANDS MASTERED</div><div class="v" id="hMastery"></div></div>
       </div>
     </div>
     <div class="btns">
-      <button class="btn green" data-go="map">TOWN MAP</button>
-      <button class="btn blue" data-go="bag">OPEN BAG</button>
-      <button class="btn" data-go="shop">SHOP</button>
-      <button class="btn" data-go="collection">COLLECTION</button>
+      <button class="btn green" data-go="map"><span class="ico i-map"></span>TOWN MAP</button>
+      <button class="btn blue" data-go="bag"><span class="ico i-bag"></span>OPEN BAG</button>
+      <button class="btn" data-go="shop"><span class="ico i-shop"></span>SHOP</button>
+      <button class="btn" data-go="collection"><span class="ico i-book"></span>COLLECTION</button>
     </div>
     <div class="panel wood demo" id="demo">
       <h2>Demo mode</h2>
@@ -83,8 +85,8 @@
       <div class="dots" id="dots"></div>
       <div class="actions" style="margin-top:10px">
         <button class="btn green" id="actBtn">CAST</button>
-        <button class="btn blue" id="fBagBtn" data-go="bag">OPEN BAG</button>
-        <button class="btn" data-go="map">TOWN MAP</button>
+        <button class="btn blue" id="fBagBtn" data-go="bag"><span class="ico i-bag"></span>OPEN BAG</button>
+        <button class="btn" data-go="map"><span class="ico i-map"></span>TOWN MAP</button>
       </div>
     </div>
   </section>
@@ -94,7 +96,7 @@
     <div class="panel wood">
       <h2>CAUGHT!</h2>
       <div class="fishcard">
-        <canvas id="resCanvas"></canvas>
+        <div class="portrait"><canvas id="resCanvas"></canvas><span class="sparkles" aria-hidden="true"></span></div>
         <div>
           <div style="font-size:24px;font-weight:bold" id="resName"></div>
           <div id="resRarity"></div>
@@ -117,7 +119,7 @@
       <div class="list" id="bagList"></div>
     </div>
     <div class="btns">
-      <button class="btn green" id="sellAll">SELL ALL</button>
+      <button class="btn green" id="sellAll"><span class="ico i-coin"></span>SELL ALL</button>
       <button class="btn" id="bagBack">BACK</button>
       <button class="btn" data-go="home">HOME</button>
     </div>
@@ -128,9 +130,9 @@
     <div class="panel wood">
       <h2>Shop</h2>
       <div class="shop">
-        <div class="item"><b>Rod upgrade</b><span>One extra allowed miss. <br>Current level: <span id="sRod"></span></span><button class="btn green" id="buyRod">200 COINS</button></div>
-        <div class="item"><b>Bait pack x5</b><span>Better chance of rare fish. <br>You have: <span id="sBait"></span></span><button class="btn green" id="buyBait">100 COINS</button></div>
-        <div class="item"><b>Bigger bag +5</b><span>Carry more fish. <br>Capacity: <span id="sBag"></span></span><button class="btn green" id="buyBag">150 COINS</button></div>
+        <div class="item"><b><span class="ico i-rod"></span>Rod upgrade</b><span>One extra allowed miss. <br>Current level: <span id="sRod"></span></span><button class="btn green" id="buyRod">200 COINS</button></div>
+        <div class="item"><b><span class="ico i-fish"></span>Bait pack x5</b><span>Better chance of rare fish. <br>You have: <span id="sBait"></span></span><button class="btn green" id="buyBait">100 COINS</button></div>
+        <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span>Carry more fish. <br>Capacity: <span id="sBag"></span></span><button class="btn green" id="buyBag">150 COINS</button></div>
       </div>
     </div>
     <div class="btns"><button class="btn" data-go="home">HOME</button></div>
@@ -183,9 +185,9 @@
   </div>
 </div>
 
-<script src="js/data.js?v=4"></script>
-<script src="js/state.js?v=4"></script>
-<script src="js/fishing.js?v=4"></script>
-<script src="js/screens.js?v=4"></script>
+<script src="js/data.js?v=5"></script>
+<script src="js/state.js?v=5"></script>
+<script src="js/fishing.js?v=5"></script>
+<script src="js/screens.js?v=5"></script>
 </body>
 </html>

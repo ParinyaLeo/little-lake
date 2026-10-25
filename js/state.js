@@ -86,7 +86,8 @@ function drawFish(cv, f) {
   const ex = cx + f.len - 3; px(ex, cy - 1, "#fff"); px(ex + 1, cy - 1, "#0b1d27");
   if (f.rarity === "Legendary" || f.rarity === "Mythical") for (let x = 0; x < f.len; x += 2) px(cx + x, cy - Math.ceil(hh) - 3, f.fin);
 }
-function silhouette(cv) { drawFish(cv, { len: 16, h: 6, body: "#0b2733", belly: "#0b2733", fin: "#0b2733", stripe: null, rarity: "Common" }); }
+// dark shape of an undiscovered fish (generic shape when no fish is given)
+function silhouette(cv, f) { const d = "#0b2733"; drawFish(cv, { ...(f || { len: 16, h: 6 }), body: d, belly: d, fin: d, stripe: null, rarity: "Common" }); }
 
 /* ===================== DERIVED ===================== */
 const discCount = isl => FISH.filter(f => f.island === isl && S.discovered[f.id]).length;

@@ -27,6 +27,7 @@ js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel 
 js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Collection and Demo screens;
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image
+assets/fonts/     Pixelify Sans (PixelifySans.woff2) + its licence OFL.txt (SIL Open Font License 1.1)
 play_test.py      Playwright end-to-end tests
 ```
 
@@ -88,6 +89,18 @@ Catching the Lake Guardian sets `S.mythical`. The Home screen then shows the "La
 
 **Demo mode** (for presenting): on any screen except Title, tap the **LITTLE LAKE** title 5 times. Its buttons give +1000 coins,
 complete Harbor, complete 4 islands, fill the bag, or reset the save.
+
+## Visual style notes
+
+- **Fonts:** Pixelify Sans (local, `assets/fonts/`) for titles, buttons, tabs and island names; Courier New for
+  small text and numbers. The `@font-face` leaves out the digits (`unicode-range`) because the font's 5 and 7 look
+  like letters. Ligatures are off because "fi" turned into one odd glyph.
+- **Icons:** 12x12 pixel art in `css/style.css` as inline SVG data URIs (`.ico .i-coin`, `i-fish`, `i-book`,
+  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`). Use `<span class="ico i-NAME"></span>` inside a button or card.
+- **Rarity colours:** Common `#cfd8dc`, Rare `#64b5f6`, Epic `#ce93d8`, Legendary `#ffd54f`, Mythical `#ff80ab`.
+  The Result screen reads them from `#result[data-rarity]`, Collection cards from `.cell.r-<Rarity>`.
+- **Animation:** animate only `transform` and `opacity` so phones stay smooth, and add every new animation to
+  the `prefers-reduced-motion` block.
 
 ## Releasing (cache-busting)
 

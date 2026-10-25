@@ -146,7 +146,7 @@ function caught() {
   if (f.rarity === "Mythical") S.mythical = true;
   save();
   sfx.catch(); vibrate([60, 40, 120]); confetti();
-  drawFish($("resCanvas"), f);
+  drawFish($("resCanvas"), f); $("result").dataset.rarity = f.rarity;   // frame + glow colour
   $("resName").textContent = f.name + (isNew ? "  (NEW!)" : "");
   $("resRarity").innerHTML = `<span class="rar-${f.rarity}">${f.rarity}</span> · ${ISLANDS[f.island].name}`;
   $("resWeight").textContent = `Weight: ${weight} kg`;

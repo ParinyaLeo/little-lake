@@ -232,6 +232,32 @@ with sync_playwright() as p:
     t.wait_for_timeout(200)
     check("demo mode still opens from Home", t.is_visible("#demo"))
 
+    # ---------- visual polish (display only) ----------
+    check("pixel font loads from assets/fonts", t.evaluate("document.fonts.check('700 20px \"Pixelify Sans\"')")
+          and "Pixelify Sans" in t.evaluate("getComputedStyle(document.querySelector('.btn')).fontFamily"))
+    check("Home stat cards and buttons have pixel icons",
+          t.evaluate("document.querySelectorAll('#home .stat > .ico').length") == 6 and t.evaluate("document.querySelectorAll('#home .btns .ico').length") == 4)
+    check("Home shows drifting clouds + water shimmer", t.is_visible(".bgfx")
+          and t.evaluate("getComputedStyle(document.querySelector('.bgfx .clouds'), '::before').animationName") == "drift-x")
+    t.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_9') }; caught(); }"); t.wait_for_timeout(400)
+    check("Legendary result: gold frame + sparkles", t.evaluate("document.getElementById('result').dataset.rarity") == "Legendary"
+          and t.is_visible("#result .sparkles") and t.evaluate("getComputedStyle(document.querySelector('.portrait')).borderTopColor") == "rgb(255, 213, 79)")
+    t.screenshot(path=str(SHOTS / "24_result_legendary.png"))
+    t.click("#releaseBtn"); t.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_0') }; caught(); }"); t.wait_for_timeout(400)
+    check("Common result: grey frame, no sparkles", t.evaluate("document.getElementById('result').dataset.rarity") == "Common"
+          and not t.is_visible("#result .sparkles"))
+    t.click("#releaseBtn"); t.evaluate("() => { collTab = 'harbor'; go('collection'); }"); t.wait_for_timeout(400)
+    check("Collection cards coloured by rarity, unknown fish show '?'",
+          t.evaluate("document.querySelectorAll('#collGrid .cell.r-Rare').length") == 3
+          and t.evaluate("[...document.querySelectorAll('#collGrid .cell.unknown')].every(c => getComputedStyle(c, '::after').content === '\"?\"')"))
+    t.screenshot(path=str(SHOTS / "25_collection.png"))
+
+    rm = b.new_page(viewport={"width": 360, "height": 780}, reduced_motion="reduce")
+    rm.goto(URL); rm.wait_for_timeout(300)
+    check("prefers-reduced-motion stops the background animations",
+          rm.evaluate("['.hero .clouds', '.hero .water'].every(s => getComputedStyle(document.querySelector(s), '::before').animationName === 'none')")
+          and rm.evaluate("getComputedStyle(document.querySelector('.screen.active')).animationName") == "none")
+
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
 

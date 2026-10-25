@@ -6,6 +6,7 @@ function go(id) {
   if (id === "bag") prevScreen = current;
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   current = id; document.body.classList.toggle("plain", id === "fishing"); document.body.classList.toggle("on-title", id === "titleScreen");
+  document.body.classList.toggle("on-home", id === "home");
   render(); window.scrollTo(0, 0);
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) go(b.dataset.go); });
@@ -127,9 +128,9 @@ function renderCollection() {
   const G = $("collGrid"); G.innerHTML = "";
   FISH.filter(f => f.island === collTab).forEach(f => {
     const d = document.createElement("div"), known = S.discovered[f.id];
-    d.className = "cell" + (known ? "" : " unknown");
-    const c = document.createElement("canvas"); known ? drawFish(c, f) : silhouette(c); d.append(c);
-    d.insertAdjacentHTML("beforeend", known ? `<div><b>${f.name}</b></div><div class="rar-${f.rarity}">${f.rarity}</div><div>Best: ${S.records[f.id] || "-"} kg</div>` : `<div><b>?</b></div><div>${f.rarity}</div>`);
+    d.className = `cell r-${f.rarity}` + (known ? "" : " unknown");   // border colour by rarity
+    const c = document.createElement("canvas"); known ? drawFish(c, f) : silhouette(c, f); d.append(c);
+    d.insertAdjacentHTML("beforeend", known ? `<div><b>${f.name}</b></div><div class="rar-${f.rarity}">${f.rarity}</div><div>Best: ${S.records[f.id] || "-"} kg</div>` : `<div><b>Not found yet</b></div><div>${f.rarity}</div>`);
     G.append(d);
   });
 }
