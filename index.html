@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Little Lake</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="title wood" id="title">LITTLE LAKE</div>
+    <div class="sign wood"><span class="coins" id="coinTop">0</span></div>
+  </div>
+
+  <!-- HOME -->
+  <section class="screen active" id="home">
+    <div class="spacer"></div>
+    <div class="panel wood">
+      <h2 id="homeName">Angler</h2>
+      <div class="grid2">
+        <div class="stat"><div class="l">COINS</div><div class="v" id="hCoins"></div></div>
+        <div class="stat"><div class="l">FISH CAUGHT</div><div class="v" id="hCaught"></div></div>
+        <div class="stat"><div class="l">COLLECTION</div><div class="v" id="hColl"></div></div>
+        <div class="stat"><div class="l">BAG</div><div class="v" id="hBag"></div></div>
+        <div class="stat"><div class="l">ROD LEVEL</div><div class="v" id="hRod"></div></div>
+        <div class="stat"><div class="l">ISLANDS MASTERED</div><div class="v" id="hMastery"></div></div>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn green" data-go="map">TOWN MAP</button>
+      <button class="btn blue" data-go="bag">OPEN BAG</button>
+      <button class="btn" data-go="shop">SHOP</button>
+      <button class="btn" data-go="collection">COLLECTION</button>
+    </div>
+    <div class="panel wood demo" id="demo">
+      <h2>Demo mode</h2>
+      <div class="btns">
+        <button class="btn" id="dCoins">+1000 COINS</button>
+        <button class="btn" id="dHarbor">COMPLETE HARBOR</button>
+        <button class="btn" id="dAll">COMPLETE 4 ISLANDS</button>
+        <button class="btn" id="dFill">FILL BAG</button>
+        <button class="btn red" id="dReset">RESET SAVE</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAP -->
+  <section class="screen" id="map">
+    <div class="panel wood">
+      <h2>Town Map</h2>
+      <div class="islands" id="islands"></div>
+    </div>
+    <div class="btns"><button class="btn" data-go="home">HOME</button></div>
+  </section>
+
+  <!-- FISHING -->
+  <section class="screen" id="fishing">
+    <div class="scene" id="scene"><canvas id="sceneCanvas" width="900" height="375"></canvas><div class="bang" id="bang">!</div></div>
+    <div class="panel wood">
+      <div class="hud">
+        <div class="msg" id="fMsg">Ready? Cast your line!</div>
+        <div class="msg">BAG: <span id="fBag"></span> &nbsp; BAIT: <span id="fBait"></span></div>
+      </div>
+      <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div></div>
+      <div class="dots" id="dots"></div>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn green" id="actBtn">CAST</button>
+        <button class="btn blue" id="fBagBtn" data-go="bag">OPEN BAG</button>
+        <button class="btn" data-go="map">TOWN MAP</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section class="screen" id="result">
+    <div class="panel wood">
+      <h2>CAUGHT!</h2>
+      <div class="fishcard">
+        <canvas id="resCanvas"></canvas>
+        <div>
+          <div style="font-size:24px;font-weight:bold" id="resName"></div>
+          <div id="resRarity"></div>
+          <div id="resWeight" style="margin-top:6px"></div>
+          <div id="resPrice"></div>
+          <div class="record" id="resRecord"></div>
+        </div>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn green" id="keepBtn">KEEP &amp; FISH AGAIN</button>
+      <button class="btn" id="releaseBtn">RELEASE</button>
+    </div>
+  </section>
+
+  <!-- BAG -->
+  <section class="screen" id="bag">
+    <div class="panel wood">
+      <h2>Bag <span id="bagCount"></span></h2>
+      <div class="list" id="bagList"></div>
+    </div>
+    <div class="btns">
+      <button class="btn green" id="sellAll">SELL ALL</button>
+      <button class="btn" id="bagBack">BACK</button>
+      <button class="btn" data-go="home">HOME</button>
+    </div>
+  </section>
+
+  <!-- SHOP -->
+  <section class="screen" id="shop">
+    <div class="panel wood">
+      <h2>Shop</h2>
+      <div class="shop">
+        <div class="item"><b>Rod upgrade</b><span>One extra allowed miss. <br>Current level: <span id="sRod"></span></span><button class="btn green" id="buyRod">200 COINS</button></div>
+        <div class="item"><b>Bait pack x5</b><span>Better chance of rare fish. <br>You have: <span id="sBait"></span></span><button class="btn green" id="buyBait">100 COINS</button></div>
+        <div class="item"><b>Bigger bag +5</b><span>Carry more fish. <br>Capacity: <span id="sBag"></span></span><button class="btn green" id="buyBag">150 COINS</button></div>
+      </div>
+    </div>
+    <div class="btns"><button class="btn" data-go="home">HOME</button></div>
+  </section>
+
+  <!-- COLLECTION -->
+  <section class="screen" id="collection">
+    <div class="panel wood">
+      <h2>Collection Book <span id="collTotal"></span></h2>
+      <div class="tabs" id="tabs"></div>
+      <div id="collHead"></div>
+      <div class="coll" id="collGrid"></div>
+    </div>
+    <div class="btns"><button class="btn" data-go="home">HOME</button></div>
+  </section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="banner" id="banner"><div class="panel wood"><h2 id="banTitle"></h2><p id="banText"></p><button class="btn green" id="banOk">GREAT!</button></div></div>
+
+<script src="js/data.js"></script>
+<script src="js/state.js"></script>
+<script src="js/fishing.js"></script>
+<script src="js/screens.js"></script>
+</body>
+</html>
