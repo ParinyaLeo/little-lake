@@ -147,6 +147,11 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   because its `background` shorthand resets `background-image`. Use `<span class="ico i-NAME"></span>` inside a button or card.
 - **Rarity colours:** Common `#cfd8dc`, Rare `#64b5f6`, Epic `#ce93d8`, Legendary `#ffd54f`, Mythical `#ff80ab`.
   The Result screen reads them from `#result[data-rarity]`, Collection cards from `.cell.r-<Rarity>`.
+- **Title screen:** `assets/harbor.jpg` as a full-screen `<img class="title-bg">` (fixed, `object-fit: cover`,
+  pixelated, `object-position` keeps the fisherman in view; a different position below 700px). No frame. The sign floats
+  near the top and the 4 buttons sit at the bottom (2x2 on phones) over a dark gradient (`.title-shade`). The only
+  effect is `.title-shimmer`, a soft blurred light band. Its fade-in is opacity-only, because a transform on the screen would
+  detach the fixed picture. The pixel clouds and water dashes (`.bgfx`) are used only on Home.
 - **Island scenes** (`js/fishing.js`, `SCENES`): Harbor uses `assets/harbor.jpg`; Frost, Desert, Forest and
   Little Lake are pixel art painted on a small canvas (1 art pixel = 3 screen pixels), cached, and scaled up.
   Only the light effects (snow, heat shimmer, waterfall, stars, water glints) are redrawn each frame.

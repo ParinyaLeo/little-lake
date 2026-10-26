@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=11">
+<link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body class="on-title">
 <div class="bgfx" aria-hidden="true"><div class="clouds"></div><div class="water"></div></div>
@@ -16,11 +16,11 @@
 
   <!-- TITLE -->
   <section class="screen active" id="titleScreen">
-    <div class="hero">
-      <div class="clouds" aria-hidden="true"></div>
-      <div class="water" aria-hidden="true"></div>
-      <h1 class="logo wood">LITTLE LAKE<small>a pixel fishing adventure</small></h1>
-    </div>
+    <!-- full-screen art: picture, a slow soft shimmer on the water, and a dark fade behind the buttons -->
+    <img class="title-bg" src="assets/harbor.jpg" alt="" aria-hidden="true">
+    <div class="title-shimmer" aria-hidden="true"></div>
+    <div class="title-shade" aria-hidden="true"></div>
+    <h1 class="logo wood">LITTLE LAKE<small>a pixel fishing adventure</small></h1>
     <div class="btns">
       <button class="btn green" id="newBtn">NEW GAME</button>
       <button class="btn blue" id="contBtn">CONTINUE</button>
@@ -231,9 +231,9 @@
   </div>
 </div>
 
-<script src="js/data.js?v=11"></script>
-<script src="js/state.js?v=11"></script>
-<script src="js/fishing.js?v=11"></script>
-<script src="js/screens.js?v=11"></script>
+<script src="js/data.js?v=12"></script>
+<script src="js/state.js?v=12"></script>
+<script src="js/fishing.js?v=12"></script>
+<script src="js/screens.js?v=12"></script>
 </body>
 </html>

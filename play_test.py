@@ -286,7 +286,8 @@ with sync_playwright() as p:
     rm = b.new_page(viewport={"width": 360, "height": 780}, reduced_motion="reduce")
     rm.goto(URL); rm.wait_for_timeout(300)
     check("prefers-reduced-motion stops the background animations",
-          rm.evaluate("['.hero .clouds', '.hero .water'].every(s => getComputedStyle(document.querySelector(s), '::before').animationName === 'none')")
+          rm.evaluate("getComputedStyle(document.querySelector('.title-shimmer')).animationName === 'none'")
+          and rm.evaluate("['.bgfx .clouds', '.bgfx .water'].every(s => getComputedStyle(document.querySelector(s), '::before').animationName === 'none')")
           and rm.evaluate("getComputedStyle(document.querySelector('.screen.active')).animationName") == "none")
 
     # ---------- playtest fixes: missing fish, Tackle Box, bait toggle, hearts, shop effects (see docs/bug_log.md) ----------
@@ -665,6 +666,38 @@ with sync_playwright() as p:
     n.keyboard.press("Escape"); n.wait_for_timeout(100)
     n.set_viewport_size({"width": 360, "height": 780})
     n.close()
+
+    # ---------- full-screen Title art ----------
+    TITLE = """(() => { const img = document.querySelector('#titleScreen .title-bg'), r = img.getBoundingClientRect(), cs = getComputedStyle(img);
+        const btns = ['newBtn', 'contBtn', 'howBtn', 'soundBtn'].map(id => { const b = document.getElementById(id).getBoundingClientRect(),
+            hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2), hb = hit && hit.closest('button');
+            return [b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth, !!hb && hb.id === id, Math.round(b.top), Math.round(b.left)]; });
+        const logo = document.querySelector('#titleScreen .logo').getBoundingClientRect();
+        return { cover: r.left <= 0 && r.top <= 0 && r.right >= innerWidth && r.bottom >= innerHeight, fit: cs.objectFit, pix: cs.imageRendering,
+                 btns, logoTop: logo.top / innerHeight, old: !!document.querySelector('#titleScreen .hero, #titleScreen .clouds, #titleScreen .water'),
+                 shimmer: getComputedStyle(document.querySelector('.title-shimmer')).animationName,
+                 sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, vw: innerWidth, vh: innerHeight }; })()"""
+    for vw, vh in [(1920, 1080), (1366, 768), (360, 640)]:
+        tp = b.new_page(viewport={"width": vw, "height": vh})
+        tp.on("pageerror", lambda e: errs.append(str(e)))
+        tp.goto(URL); tp.evaluate("localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Art', coins: 300 }))"); tp.reload(); tp.wait_for_timeout(700)
+        r = tp.evaluate(TITLE)
+        check(f"{vw}x{vh}: Title picture covers the whole screen (cover, pixelated), no frame, no pixel clouds or dashes",
+              r["cover"] and r["fit"] == "cover" and r["pix"] == "pixelated" and not r["old"] and r["shimmer"] == "title-shimmer", str({k: r[k] for k in ("cover", "fit", "pix", "old", "shimmer")}))
+        check(f"{vw}x{vh}: all 4 Title buttons visible and clickable, sign near the top",
+              all(x[0] and x[1] for x in r["btns"]) and r["logoTop"] < .25, str(r["btns"]) + f" logo {r['logoTop']:.2f}")
+        check(f"{vw}x{vh}: Title has no side or page scroll", r["sw"] <= r["vw"] and r["sh"] <= r["vh"], f"{r['sw']}x{r['sh']}")
+        if vw == 360:
+            check("360x640: Title buttons stacked 2x2 at the bottom",
+                  len({x[2] for x in r["btns"]}) == 2 and len({x[3] for x in r["btns"]}) == 2 and min(x[2] for x in r["btns"]) > vh * .6, str(r["btns"]))
+        tp.screenshot(path=str(SHOTS / f"41_title_{vw}x{vh}.png"))
+        tp.click("#howBtn"); tp.wait_for_timeout(200); ok_how = tp.is_visible("#howBox"); tp.click("#howOk"); tp.wait_for_timeout(100)
+        tp.click("#soundBtn"); ok_sound = "OFF" in tp.inner_text("#soundBtn"); tp.click("#soundBtn")
+        tp.click("#contBtn"); tp.wait_for_timeout(300)
+        check(f"{vw}x{vh}: Title buttons still work (HOW TO PLAY, SOUND, CONTINUE)", ok_how and ok_sound and tp.is_visible("#home"))
+        check(f"{vw}x{vh}: Home keeps its framed layout (top bar, no full-screen picture)",
+              tp.is_visible("#title") and not tp.is_visible(".title-bg") and tp.is_visible(".bgfx"))
+        tp.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

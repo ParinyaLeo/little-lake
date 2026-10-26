@@ -264,7 +264,7 @@ body.plain { background: linear-gradient(#1f6f96, #0d4f72); }
 .i-bait-golden { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' shape-rendering='crispEdges'%3E%3Cpath fill='%234a2a10' d='M4 0h2v1h-2zM3 1h1v1h-1zM6 1h1v1h-1zM2 2h1v1h-1zM7 2h1v1h-1zM2 3h1v1h-1zM7 3h1v1h-1zM2 4h1v1h-1zM7 4h1v1h-1zM2 5h1v1h-1zM7 5h1v1h-1zM3 6h1v1h-1zM7 6h1v1h-1zM4 7h3v1h-3zM5 8h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM3 10h3v1h-3z'/%3E%3Cpath fill='%23ffcf3f' d='M4 1h2v1h-2zM3 2h1v1h-1zM5 2h2v1h-2zM4 3h3v1h-3zM3 4h3v1h-3zM3 5h3v1h-3zM4 6h1v1h-1z'/%3E%3Cpath fill='%23fff6c0' d='M4 2h1v1h-1zM3 3h1v1h-1z'/%3E%3Cpath fill='%23d99a00' d='M6 4h1v1h-1zM6 5h1v1h-1zM5 6h2v1h-2z'/%3E%3C/svg%3E"); }
 .i-bait-none { opacity: .4; filter: grayscale(1); }
 
-/* drifting clouds + water shimmer (Title scene and the Home background); transform-only so phones stay smooth.
+/* drifting clouds + water shimmer (Home background); transform-only so phones stay smooth.
    Each layer is one tile (--t) wider than its box and slides exactly one tile, so the loop is seamless. */
 .clouds, .water { position: absolute; left: 0; right: 0; overflow: hidden; pointer-events: none; }
 .clouds { top: 0; height: 30%; opacity: .85; }
@@ -290,14 +290,26 @@ body.plain { background: linear-gradient(#1f6f96, #0d4f72); }
 body.on-home .bgfx { display: block; }
 .app { position: relative; z-index: 1; }
 
-/* title */
-body.on-title { background: linear-gradient(#1f6f96, #0d4f72); }
+/* title: the harbor picture fills the whole window (no frame); the sign floats near the top and the
+   buttons at the bottom over a dark fade. object-position keeps the fisherman on the dock in view. */
+body.on-title { background: #0d4f72; }
 body.on-title .top { display: none; }
 body.on-title .app { max-width: 1240px; }
-/* fill the window and centre the scene + buttons vertically (28px = body padding) */
-#titleScreen { min-height: calc(100vh - 28px); justify-content: center; }
-.hero { position: relative; min-height: 300px; aspect-ratio: 2 / 1; max-height: calc(100vh - 120px); border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold), 0 6px 0 rgba(0,0,0,.35);
-  background: url("../assets/harbor.jpg") 25% center / cover, #2aa9d8; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; padding-top: 8%; }
+#titleScreen { min-height: calc(100vh - 28px); min-height: calc(100svh - 28px); justify-content: space-between; align-items: center; padding: 4vh 0 2vh; }
+#titleScreen.active { animation: title-in .4s ease-out; }     /* opacity only: a transform would detach the fixed picture */
+@keyframes title-in { from { opacity: 0; } }
+.title-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100svh; z-index: 0; display: block; pointer-events: none;
+  object-fit: cover; object-position: 14% 60%; image-rendering: pixelated; }
+.title-shade { position: fixed; left: 0; right: 0; bottom: 0; height: 48%; z-index: 0; pointer-events: none;
+  background: linear-gradient(rgba(4, 22, 32, 0), rgba(4, 22, 32, .5) 50%, rgba(4, 22, 32, .88)); }
+/* soft light drifting over the water: a blurred band that slowly brightens and fades, no hard pixels */
+.title-shimmer { position: fixed; left: -10%; right: -10%; top: 46%; height: 30%; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse 45% 30% at 50% 50%, rgba(255, 255, 255, .16), transparent 70%);
+  animation: title-shimmer 9s ease-in-out infinite alternate; }
+@keyframes title-shimmer { from { opacity: .25; transform: translateX(-6%); } to { opacity: 1; transform: translateX(6%); } }
+#titleScreen .logo, #titleScreen .btns { position: relative; z-index: 1; }
+#titleScreen .btns { width: 100%; max-width: 980px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#titleScreen .btn { box-shadow: inset 0 0 0 3px var(--gold), inset 0 0 0 6px var(--wood-dark), 0 6px 0 rgba(0,0,0,.45), 0 10px 24px rgba(0,0,0,.45); }
 .logo { position: relative; margin: 0; padding: 14px 30px 12px; font-size: clamp(30px, 9vw, 72px); letter-spacing: clamp(2px, 1vw, 8px); white-space: nowrap; text-align: center;
   line-height: 1.05; animation: bob 3.2s ease-in-out infinite; }
 .logo small { display: block; font-size: clamp(11px, 2.6vw, 18px); letter-spacing: 2px; color: var(--gold); margin-top: 6px; }
@@ -361,7 +373,7 @@ body.plain .app { height: calc(100vh - 28px); height: calc(100svh - 28px); }
 #fishing .actions { margin-top: 6px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .logo, .screen.active, .clouds::before, .clouds::after, .water::before, .water::after,
+  .logo, .screen.active, #titleScreen.active, .title-shimmer, .clouds::before, .clouds::after, .water::before, .water::after,
   .portrait::before, .sparkles::before, .sparkles::after, .record, .zone::after,
   #result.active .portrait canvas, #result.active .splash::after, .bump { animation: none; }
   .btn { transition: none; }
@@ -381,11 +393,11 @@ body.plain .app { height: calc(100vh - 28px); height: calc(100svh - 28px); }
   .scene { aspect-ratio: 3 / 2; }
   .title { padding: 10px 16px; letter-spacing: 2px; }
   .sign { padding: 10px 14px; }
-  #titleScreen { min-height: calc(100svh - 28px); }
-  /* tall scene that follows the screen height; shifted left so the fisherman on the dock stays in view
-     below the logo (176px = two rows of buttons + gaps + body padding) */
-  .hero { aspect-ratio: auto; min-height: 0; max-height: none; height: clamp(340px, calc(100vh - 176px), 680px); height: clamp(340px, calc(100svh - 176px), 680px);
-    background-position: 11% center; padding-top: 22px; }
+  /* phones: sign near the top, buttons 2x2 at the bottom; picture shifted so the fisherman stays between them */
+  #titleScreen { padding: 3vh 0 1vh; }
+  #titleScreen .btns { grid-template-columns: 1fr 1fr; gap: 10px; }
+  #titleScreen .btn { padding: 14px 6px; font-size: 15px; }
+  .title-bg { object-position: 15% 62%; }
   .logo { padding: 10px 16px 8px; font-size: clamp(26px, 8vw, 36px); }
   .logo small { letter-spacing: 1px; }
   /* bite alert: much bigger "!" that pops in then shakes, and a flashing HOOK button */
