@@ -328,6 +328,8 @@ function openPicker(kind) {
   pickKind = kind; renderPicker();
   openModal("pickBox", `pick-${kind === "rod" ? S.rodEq : S.baitSel}`);
 }
+// label for an item you can't use yet: full text, or just the price on narrow screens (CSS picks one)
+const lockedLabel = price => `<span class="long">${price} COINS · Buy in Shop</span><span class="short">🪙${price}</span>`;
 function renderPicker() {
   const isRod = pickKind === "rod", charm = S.mastery.forest ? " +1 miss from Master's Charm." : "";
   $("pickTitle").textContent = isRod ? "Choose Rod" : "Choose Bait";
@@ -341,12 +343,12 @@ function renderPicker() {
     ? ROD_IDS.map(id => {
         const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
         return card(id, `rod-${id}`, r.name, rodFx(id) + (own ? charm : ""), oddsText(rarityWeights(S.baitSel, id)),
-          eq ? "equipped" : own ? "" : "locked", eq ? "EQUIPPED" : own ? "EQUIP" : `${r.price} COINS · Buy in Shop`);
+          eq ? "equipped" : own ? "" : "locked", eq ? "EQUIPPED" : own ? "EQUIP" : lockedLabel(r.price));
       }).join("")
     : ["none", ...BAIT_IDS].map(id => {
         const b = BAITS[id], n = b ? S.baits[id] : 0, sel = S.baitSel === id, have = !b || n > 0;
         return card(id, `bait-${id}`, b ? `${b.name} x${n}` : "No bait", b ? b.blurb : "Saves your bait for later.", oddsText(rarityWeights(id)),
-          sel ? "equipped" : have ? "" : "locked", sel ? "EQUIPPED" : have ? "USE" : `${b.price} COINS · Buy in Shop`);
+          sel ? "equipped" : have ? "" : "locked", sel ? "EQUIPPED" : have ? "USE" : lockedLabel(b.price));
       }).join("");
 }
 $("rodChip").onclick = () => openPicker("rod");

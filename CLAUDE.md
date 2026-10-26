@@ -117,7 +117,7 @@ own or can't afford. A new rod is not equipped automatically; a new bait is sele
 the bag and each island reward with icon, effect and UNLOCKED / LOCKED (with progress). The fishing HUD shows the
 equipped rod and selected bait as buttons. Tapping one opens the **Choose Rod / Choose Bait** popup (`#pickBox`,
 `openPicker()` in `js/fishing.js`): every rod or bait as a card with its effect, odds and status. Owned rods and baits you
-have are buttons (one tap equips or selects and closes); the rest are disabled and greyed out with "Buy in Shop". The popup has
+have are buttons (one tap equips or selects and closes); the rest are disabled and greyed out with "N COINS · Buy in Shop" (just "🪙N" below 700px). The popup has
 GO TO SHOP and CLOSE, and closes with Esc or a tap outside. Tab stays inside open dialogs, and focus returns to the chip.
 The chips are disabled outside idle, so the popup never opens mid-catch, and Space never casts while a dialog is open.
 

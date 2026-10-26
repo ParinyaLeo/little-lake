@@ -645,15 +645,24 @@ with sync_playwright() as p:
           no_side_scroll(n) and r[0] <= r[1] and r[2] <= r[1] and r[3], str(r))
     n.screenshot(path=str(SHOTS / "37_mobile_fishing_gear.png"))
     n.set_viewport_size({"width": 360, "height": 640}); n.wait_for_timeout(200)
-    n.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision']; save(); render(); }")
+    n.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision']; S.baits.shrimp = 0; save(); render(); }")
+    locked_label = """(() => { const c = document.querySelector('#pickList .pick-card.locked'), b = c.querySelector('b');
+        return [c.querySelector('.chip').innerText.trim(), Math.round(b.getBoundingClientRect().height) <= Math.round(parseFloat(getComputedStyle(b).fontSize) * 1.5)]; })()"""
     for chip, name in [("#rodChip", "rod"), ("#baitChip", "bait")]:
         n.click(chip); n.wait_for_timeout(300)
         fit = n.evaluate("""(() => { const p = document.getElementById('pickPanel').getBoundingClientRect(), vh = innerHeight,
             inView = id => { const r = document.getElementById(id).getBoundingClientRect(); return r.top >= 0 && r.bottom <= vh && r.right <= innerWidth; };
             return [p.top >= 0 && p.bottom <= vh && p.right <= innerWidth, inView('pickClose'), inView('pickShop'), inView('pickTitle')]; })()""")
         check(f"360x640: Choose {name.title()} popup fits with CLOSE and GO TO SHOP visible, no side scroll", all(fit) and no_side_scroll(n), str(fit))
+        lab = n.evaluate(locked_label)
+        check(f"360px: locked {name} shows the short price label and its name stays on one line",
+              lab == (["🪙700", True] if name == "rod" else ["🪙100", True]), str(lab))
         n.screenshot(path=str(SHOTS / f"40_mobile_choose_{name}.png"))
         n.keyboard.press("Escape"); n.wait_for_timeout(100)
+    n.set_viewport_size({"width": 1280, "height": 800}); n.wait_for_timeout(200)
+    n.click("#rodChip"); n.wait_for_timeout(300)
+    check("wide screens keep the full '700 COINS · Buy in Shop' label", n.evaluate(locked_label)[0] == "700 COINS · Buy in Shop", str(n.evaluate(locked_label)))
+    n.keyboard.press("Escape"); n.wait_for_timeout(100)
     n.set_viewport_size({"width": 360, "height": 780})
     n.close()
 

@@ -327,6 +327,7 @@ body.on-title .app { max-width: 1240px; }
 .pick-card .odds { font-size: 12px; color: #bfe6ff; }
 .pick-card .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pick-card .chip { flex-shrink: 0; max-width: 60%; }
+.pick-card .chip .short { display: none; }
 .pick-card.equipped { border-color: #7ad957; box-shadow: 0 0 0 2px #3f8f35, inset 0 0 0 2px #3f8f35; }
 .pick-card.equipped .chip { background: #3f8f35; }
 .pick-card.locked { opacity: .5; filter: grayscale(.7); cursor: not-allowed; border-style: dashed; }
@@ -415,6 +416,8 @@ body.plain .app { height: calc(100vh - 28px); height: calc(100svh - 28px); }
   .pick-card .fx { font-size: 12px; }
   .pick-card .odds { font-size: 11px; }
   .pick-card .chip { font-size: 11px; padding: 2px 5px; }
+  .pick-card .chip .long { display: none; }          /* short price label so the item name stays on one line */
+  .pick-card .chip .short { display: inline; white-space: nowrap; }
   .picker .btns { gap: 8px; }
   .picker .btns .btn { padding: 12px 4px; font-size: 14px; }
   .chip-btn .k { display: none; }
