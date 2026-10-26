@@ -515,16 +515,71 @@ with sync_playwright() as p:
     g.click("#actBtn"); g.wait_for_timeout(100)
     check("a cast uses one of the selected bait only", g.evaluate("[S.baits.shrimp, S.baits.worm, F.usedBait]") == [4, 5, "shrimp"]
           and g.is_disabled("#rodChip") and g.is_disabled("#baitChip"))
+    # ROD / BAIT picker popups (BUG-12: the chips used to cycle one item per tap)
     g.evaluate("() => { stopFishing(); go('fishing'); }"); g.wait_for_timeout(100)
-    g.click("#baitChip"); g.wait_for_timeout(50)
-    check("tapping BAIT switches to the next bait (Shrimp -> no bait)", g.evaluate("S.baitSel") == "none" and "None" in g.inner_text("#baitChip"))
+    cards = lambda: g.evaluate("[...document.querySelectorAll('#pickList .pick-card')].map(c => [c.dataset.id, c.disabled, c.classList.contains('equipped'), c.textContent])")
+    focused = lambda: g.evaluate("document.activeElement && document.activeElement.id")
+    g.click("#baitChip"); g.wait_for_timeout(150)
+    bl = cards()
+    check("BAIT opens 'Choose Bait': No bait first, then each bait with count, odds and EQUIPPED",
+          g.is_visible("#pickBox") and g.inner_text("#pickTitle") == "Choose Bait" and [x[0] for x in bl] == ["none", "worm", "shrimp", "golden"]
+          and bl[2][2] and "EQUIPPED" in bl[2][3] and "Shrimp x4" in bl[2][3] and "Legendary 6%" in bl[2][3]
+          and "Worm x5" in bl[1][3] and "Rare 40%" in bl[1][3] and focused() == "pick-shrimp", str([x[0:3] for x in bl]))
+    g.screenshot(path=str(SHOTS / "38_choose_bait.png"))
+    g.click("#pick-golden", force=True); g.wait_for_timeout(100)
+    check("bait with 0 left is greyed out with 'Buy in Shop' and can't be selected",
+          bl[3][1] and "Buy in Shop" in bl[3][3] and g.evaluate("S.baitSel") == "shrimp" and g.is_visible("#pickBox"))
+    g.click("#pick-none"); g.wait_for_timeout(100)
+    check("picking 'No bait' selects it in one tap, closes the popup, updates the chip, focus back on BAIT",
+          g.evaluate("S.baitSel") == "none" and not g.is_visible("#pickBox") and "None" in g.inner_text("#baitChip") and focused() == "baitChip")
     g.click("#actBtn"); g.wait_for_timeout(100)
     check("casting with no bait uses none", g.evaluate("[S.baits.shrimp, S.baits.worm, F.usedBait]") == [4, 5, None])
+    for ph in ["waiting", "bite"]:
+        g.wait_for_function(f"F.phase === '{ph}'", timeout=8000)
+        g.evaluate("() => { openPicker('rod'); openPicker('bait'); }")
+        check(f"ROD / BAIT disabled and no popup while {ph}", g.is_disabled("#rodChip") and g.is_disabled("#baitChip") and not g.is_visible("#pickBox"))
+    g.click("#actBtn"); g.wait_for_timeout(100); g.evaluate("() => { openPicker('rod'); }")
+    check("ROD / BAIT disabled and no popup while reeling", g.evaluate("F.phase") == "reeling" and g.is_disabled("#rodChip") and not g.is_visible("#pickBox"))
     g.evaluate("() => { stopFishing(); go('fishing'); }"); g.wait_for_timeout(100)
-    g.click("#baitChip"); g.wait_for_timeout(50)
-    check("tapping BAIT again picks Worm", g.evaluate("S.baitSel") == "worm")
-    g.click("#rodChip"); g.wait_for_timeout(50)
-    check("tapping ROD switches to the next rod you own", g.evaluate("S.rodEq") == "bamboo" and "Bamboo" in g.inner_text("#rodChip"))
+
+    g.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision', 'lucky']; S.mastery = {}; save(); render(); }")
+    g.click("#rodChip"); g.wait_for_timeout(150)
+    rl = cards()
+    check("ROD opens 'Choose Rod': all 4 rods with misses, zone, odds, marker speed and EQUIPPED",
+          g.inner_text("#pickTitle") == "Choose Rod" and [x[0] for x in rl] == ["bamboo", "sturdy", "precision", "lucky"] and rl[1][2]
+          and "2 misses allowed" in rl[1][3] and "green zone 35% wider" in rl[2][3] and "marker 10% faster" in rl[3][3]
+          and all("Common" in x[3] for x in rl) and "Legendary 6%" in rl[3][3], str([x[0:3] for x in rl]))
+    g.screenshot(path=str(SHOTS / "39_choose_rod.png"))
+    g.click("#pick-lucky"); g.wait_for_timeout(100)
+    check("equipping a non-first rod takes one tap in the popup (Lucky Rod)",
+          g.evaluate("S.rodEq") == "lucky" and "Lucky" in g.inner_text("#rodChip") and not g.is_visible("#pickBox")
+          and "Equipped Lucky Rod" in g.inner_text("#toast") and g.evaluate(SAVED + ".rodEq") == "lucky")
+    g.evaluate("() => { S.rods = ['bamboo', 'lucky']; save(); render(); }")
+    g.click("#rodChip"); g.wait_for_timeout(150)
+    rl = cards()
+    g.click("#pick-precision", force=True); g.wait_for_timeout(100)
+    check("rods you don't own are greyed out with price and 'Buy in Shop' and can't be equipped",
+          rl[2][1] and "450 COINS" in rl[2][3] and "Buy in Shop" in rl[2][3] and rl[1][1] and g.evaluate("S.rodEq") == "lucky" and g.is_visible("#pickBox"))
+    g.keyboard.press("Escape"); g.wait_for_timeout(100)
+    check("Esc closes the popup and focus returns to ROD", not g.is_visible("#pickBox") and focused() == "rodChip" and g.evaluate("S.rodEq") == "lucky")
+    g.click("#rodChip"); g.wait_for_timeout(150)
+    g.keyboard.press("Shift+Tab"); f1 = focused(); g.keyboard.press("Enter"); g.wait_for_timeout(100)
+    check("keyboard: Tab moves between items (skipping locked ones), Enter selects",
+          f1 == "pick-bamboo" and g.evaluate("S.rodEq") == "bamboo" and not g.is_visible("#pickBox") and focused() == "rodChip", f1)
+    g.click("#rodChip"); g.wait_for_timeout(150)
+    for _ in range(6): g.keyboard.press("Tab")
+    check("Tab stays inside the popup", g.evaluate("!!document.activeElement.closest('#pickBox')"))
+    g.evaluate("() => document.activeElement.blur()"); g.keyboard.press("Space"); g.wait_for_timeout(100)
+    check("Space doesn't cast while the popup is open", g.evaluate("F.phase") == "idle" and g.is_visible("#pickBox"))
+    g.mouse.click(5, 5); g.wait_for_timeout(100)
+    check("tapping outside closes the popup", not g.is_visible("#pickBox") and g.evaluate("S.rodEq") == "bamboo")
+    g.click("#baitChip"); g.wait_for_timeout(150); g.click("#pickClose"); g.wait_for_timeout(100)
+    check("CLOSE closes the popup without changing anything", not g.is_visible("#pickBox") and g.evaluate("S.baitSel") == "none")
+    g.click("#rodChip"); g.wait_for_timeout(150); g.click("#pickShop"); g.wait_for_timeout(200)
+    check("GO TO SHOP closes the popup and opens the Shop", not g.is_visible("#pickBox") and g.is_visible("#shop"))
+    g.evaluate("() => { go('tackle'); }"); g.wait_for_timeout(200); g.click('[data-equip="lucky"]'); g.wait_for_timeout(100)
+    check("the Tackle Box still equips rods", g.evaluate("S.rodEq") == "lucky")
+    g.evaluate("() => { go('fishing'); }"); g.wait_for_timeout(200)
     g.evaluate("() => { S.baitSel = 'golden'; S.baits.golden = 0; save(); }")
     g.reload(); g.wait_for_timeout(200)
     check("a selected bait with none left loads as no bait", g.evaluate("S.baitSel") == "none")
@@ -589,6 +644,17 @@ with sync_playwright() as p:
     check("360px: fishing HUD with rod + bait chips fits (no side scroll, no page scroll, chips not cut off)",
           no_side_scroll(n) and r[0] <= r[1] and r[2] <= r[1] and r[3], str(r))
     n.screenshot(path=str(SHOTS / "37_mobile_fishing_gear.png"))
+    n.set_viewport_size({"width": 360, "height": 640}); n.wait_for_timeout(200)
+    n.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision']; save(); render(); }")
+    for chip, name in [("#rodChip", "rod"), ("#baitChip", "bait")]:
+        n.click(chip); n.wait_for_timeout(300)
+        fit = n.evaluate("""(() => { const p = document.getElementById('pickPanel').getBoundingClientRect(), vh = innerHeight,
+            inView = id => { const r = document.getElementById(id).getBoundingClientRect(); return r.top >= 0 && r.bottom <= vh && r.right <= innerWidth; };
+            return [p.top >= 0 && p.bottom <= vh && p.right <= innerWidth, inView('pickClose'), inView('pickShop'), inView('pickTitle')]; })()""")
+        check(f"360x640: Choose {name.title()} popup fits with CLOSE and GO TO SHOP visible, no side scroll", all(fit) and no_side_scroll(n), str(fit))
+        n.screenshot(path=str(SHOTS / f"40_mobile_choose_{name}.png"))
+        n.keyboard.press("Escape"); n.wait_for_timeout(100)
+    n.set_viewport_size({"width": 360, "height": 780})
     n.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))

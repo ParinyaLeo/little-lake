@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body class="on-title">
 <div class="bgfx" aria-hidden="true"><div class="clouds"></div><div class="water"></div></div>
@@ -210,9 +210,9 @@
       <dt>🎣 Cast</dt><dd>Pick an island on the Town Map and press CAST. Then wait for a bite.</dd>
       <dt>❗ Bite</dt><dd>When a big "!" pops up over the bobber, press HOOK! within 1 second or the fish swims away.</dd>
       <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Each miss costs a ❤ heart; miss with no hearts left and the fish escapes.</dd>
-      <dt>🎣 Rods</dt><dd>Buy rods once in the Shop and equip one in the Tackle Box: Bamboo (free, 1 miss), Sturdy (2 misses), Precision (35% wider green zone) or Lucky (better odds, but a 10% faster marker).</dd>
+      <dt>🎣 Rods</dt><dd>Buy rods once in the Shop. Equip one in the Tackle Box, or tap ROD on the fishing screen to pick from a list: Bamboo (free, 1 miss), Sturdy (2 misses), Precision (35% wider green zone) or Lucky (better odds, but a 10% faster marker).</dd>
       <dt>🎒 Bag</dt><dd>KEEP puts your catch in the bag; sell it there for coins. If the bag is full you can sell a fish, open the bag or release the new one. You can't cast while the bag is full.</dd>
-      <dt>🪱 Bait</dt><dd>Choose Worm, Shrimp, Golden Lure or no bait in the Tackle Box, or tap BAIT on the fishing screen. Each cast uses one of the chosen bait for better odds of rarer fish.</dd>
+      <dt>🪱 Bait</dt><dd>Choose Worm, Shrimp, Golden Lure or no bait in the Tackle Box, or tap BAIT on the fishing screen to see every bait with its odds and pick one. Each cast uses one of the chosen bait for better odds of rarer fish.</dd>
       <dt>🛒 Shop</dt><dd>Spend coins on rods, bait and a bigger bag. Each item shows its exact effect and the odds before you buy.</dd>
       <dt>⭐ Island Mastery</dt><dd>Find all 10 fish on an island to unlock its reward: Golden Hook, Steady Hands, Lucky Lure or Master's Charm. Rewards work automatically. Master all four islands to discover a secret lake.</dd>
       <dt>🧰 Tackle Box</dt><dd>Open it from Home to equip a rod, choose bait, and see your bag and every island reward. Rewards add to your rod (e.g. Master's Charm gives +1 miss).</dd>
@@ -221,10 +221,19 @@
     <button class="btn green" id="howOk">GOT IT!</button>
   </div>
 </div>
+<!-- ROD / BAIT PICKER (opened from the ROD and BAIT buttons on the fishing screen) -->
+<div class="banner modal" id="pickBox" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+  <div class="panel wood picker" id="pickPanel">
+    <h2 id="pickTitle">Choose Rod</h2>
+    <p class="small" id="pickSub"></p>
+    <div class="picklist" id="pickList"></div>
+    <div class="btns"><button class="btn" id="pickShop"><span class="ico i-shop"></span>GO TO SHOP</button><button class="btn" id="pickClose">CLOSE</button></div>
+  </div>
+</div>
 
-<script src="js/data.js?v=9"></script>
-<script src="js/state.js?v=9"></script>
-<script src="js/fishing.js?v=9"></script>
-<script src="js/screens.js?v=9"></script>
+<script src="js/data.js?v=10"></script>
+<script src="js/state.js?v=10"></script>
+<script src="js/fishing.js?v=10"></script>
+<script src="js/screens.js?v=10"></script>
 </body>
 </html>

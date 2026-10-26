@@ -313,6 +313,27 @@ body.on-title .app { max-width: 1240px; }
 .err { min-height: 22px; margin: 8px 0; color: #ffb4a2; font-weight: bold; }
 .modal .how { max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; text-align: left; }
 .how:focus { outline: none; }
+/* rod / bait picker: header and buttons stay put, the list scrolls if the screen is short */
+.modal .picker { max-width: 540px; max-height: calc(100vh - 32px); max-height: calc(100svh - 32px); display: flex; flex-direction: column; text-align: left; padding: 18px; }
+.picker h2 { margin: 0 0 4px; }
+.picker p.small { margin: 0 0 10px; }
+.picklist { display: grid; gap: 8px; overflow-y: auto; min-height: 0; flex: 1 1 auto; padding: 4px; margin: 0 -4px 12px; }
+.pick-card { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font: inherit; color: var(--cream); cursor: pointer;
+  background: var(--teal); border: 3px solid var(--gold); padding: 8px 10px; text-shadow: none; }
+.pick-card > .ico { width: 32px; height: 32px; }
+.pick-card .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pick-card b { font-size: 15px; }
+.pick-card .fx { font-size: 13px; color: #a5f59a; }
+.pick-card .odds { font-size: 12px; color: #bfe6ff; }
+.pick-card .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pick-card .chip { flex-shrink: 0; max-width: 60%; }
+.pick-card.equipped { border-color: #7ad957; box-shadow: 0 0 0 2px #3f8f35, inset 0 0 0 2px #3f8f35; }
+.pick-card.equipped .chip { background: #3f8f35; }
+.pick-card.locked { opacity: .5; filter: grayscale(.7); cursor: not-allowed; border-style: dashed; }
+.pick-card:focus-visible { outline: 3px solid #ffd84a; outline-offset: 2px; }
+.pick-card:active:not(:disabled) { filter: brightness(.9); }
+@media (hover: hover) { .pick-card:hover:not(:disabled) { filter: brightness(1.15); } }
+.picker .btns { grid-template-columns: 1fr 1fr; flex-shrink: 0; }
 .how dl { margin: 0 0 16px; }
 .how dt { font-weight: bold; color: var(--gold); margin-top: 10px; }
 .how dd { margin: 2px 0 0; line-height: 1.4; }
@@ -388,6 +409,14 @@ body.plain .app { height: calc(100vh - 28px); height: calc(100svh - 28px); }
   /* phones: rod + bait chips on one row, reward icons (or the hint) on a second fixed row */
   .gearbar { height: 76px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 40px 30px; gap: 6px; }
   .gearbar .chip-btn { font-size: 13px; padding: 0 6px; }
+  .modal .picker { padding: 14px; }
+  .pick-card { padding: 6px 8px; gap: 8px; }
+  .pick-card > .ico { width: 24px; height: 24px; }
+  .pick-card .fx { font-size: 12px; }
+  .pick-card .odds { font-size: 11px; }
+  .pick-card .chip { font-size: 11px; padding: 2px 5px; }
+  .picker .btns { gap: 8px; }
+  .picker .btns .btn { padding: 12px 4px; font-size: 14px; }
   .chip-btn .k { display: none; }
   .bonuses { grid-column: 1 / -1; align-items: center; }
   .bonus { width: 30px; height: 30px; padding: 2px; }

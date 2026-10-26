@@ -71,7 +71,15 @@ $("howOk").onclick = () => closeModal("howBox");
 $("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); renderTitle(); sfx.coin(); };
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  ["confirmBox", "nameBox", "howBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
+  ["confirmBox", "nameBox", "howBox", "pickBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
+});
+// keep Tab inside an open dialog (wraps from the last button to the first and back)
+document.addEventListener("keydown", e => {
+  const m = e.key === "Tab" && document.querySelector(".banner.modal.show"); if (!m) return;
+  const f = [...m.querySelectorAll("button:not(:disabled), input")]; if (!f.length) return;
+  const i = f.indexOf(document.activeElement);
+  if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+  else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
 });
 
 /* ===================== MAP ===================== */

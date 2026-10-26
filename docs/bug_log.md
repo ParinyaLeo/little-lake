@@ -109,3 +109,19 @@ The playtest note pointed to five things to check. Three were real bugs; two are
 - **Cause:** the Windows console can't print some characters, and Python stopped with a `UnicodeEncodeError` halfway through the tests.
 - **Fix:** `play_test.py` sets `sys.stdout.reconfigure(errors="replace")`, so details print with a replacement character instead of crashing.
 - **Test:** the full run (`python play_test.py`) completes and prints its summary.
+
+## Report (f): choosing a rod or bait took many taps
+
+### BUG-12 – The ROD and BAIT buttons cycled one item per tap
+- **Problem:** on the fishing screen, each tap on ROD or BAIT switched to the next item (`rodChip` / `baitChip` `onclick` in `js/fishing.js`). With 4 rods or 3 baits that took several taps, and you couldn't see what an item did before switching to it.
+- **Cause:** a design shortcut from GEAR-1. Cycling was quick to build but doesn't scale and hides the effects.
+- **Fix:**
+  - Tapping ROD or BAIT opens a **Choose Rod / Choose Bait** popup that reuses the `.banner.modal` style. Every item is a card with its icon, effect (misses, zone, marker speed), odds and status.
+  - Owned rods and baits you have are buttons: one tap equips or selects, closes the popup, updates the chip and shows a toast. The equipped item is highlighted with an EQUIPPED label.
+  - Rods you don't own and baits with 0 left are disabled, greyed out, and show their price with "Buy in Shop".
+  - GO TO SHOP and CLOSE buttons; Esc and tapping outside also close it. Tab stays inside the dialog (and skips disabled items), Enter selects, and focus returns to the chip.
+  - The chips are disabled while waiting, at the bite and while reeling, so the popup can't open mid-catch, and Space doesn't cast while a dialog is open.
+  - The list scrolls inside the popup on short screens, and the title and buttons stay visible.
+  - Any rod or bait now takes 2 taps (open, pick). The Tackle Box keeps its own EQUIP / USE buttons, and the CAST button layout is unchanged.
+- **Found while fixing:** the old cycling handlers were removed together with the reward-icon click handler next to them. The existing test `tapping a reward icon explains it` caught it, and the handler was restored.
+- **Tests:** `BAIT opens 'Choose Bait': No bait first, then each bait with count, odds and EQUIPPED`, `bait with 0 left is greyed out with 'Buy in Shop' and can't be selected`, `picking 'No bait' selects it in one tap, closes the popup, updates the chip, focus back on BAIT`, `ROD / BAIT disabled and no popup while waiting`, `... while bite`, `... while reeling`, `ROD opens 'Choose Rod': all 4 rods with misses, zone, odds, marker speed and EQUIPPED`, `equipping a non-first rod takes one tap in the popup (Lucky Rod)`, `rods you don't own are greyed out with price and 'Buy in Shop' and can't be equipped`, `Esc closes the popup and focus returns to ROD`, `keyboard: Tab moves between items (skipping locked ones), Enter selects`, `Tab stays inside the popup`, `Space doesn't cast while the popup is open`, `tapping outside closes the popup`, `CLOSE closes the popup without changing anything`, `GO TO SHOP closes the popup and opens the Shop`, `the Tackle Box still equips rods`, `360x640: Choose Rod popup fits with CLOSE and GO TO SHOP visible, no side scroll`, `360x640: Choose Bait popup fits ...`.

@@ -302,9 +302,9 @@ function renderFishingHud() {
   // equipped rod and selected bait (tap to switch to the next one you own)
   const busy = F.phase !== "idle", b = BAITS[S.baitSel];
   $("rodChip").innerHTML = `<span class="ico i-rod-${S.rodEq}"></span><span class="k">ROD</span>${rod().short}`;
-  $("rodChip").title = `${rod().name}: ${rodFx(S.rodEq)} Tap to switch rods.`;
+  $("rodChip").title = `${rod().name}: ${rodFx(S.rodEq)} Tap to choose a rod.`;
   $("baitChip").innerHTML = `<span class="ico i-bait-${b ? S.baitSel : "none"}"></span><span class="k">BAIT</span>` + (b ? `${b.short || b.name} x${S.baits[S.baitSel]}` : "None");
-  $("baitChip").title = `${baitName(S.baitSel)}: ${oddsText(rarityWeights(S.baitSel))}. Tap to switch bait.`;
+  $("baitChip").title = `${baitName(S.baitSel)}: ${oddsText(rarityWeights(S.baitSel))}. Tap to choose bait.`;
   $("rodChip").disabled = $("baitChip").disabled = busy;
   // small icons for the island rewards that are active (tap for details; hover shows the same text)
   $("bonuses").innerHTML = ISLAND_IDS.filter(i => S.mastery[i]).map(i => { const I = ISLANDS[i], tip = `${I.reward}: ${I.effect}`;
@@ -320,17 +320,47 @@ function renderFishingHud() {
   fitCanvas(); startLoop();
 }
 
-// HUD chips: tap to switch to the next rod you own / the next bait you have (or no bait)
-$("rodChip").onclick = () => {
-  const own = ROD_IDS.filter(r => S.rods.includes(r));
-  if (own.length < 2) return toast(`${rod().name}: ${rodFx(S.rodEq)} Buy more rods in the Shop.`);
-  equipRod(own[(own.indexOf(S.rodEq) + 1) % own.length]);
+// HUD chips open the "Choose Rod" / "Choose Bait" popup: every item with its effect and odds, pick one = 2 taps.
+// Items you can't use (rod not owned, bait with 0 left) are disabled buttons, so they can't be clicked or tabbed to.
+let pickKind = null;
+function openPicker(kind) {
+  if (F.phase !== "idle" || current !== "fishing") return;          // never mid-catch
+  pickKind = kind; renderPicker();
+  openModal("pickBox", `pick-${kind === "rod" ? S.rodEq : S.baitSel}`);
+}
+function renderPicker() {
+  const isRod = pickKind === "rod", charm = S.mastery.forest ? " +1 miss from Master's Charm." : "";
+  $("pickTitle").textContent = isRod ? "Choose Rod" : "Choose Bait";
+  $("pickSub").textContent = isRod ? `Odds are shown with your current bait (${baitName(S.baitSel)}).`
+    : `Odds are shown with your ${rod().name}. One bait is used per cast.`;
+  const card = (id, icon, name, fx, odds, state, label) =>
+    `<button type="button" class="pick-card ${state}" id="pick-${id}" data-id="${id}"${state === "locked" ? " disabled" : ""}>` +
+    `<span class="ico i-${icon}"></span><span class="grow"><span class="top"><b>${name}</b><span class="chip">${label}</span></span>` +
+    `<span class="fx">${fx}</span><span class="odds">${odds}</span></span></button>`;
+  $("pickList").innerHTML = isRod
+    ? ROD_IDS.map(id => {
+        const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
+        return card(id, `rod-${id}`, r.name, rodFx(id) + (own ? charm : ""), oddsText(rarityWeights(S.baitSel, id)),
+          eq ? "equipped" : own ? "" : "locked", eq ? "EQUIPPED" : own ? "EQUIP" : `${r.price} COINS · Buy in Shop`);
+      }).join("")
+    : ["none", ...BAIT_IDS].map(id => {
+        const b = BAITS[id], n = b ? S.baits[id] : 0, sel = S.baitSel === id, have = !b || n > 0;
+        return card(id, `bait-${id}`, b ? `${b.name} x${n}` : "No bait", b ? b.blurb : "Saves your bait for later.", oddsText(rarityWeights(id)),
+          sel ? "equipped" : have ? "" : "locked", sel ? "EQUIPPED" : have ? "USE" : `${b.price} COINS · Buy in Shop`);
+      }).join("");
+}
+$("rodChip").onclick = () => openPicker("rod");
+$("baitChip").onclick = () => openPicker("bait");
+$("pickList").onclick = e => {
+  const c = e.target.closest(".pick-card"); if (!c || c.disabled) return;
+  const id = c.dataset.id, kind = pickKind;
+  closeModal("pickBox");                                               // focus goes back to the chip
+  if (kind === "rod" && id !== S.rodEq) equipRod(id);                  // equip / select toast and re-render the HUD
+  if (kind === "bait" && id !== S.baitSel) selectBait(id);
 };
-$("baitChip").onclick = () => {
-  const opts = ["none", ...BAIT_IDS.filter(b => S.baits[b] > 0)];
-  if (opts.length < 2) return toast("You have no bait. Buy Worm, Shrimp or Golden Lure in the Shop.");
-  selectBait(opts[(opts.indexOf(S.baitSel) + 1) % opts.length]);
-};
+$("pickClose").onclick = () => closeModal("pickBox");
+$("pickShop").onclick = () => { closeModal("pickBox"); go("shop"); };
+$("pickBox").addEventListener("click", e => { if (e.target === e.currentTarget) closeModal("pickBox"); });   // tap outside
 $("bonuses").onclick = e => { const b = e.target.closest(".bonus"); if (b) toast(b.dataset.tip); };
 
 function pickFish(baitId) {
@@ -356,7 +386,7 @@ document.addEventListener("keydown", e => {
   if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show")) return;
   e.preventDefault(); if (!e.repeat) act();          // preventDefault: no page scroll, no second click on a focused button
 });
-document.addEventListener("keyup", e => { if (e.code === "Space" && current === "fishing") e.preventDefault(); });
+document.addEventListener("keyup", e => { if (e.code === "Space" && current === "fishing" && !document.querySelector(".banner.show")) e.preventDefault(); });
 function cast() {
   if (bagFull()) { toast("Your bag is full."); return; }
   // one bait of the selected kind; when it runs out the selection goes back to "no bait"
