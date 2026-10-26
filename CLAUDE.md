@@ -81,6 +81,15 @@ The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It
    If the bag is full, KEEP is replaced by **SELL A FISH** (sells the cheapest fish, keeps the new one),
    **OPEN BAG** (BACK returns to the catch) or **RELEASE**. A fish is never dropped silently.
 
+**Main action:** the CAST / HOOK! / REEL button (`#actBtn`), the **Space** key, and a tap anywhere on the scene
+all call `act()`. It does nothing while the button is disabled or outside the fishing screen.
+
+**Fishing screen layout (don't break this):** the CAST/HOOK/REEL button must not move between phases, and the
+screen must fit 1366x768, 1280x720 and phones without page scroll. While fishing, `.app` is exactly one viewport
+tall and the scene takes the leftover height. The meter is hidden with `visibility` (never `display: none`), and the
+message line, bait/reward row and dots/hearts row have fixed heights. Anything new on this screen needs a fixed
+size too; the `stays put in every phase` tests in `play_test.py` check it.
+
 **Bag:** sell fish one at a time or **SELL ALL** for coins.
 
 **Shop:** Rod upgrade 200 coins (+1 allowed miss), Bait pack ×5 for 100 coins (better rare odds),

@@ -70,3 +70,17 @@ The playtest note pointed to five things to check. Three were real bugs; two are
 ### Docs
 - HOW TO PLAY now covers hearts, the bait toggle, the full-bag choice, the Tackle Box, reward names, and saving.
 - **Test:** `HOW TO PLAY explains bait toggle, hearts, Tackle Box and Master's Charm`.
+
+## Report (d): the main fishing button moves around
+
+### BUG-9 – CAST / HOOK / REEL jumped between phases and slid off-screen
+- **Problem:** the main action button changed position between phases, which made the timing minigame hard. Measured top of `#actBtn`:
+  1366x768: 663px while waiting and at the bite, then 727px when reeling, and the page grew to 833px so the button was almost off-screen.
+  390x844 phone: 496 → 467 → 496 → 560.
+- **Cause:** parts of the panel above the button changed size per phase: the reel meter was added and removed with `display: none` / `block`, the HIT dots and hearts appeared only while reeling, and the message line wrapped to one or two lines depending on the text (so the BAG label could also wrap). The fishing screen also had a fixed scene shape, so on 1366x768 and 1280x720 the panel didn't fit under it.
+- **Fix:**
+  - The meter is always in the layout and is hidden with `visibility`; the dots/hearts row, the message line (1 line on desktop, 2 on phones) and the bait/reward row have fixed heights. Many hearts collapse to "♥ xN" so the row never grows.
+  - While fishing, the page is exactly one screen tall: the scene takes the height that is left (up to its normal shape) and the harbor picture's rod tip is re-mapped to the cropped picture. On phones the CAST/HOOK/REEL button gets its own full-width row.
+  - **Space** (desktop) and **tapping anywhere on the scene** do the same as the main button. They do nothing when the button is disabled or outside the fishing screen, and Space on a focused button doesn't act twice.
+  - Rules and timings are unchanged.
+- **Tests:** for 1366x768, 1280x720 and 390x844: `<size>: CAST/HOOK/REEL button stays put in every phase (<= 1px)` (idle, waiting, bite, reeling, and reeling after a press) and `<size>: button is inside the viewport and the page doesn't scroll while fishing`. Also `Space casts on the fishing screen`, `tapping the scene hooks the fish`, `Space reels exactly once, even with the button focused`, `Space on a focused button acts only once`, `Space / tap do nothing while the main button is disabled (full bag)`, `Space does nothing outside the fishing screen`.

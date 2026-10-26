@@ -247,6 +247,7 @@ function drawScene(t) {
       let sw = sc.img.naturalWidth, sh = sc.img.naturalHeight;
       if (ir > cr) sw = sh * cr; else sh = sw / cr;
       ctx.drawImage(sc.img, 0, 0, sw, sh, 0, 0, W, H);
+      ROD_TIP = { x: sc.rod.x * sc.img.naturalWidth / sw, y: sc.rod.y * sc.img.naturalHeight / sh };
     }
     if (sc.fx) sc.fx(ctx, W, H, ft, sc.info || {}, null);
   } else {
@@ -294,7 +295,7 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { clearTimers(); F = { phase: "idle" }; $("meter").style.display = "none"; $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { clearTimers(); F = { phase: "idle" }; $("meter").style.visibility = "hidden"; $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 
 function renderFishingHud() {
   $("fBag").textContent = `${S.bag.length} / ${S.bagMax}`;
@@ -333,11 +334,20 @@ function pickFish(withBait) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-$("actBtn").onclick = () => {
+// main action (CAST / HOOK / REEL): the button, the Space key, or a tap anywhere on the scene
+function act() {
+  if ($("actBtn").disabled || current !== "fishing") return;
   if (F.phase === "idle") cast();
   else if (F.phase === "bite") hook();
   else if (F.phase === "reeling") reel();
-};
+}
+$("actBtn").onclick = act;
+$("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); act(); });
+document.addEventListener("keydown", e => {
+  if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show")) return;
+  e.preventDefault(); if (!e.repeat) act();          // preventDefault: no page scroll, no second click on a focused button
+});
+document.addEventListener("keyup", e => { if (e.code === "Space" && current === "fishing") e.preventDefault(); });
 function cast() {
   if (bagFull()) { toast("Your bag is full."); return; }
   const usedBait = S.useBait && S.bait > 0; if (usedBait) { S.bait--; save(); }
@@ -360,7 +370,7 @@ function hook() {
   const d = DIFF[F.fish.rarity];
   Object.assign(F, { phase: "reeling", pos: 0, dir: 1, hits: 0, misses: 0, lastT: 0,
     speed: d.speed * (S.mastery.frost ? .8 : 1), zoneW: d.zone });
-  newZone(); $("meter").style.display = "block";
+  newZone(); $("meter").style.visibility = "visible";
   const a = $("actBtn"); a.textContent = "REEL"; a.className = "btn green";
   $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit();
 }
@@ -369,8 +379,9 @@ function newZone() { F.zoneX = .1 + Math.random() * (.8 - F.zoneW); $("zone").st
 function updateDots() {
   $("dots").textContent = "HIT " + "●".repeat(F.hits) + "○".repeat(3 - F.hits);
   const max = allowedMiss(), left = Math.max(0, max - F.misses), H = $("hearts");
-  H.innerHTML = `<span class="l">${left ? "MISSES LEFT" : "NO MISSES LEFT!"}</span>` +
-    Array.from({ length: max }, (_, i) => `<span class="ico ${i < left ? "i-heart" : "i-heart0"}"></span>`).join("");
+  H.innerHTML = `<span class="l">${left ? "MISSES LEFT" : "NO MISSES LEFT!"}</span>` + (max > 6
+    ? `<span class="ico ${left ? "i-heart" : "i-heart0"}"></span>x${left}`
+    : Array.from({ length: max }, (_, i) => `<span class="ico ${i < left ? "i-heart" : "i-heart0"}"></span>`).join(""));
   H.classList.toggle("last", !left); H.setAttribute("aria-label", `${misses(left)} left`);
 }
 function reel() {
@@ -382,11 +393,11 @@ function reel() {
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
-  sfx.fail(); vibrate(300); $("meter").style.display = "none"; $("bang").style.display = "none";
+  sfx.fail(); vibrate(300); $("meter").style.visibility = "hidden"; $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
 function caught() {
-  const f = F.fish; clearTimers(); F = { phase: "idle" }; $("meter").style.display = "none";
+  const f = F.fish; clearTimers(); F = { phase: "idle" }; $("meter").style.visibility = "hidden";
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);
   const mid = (f.min + f.max) / 2;

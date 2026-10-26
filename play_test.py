@@ -415,6 +415,53 @@ with sync_playwright() as p:
     m.click("#fullRelease"); m.wait_for_timeout(200)
     check("mobile fishing HUD (bait + bonuses) no side scroll", m.is_visible("#baitBtn") and m.is_visible("#bonuses .bonus") and no_side_scroll(m))
 
+    # ---------- BUG-9: the main fishing button must not move between phases (see docs/bug_log.md) ----------
+    ACT_POS = """(() => { const r = document.getElementById('actBtn').getBoundingClientRect();
+        return { top: r.top + scrollY, bottom: r.bottom, vh: innerHeight, page: document.documentElement.scrollHeight }; })()"""
+    for vw, vh in [(1366, 768), (1280, 720), (390, 844)]:
+        s = b.new_page(viewport={"width": vw, "height": vh})
+        s.on("pageerror", lambda e: errs.append(str(e)))
+        s.goto(URL); s.evaluate("localStorage.clear()"); s.reload(); s.wait_for_timeout(200); start_new(s, "Steady")
+        s.evaluate("() => { S.bait = 5; S.mastery = { harbor: true, frost: true }; save(); island = 'harbor'; go('fishing'); }"); s.wait_for_timeout(400)
+        pos = {}
+        def at(phase):
+            s.mouse.move(1, 1); pos[phase] = s.evaluate(ACT_POS)
+        at("idle")
+        s.click("#actBtn"); s.wait_for_function("F.phase === 'waiting'"); at("waiting")
+        s.wait_for_function("F.phase === 'bite'", timeout=8000); at("bite")
+        s.click("#actBtn"); s.wait_for_timeout(100); at("reeling")
+        s.click("#actBtn"); s.wait_for_timeout(60); at("reeling after a press")
+        s.screenshot(path=str(SHOTS / f"33_steady_{vw}x{vh}.png"))
+        tops = [p["top"] for p in pos.values()]
+        check(f"{vw}x{vh}: CAST/HOOK/REEL button stays put in every phase (<= 1px)", max(tops) - min(tops) <= 1,
+              ", ".join(f"{k} {v['top']:.1f}" for k, v in pos.items()))
+        check(f"{vw}x{vh}: button is inside the viewport and the page doesn't scroll while fishing",
+              all(p["bottom"] <= p["vh"] and p["page"] <= p["vh"] for p in pos.values()),
+              ", ".join(f"{k} bottom {v['bottom']:.0f}/{v['vh']} page {v['page']}" for k, v in pos.items()))
+        s.evaluate("() => stopFishing()"); s.close()
+
+    # Space key and tapping the scene do the same as the main button
+    k = b.new_page(viewport={"width": 1280, "height": 720})
+    k.on("pageerror", lambda e: errs.append(str(e)))
+    k.goto(URL); k.evaluate("localStorage.clear()"); k.reload(); k.wait_for_timeout(200); start_new(k, "Keys")
+    k.evaluate("() => { island = 'harbor'; go('fishing'); }"); k.wait_for_timeout(400)
+    k.keyboard.press("Space"); k.wait_for_timeout(50)
+    check("Space casts on the fishing screen", k.evaluate("F.phase") in ("casting", "waiting") and k.evaluate("scrollY") == 0)
+    k.wait_for_function("F.phase === 'bite'", timeout=8000); k.click("#scene"); k.wait_for_timeout(50)
+    check("tapping the scene hooks the fish", k.evaluate("F.phase") == "reeling")
+    k.focus("#actBtn"); k.keyboard.press("Space"); k.wait_for_timeout(100)
+    check("Space reels exactly once, even with the button focused", k.evaluate("F.phase") == "reeling" and k.evaluate("F.hits + F.misses") == 1)
+    k.evaluate("() => stopFishing()"); k.evaluate("() => go('fishing')"); k.wait_for_timeout(200)
+    k.focus("#actBtn"); k.keyboard.press("Space"); k.wait_for_timeout(50)
+    check("Space on a focused button acts only once", k.evaluate("F.phase") in ("casting", "waiting") and k.evaluate("S.totalCaught") == 0)
+    k.wait_for_function("F.phase === 'bite'", timeout=8000); k.wait_for_timeout(1200)
+    k.evaluate("() => { S.bag = []; while (S.bag.length < S.bagMax) S.bag.push({fishId:'harbor_0',weight:.2,price:20,time:1}); save(); render(); }")
+    k.click("#scene"); k.keyboard.press("Space"); k.wait_for_timeout(50)
+    check("Space / tap do nothing while the main button is disabled (full bag)", k.evaluate("F.phase") == "idle")
+    k.evaluate("() => go('home')"); k.wait_for_timeout(300); k.keyboard.press("Space"); k.wait_for_timeout(50)
+    check("Space does nothing outside the fishing screen", k.evaluate("F.phase") == "idle" and k.is_visible("#home"))
+    k.close()
+
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
 

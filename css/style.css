@@ -300,6 +300,24 @@ body.on-title .app { max-width: 1240px; }
 .how dt { font-weight: bold; color: var(--gold); margin-top: 10px; }
 .how dd { margin: 2px 0 0; line-height: 1.4; }
 .how .btn { width: 100%; }
+/* ---- fishing screen: fits the viewport and nothing moves between idle / waiting / bite / reeling ----
+   The page is exactly one screen tall (28px = body padding); the scene takes whatever height is left,
+   up to its normal shape. Every part that changes has a fixed size, and the meter, dots and hearts
+   are hidden with visibility (not display) so their space is always kept. */
+body.plain .app { height: calc(100vh - 28px); height: calc(100svh - 28px); }
+#fishing.active { flex: 1 1 0; min-height: 0; gap: 10px; }
+#fishing .scene { aspect-ratio: auto; flex: 1 1 0; min-height: 120px; max-height: min(410px, calc((100vw - 28px) / 2.4)); touch-action: manipulation; cursor: pointer; }
+#fishing .panel { padding: 14px 20px; flex-shrink: 0; }
+#fishing .hud { display: grid; grid-template-columns: minmax(0, 1fr) auto; flex-wrap: nowrap; }
+#fMsg { height: 1.3em; line-height: 1.3; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gearbar { height: 44px; flex-wrap: nowrap; margin-top: 6px; }
+.gearbar .btn.toggle { height: 100%; padding: 0 12px; line-height: 1.1; flex-shrink: 1; min-width: 0; }
+.bonuses { flex-wrap: nowrap; flex-shrink: 0; }
+#fishing .meter { display: block; visibility: hidden; margin: 10px 0 6px; }
+.reelinfo { height: 30px; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
+.hearts { white-space: nowrap; }
+#fishing .actions { margin-top: 6px; }
+
 @media (prefers-reduced-motion: reduce) {
   .logo, .screen.active, .clouds::before, .clouds::after, .water::before, .water::after,
   .portrait::before, .sparkles::before, .sparkles::after, .record, .zone::after,
@@ -347,7 +365,21 @@ body.on-title .app { max-width: 1240px; }
   .gear-row { flex-wrap: wrap; }
   .gear-row .grow { flex-basis: calc(100% - 60px); }
   .chip { max-width: none; margin-left: 48px; }
-  .gearbar .btn.toggle { flex: 1; }
+  .gearbar .btn.toggle { flex: 1; font-size: 13px; padding: 0 8px; }
+  .bonus { width: 32px; height: 32px; padding: 2px; }
+  .bonus .ico { width: 20px; height: 20px; }
+  /* fishing on phones: shape follows the screen width (3:2) but shrinks to fit the height; 2-line message */
+  #fishing .scene { max-height: calc((100vw - 28px) / 1.15); min-height: 110px; }
+  #fishing .panel { padding: 12px 14px; }
+  #fMsg { height: 2.6em; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  #fishing .msg { font-size: 15px; }
+  #fishing .actions { grid-template-columns: 1fr 1fr; gap: 8px; }
+  #fishing #actBtn { grid-column: 1 / -1; }
+  #fishing .actions .btn { padding: 12px 4px; font-size: 14px; }
+  #fishing .actions .btn .ico { display: none; }
+  .hearts .l { font-size: 11px; }
+  .hearts .ico { width: 20px; height: 20px; }
+  .dots { font-size: 15px; letter-spacing: 2px; }
 }
 @keyframes shake {
   0%, 100% { transform: translate(-50%, -100%) rotate(0); }
