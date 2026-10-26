@@ -1,6 +1,7 @@
 import json, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+sys.stdout.reconfigure(errors="replace")   # Windows consoles can't print every character in the details
 
 URL = Path(__file__).with_name("index.html").resolve().as_uri()
 SHOTS = Path(__file__).with_name("shots"); SHOTS.mkdir(exist_ok=True)
@@ -90,18 +91,18 @@ with sync_playwright() as p:
 
     # shop
     pg.evaluate("S.coins = 120; save()"); pg.click("section.active >> text=HOME"); pg.click("section.active >> text=SHOP"); pg.wait_for_timeout(200)
-    check("rod blocked with insufficient coins", pg.is_disabled("#buyRod"))
-    pg.click("#buyBait"); check("buy bait works", pg.evaluate("S.bait") == 5 and pg.evaluate("S.coins") == 20)
+    check("rod blocked with insufficient coins", pg.is_disabled('[data-buy="rod:sturdy"]'))
+    pg.click('[data-buy="bait:shrimp"]'); check("buy bait works", pg.evaluate("S.baits.shrimp") == 5 and pg.evaluate("S.coins") == 20)
     pg.screenshot(path=str(SHOTS / "09_shop.png"))
 
     # persistence
     pg.reload(); pg.wait_for_timeout(300)
-    check("progress survives reload", pg.evaluate("S.bait") == 5 and pg.evaluate("S.coins") == 20)
+    check("progress survives reload", pg.evaluate("S.baits.shrimp") == 5 and pg.evaluate("S.coins") == 20)
 
     # broken save
     pg.evaluate("localStorage.setItem('littleLakeSave', '{\"coins\":\"abc\",\"bag\":[null,{\"fishId\":\"x\"}],\"rod\":-3}')"); pg.reload(); pg.wait_for_timeout(300)
     pg.click("#contBtn"); pg.wait_for_timeout(200)
-    check("broken save falls back safely", pg.evaluate("S.coins") == 300 and pg.evaluate("S.rod") == 1 and pg.evaluate("S.bag.length") == 0
+    check("broken save falls back safely", pg.evaluate("S.coins") == 300 and pg.evaluate("S.rodEq") == "bamboo" and pg.evaluate("S.rods") == ["bamboo"] and pg.evaluate("S.bag.length") == 0
           and "NaN" not in pg.inner_text("body") and "undefined" not in pg.inner_text("body"))
 
     # mastery via demo mode
@@ -185,12 +186,12 @@ with sync_playwright() as p:
           t.is_visible("#home") and t.inner_text("#homeName") == "Parinya" and t.inner_text("#hCoins") == "300"
           and t.evaluate(SAVED + ".name") == "Parinya", t.inner_text("#homeName"))
 
-    t.evaluate("S.coins = 777; S.bait = 3; save(); render()")
+    t.evaluate("S.coins = 777; S.baits.shrimp = 3; save(); render()")
     t.reload(); t.wait_for_timeout(300)
     check("reload opens Title with CONTINUE enabled", t.is_visible("#titleScreen") and t.is_enabled("#contBtn"))
     t.click("#contBtn"); t.wait_for_timeout(200)
     check("CONTINUE after reload keeps progress",
-          t.is_visible("#home") and t.inner_text("#hCoins") == "777" and t.inner_text("#homeName") == "Parinya" and t.evaluate("S.bait") == 3)
+          t.is_visible("#home") and t.inner_text("#hCoins") == "777" and t.inner_text("#homeName") == "Parinya" and t.evaluate("S.baits.shrimp") == 3)
 
     t.click("#menuBtn"); t.wait_for_timeout(200)
     check("MENU button returns to Title", t.is_visible("#titleScreen") and not t.is_visible("#home"))
@@ -205,7 +206,7 @@ with sync_playwright() as p:
     check("confirming then cancelling the name still keeps the save", t.evaluate(SAVED + ".coins") == 777)
     t.click("#newBtn"); t.click("#confirmYes"); t.fill("#nameInput", "Nova"); t.click("#nameStart"); t.wait_for_timeout(300)
     check("confirmed NEW GAME resets progress",
-          t.inner_text("#homeName") == "Nova" and t.inner_text("#hCoins") == "300" and t.evaluate("S.bait") == 0)
+          t.inner_text("#homeName") == "Nova" and t.inner_text("#hCoins") == "300" and t.evaluate("S.baits.shrimp") == 0 and t.evaluate("S.rodEq") == "bamboo")
 
     # sound
     t.click("#menuBtn"); t.wait_for_timeout(100)
@@ -340,11 +341,11 @@ with sync_playwright() as p:
     q2.close()
 
     # BUG-4: Tackle Box lists all gear with effects
-    q.evaluate("() => { S.rod = 2; S.bait = 3; S.mastery.harbor = true; S.mastery.forest = true; save(); go('home'); }")
+    q.evaluate("() => { S.rods = ['bamboo', 'sturdy']; S.rodEq = 'sturdy'; S.baits.shrimp = 3; S.baitSel = 'shrimp'; S.mastery.harbor = true; S.mastery.forest = true; save(); go('home'); }")
     q.click("#tackleBtn"); q.wait_for_timeout(300)
     gear = q.inner_text("#gearList")
     check("TACKLE BOX opens from Home and lists rod, misses, bait, bag", q.is_visible("#tackle")
-          and "Rod Lv.2" in gear and "3 misses allowed" in gear and "Bait x3" in gear and "Bag 1 / 5" in gear, gear[:120])
+          and "Sturdy Rod" in gear and "3 misses allowed in total" in gear and "Shrimp x3" in gear and "Bag 1 / 5" in gear, gear[:120])
     check("Tackle Box shows each island reward as unlocked or locked with progress",
           q.evaluate("[...document.querySelectorAll('#gearList .gear-row')].filter(r => r.textContent.includes('UNLOCKED')).length") == 2
           and q.evaluate("document.querySelectorAll('#gearList .gear-row.locked').length") == 2
@@ -358,25 +359,16 @@ with sync_playwright() as p:
           q.evaluate("ISLANDS.forest.reward") == "Master's Charm" and "Master Rod" not in q.content()
           and q.evaluate("(() => { go('collection'); collTab = 'forest'; renderCollection(); return document.getElementById('collHead').textContent; })()").count("Master's Charm") == 1)
 
-    # BUG-6: bait toggle and the last-bait bug
+    # BUG-6: the last bait must still give bait odds (bait selection is tested in the gear section below)
     q.evaluate("() => { island = 'harbor'; go('fishing'); }"); q.wait_for_timeout(300)
-    check("fishing HUD shows USE BAIT: ON with the bait count", "USE BAIT: ON (3)" in q.inner_text("#baitBtn") and q.get_attribute("#baitBtn", "aria-pressed") == "true")
-    q.click("#baitBtn"); q.wait_for_timeout(100)
-    check("USE BAIT can be turned off and is saved", "OFF" in q.inner_text("#baitBtn") and q.evaluate(SAVED + ".useBait") is False)
+    q.evaluate("() => { S.baits.shrimp = 1; S.baitSel = 'shrimp'; save(); render(); window._wb = []; const o = pickFish; pickFish = w => { _wb.push(w); return o(w); }; }")
     q.click("#actBtn"); q.wait_for_timeout(100)
-    check("casting with USE BAIT off keeps the bait", q.evaluate("S.bait") == 3 and q.evaluate("F.usedBait") is False and q.is_disabled("#baitBtn"))
-    q.evaluate("() => stopFishing()"); q.evaluate("() => { go('fishing'); }"); q.wait_for_timeout(150)
-    q.click("#baitBtn"); q.evaluate("() => { S.bait = 1; save(); render(); window._wb = []; const o = pickFish; pickFish = w => { _wb.push(w); return o(w); }; }")
-    q.click("#actBtn"); q.wait_for_timeout(100)
-    check("the last bait still gives bait odds", q.evaluate("_wb") == [True] and q.evaluate("S.bait") == 0 and "NO BAIT" in q.inner_text("#baitBtn"))
+    check("the last bait still gives bait odds", q.evaluate("_wb") == ["shrimp"] and q.evaluate("S.baits.shrimp") == 0
+          and q.evaluate("S.baitSel") == "none" and "None" in q.inner_text("#baitChip"))
     q.evaluate("() => stopFishing()")
-    q.evaluate("localStorage.setItem('littleLakeSave', JSON.stringify({name:'Old', coins:50, rod:1, bait:2, bagMax:5, bag:[]}))")
-    q.reload(); q.wait_for_timeout(300)
-    check("older save without the bait toggle loads with USE BAIT on", q.evaluate("S.useBait") is True and q.evaluate("S.pending") is None)
-    q.click("#contBtn"); q.wait_for_timeout(200)
 
     # BUG-7: hearts for misses left, bonus icons with tooltips
-    q.evaluate("() => { S.rod = 2; S.mastery.frost = true; save(); island = 'harbor'; go('fishing'); }"); q.wait_for_timeout(300)
+    q.evaluate("() => { S.rods = ['bamboo', 'sturdy']; S.rodEq = 'sturdy'; S.mastery = { frost: true }; save(); island = 'harbor'; go('fishing'); }"); q.wait_for_timeout(300)
     bon = q.evaluate("[...document.querySelectorAll('#bonuses .bonus')].map(b => b.title)")
     check("active rewards show as small icons with tooltips", len(bon) == 1 and "Steady Hands" in bon[0] and "20% slower" in bon[0], str(bon))
     q.click("#bonuses .bonus"); q.wait_for_timeout(100)
@@ -392,28 +384,24 @@ with sync_playwright() as p:
     check("hearts are hidden when not reeling", q.evaluate("(() => { go('fishing'); return document.getElementById('hearts').children.length; })()") == 0)
 
     # BUG-8: the Shop shows each item's effect before buying
-    q.evaluate("() => { S.rod = 1; S.mastery = {}; S.bagMax = 5; S.coins = 1000; save(); go('shop'); }"); q.wait_for_timeout(200)
-    check("Shop: rod shows 'Rod Lv.2: 2 misses allowed (now 1)'", q.inner_text("#sRodFx") == "Rod Lv.2: 2 misses allowed (now 1)", q.inner_text("#sRodFx"))
-    check("Shop: bait says it works while USE BAIT is on", "better chance of Rare+ fish while USE BAIT is on" in q.inner_text("#sBaitFx"))
+    q.evaluate("() => { S.mastery = {}; S.bagMax = 5; S.coins = 1000; save(); go('shop'); }"); q.wait_for_timeout(200)
     check("Shop: bag shows new and current size", q.inner_text("#sBagFx") == "Bag: 10 slots (now 5)")
-    q.click("#buyRod"); q.wait_for_timeout(100)
-    check("Shop effect text updates after buying", q.inner_text("#sRodFx") == "Rod Lv.3: 3 misses allowed (now 2)")
 
     q.click("section.active >> text=HOME"); q.click("#menuBtn"); q.click("#howBtn"); q.wait_for_timeout(200)
     how = q.inner_text("#howBox")
-    check("HOW TO PLAY explains bait toggle, hearts, Tackle Box and Master's Charm",
-          all(w in how for w in ["USE BAIT", "heart", "Tackle Box", "Master's Charm", "separate saves"]))
+    check("HOW TO PLAY explains rods, bait choice, hearts, Tackle Box and Master's Charm",
+          all(w in how for w in ["Rods", "Sturdy", "Precision", "Lucky", "Worm", "Golden Lure", "heart", "Tackle Box", "Master's Charm", "separate saves"]))
     q.click("#howOk")
 
     # phones
-    m.evaluate("() => { S.bait = 2; S.mastery.harbor = true; save(); go('tackle'); }"); m.wait_for_timeout(300)
+    m.evaluate("() => { S.baits.worm = 2; S.mastery.harbor = true; save(); go('tackle'); }"); m.wait_for_timeout(300)
     check("mobile Tackle Box no side scroll", m.is_visible("#tackle") and no_side_scroll(m))
     m.screenshot(path=str(SHOTS / "31_mobile_tackle.png"), full_page=True)
     m.evaluate("() => { S.bag = []; while (S.bag.length < S.bagMax) S.bag.push({fishId:'harbor_0',weight:.2,price:20,time:1}); F = { phase: 'idle', fish: fishById('harbor_5') }; caught(); }"); m.wait_for_timeout(300)
     check("mobile full-bag choice no side scroll", m.is_visible("#sellOneBtn") and no_side_scroll(m))
     m.screenshot(path=str(SHOTS / "32_mobile_full_bag.png"), full_page=True)
     m.click("#fullRelease"); m.wait_for_timeout(200)
-    check("mobile fishing HUD (bait + bonuses) no side scroll", m.is_visible("#baitBtn") and m.is_visible("#bonuses .bonus") and no_side_scroll(m))
+    check("mobile fishing HUD (rod + bait + bonuses) no side scroll", m.is_visible("#rodChip") and m.is_visible("#baitChip") and m.is_visible("#bonuses .bonus") and no_side_scroll(m))
 
     # ---------- BUG-9: the main fishing button must not move between phases (see docs/bug_log.md) ----------
     ACT_POS = """(() => { const r = document.getElementById('actBtn').getBoundingClientRect();
@@ -422,7 +410,7 @@ with sync_playwright() as p:
         s = b.new_page(viewport={"width": vw, "height": vh})
         s.on("pageerror", lambda e: errs.append(str(e)))
         s.goto(URL); s.evaluate("localStorage.clear()"); s.reload(); s.wait_for_timeout(200); start_new(s, "Steady")
-        s.evaluate("() => { S.bait = 5; S.mastery = { harbor: true, frost: true }; save(); island = 'harbor'; go('fishing'); }"); s.wait_for_timeout(400)
+        s.evaluate("() => { S.baits.shrimp = 5; S.baitSel = 'shrimp'; S.mastery = { harbor: true, frost: true }; save(); island = 'harbor'; go('fishing'); }"); s.wait_for_timeout(400)
         pos = {}
         def at(phase):
             s.mouse.move(1, 1); pos[phase] = s.evaluate(ACT_POS)
@@ -461,6 +449,147 @@ with sync_playwright() as p:
     k.evaluate("() => go('home')"); k.wait_for_timeout(300); k.keyboard.press("Space"); k.wait_for_timeout(50)
     check("Space does nothing outside the fishing screen", k.evaluate("F.phase") == "idle" and k.is_visible("#home"))
     k.close()
+
+    # ---------- rods (buy once, equip one) and baits (select one, or none) ----------
+    g = b.new_page(viewport={"width": 1280, "height": 800})
+    g.on("pageerror", lambda e: errs.append(str(e)))
+    g.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    g.goto(URL); g.evaluate("localStorage.clear()"); g.reload(); g.wait_for_timeout(200); start_new(g, "Gear")
+    check("new game starts with only the Bamboo Rod equipped and no bait",
+          g.evaluate("[S.rods, S.rodEq, S.baitSel, allowedMiss()]") == [["bamboo"], "bamboo", "none", 1] and g.inner_text("#hRod") == "Bamboo")
+
+    # shop: affordable / not affordable / owned
+    g.evaluate("() => go('shop')"); g.wait_for_timeout(200)
+    shop_item = lambda key: g.evaluate(f"""(() => {{ const btn = document.querySelector('[data-buy="{key}"]'), it = btn.closest('.item');
+        return {{ disabled: btn.disabled, label: btn.textContent, text: it.textContent }}; }})()""")
+    bam, stu, pre, luc = (shop_item(f"rod:{r}") for r in ["bamboo", "sturdy", "precision", "lucky"])
+    check("Shop lists 4 rods with exact effects",
+          "1 miss allowed, normal zone and speed." in bam["text"] and "2 misses allowed, normal zone and speed." in stu["text"]
+          and "1 miss allowed, green zone 35% wider." in pre["text"]
+          and "1 miss allowed, better rarity odds (like Shrimp bait), marker 10% faster." in luc["text"]
+          and "Legendary 6%" in luc["text"], luc["text"][:160])
+    check("Shop: equipped starter rod is marked and can't be bought", bam["disabled"] and bam["label"] == "EQUIPPED" and "EQUIPPED" in bam["text"])
+    check("Shop: items you can't afford are disabled and say how much is missing (300 coins)",
+          not stu["disabled"] and pre["disabled"] and luc["disabled"] and "Need 150 more coins" in pre["text"] and "Need 400 more coins" in luc["text"])
+    wor, shr, gol = (shop_item(f"bait:{x}") for x in ["worm", "shrimp", "golden"])
+    check("Shop lists 3 baits with pack size, price and exact odds",
+          "Worm x5" in wor["text"] and wor["label"] == "60 COINS" and "Rare 40%" in wor["text"]
+          and "Shrimp x5" in shr["text"] and shr["label"] == "100 COINS" and "Common 40% · Rare 30% · Epic 24% · Legendary 6%" in shr["text"]
+          and "Golden Lure x3" in gol["text"] and gol["label"] == "250 COINS" and "Legendary 20%" in gol["text"], gol["text"][:160])
+    g.click('[data-buy="rod:sturdy"]'); g.wait_for_timeout(100)
+    stu = shop_item("rod:sturdy")
+    check("buying a rod takes the coins, adds it, and marks it OWNED (not equipped yet)",
+          g.evaluate("S.coins") == 100 and g.evaluate("S.rods") == ["bamboo", "sturdy"] and g.evaluate("S.rodEq") == "bamboo"
+          and stu["disabled"] and stu["label"] == "OWNED" and g.evaluate(SAVED + ".rods") == ["bamboo", "sturdy"])
+    g.evaluate("() => { buyRod('sturdy'); buyRod('precision'); }"); g.wait_for_timeout(50)
+    check("can't buy a rod twice or without enough coins", g.evaluate("S.coins") == 100 and g.evaluate("S.rods.length") == 2)
+    g.evaluate("() => { buyBait('golden'); }")
+    check("can't buy bait without enough coins", g.evaluate("S.coins") == 100 and g.evaluate("S.baits.golden") == 0)
+    g.click('[data-buy="bait:worm"]'); g.wait_for_timeout(100)
+    check("buying bait with no bait selected selects it", g.evaluate("[S.baits.worm, S.baitSel, S.coins]") == [5, "worm", 40]
+          and "Worm is now your bait" in g.inner_text("#toast"))
+    g.evaluate("() => { S.coins = 2000; save(); render(); }"); g.click('[data-buy="bait:shrimp"]'); g.wait_for_timeout(50)
+    check("buying another bait keeps the current selection", g.evaluate("[S.baits.shrimp, S.baitSel]") == [5, "worm"])
+    g.screenshot(path=str(SHOTS / "34_shop_rods_baits.png"), full_page=True)
+
+    # Tackle Box: equip a rod, select a bait
+    g.evaluate("() => go('tackle')"); g.wait_for_timeout(200)
+    g.click('[data-equip="sturdy"]'); g.wait_for_timeout(100)
+    row_of = lambda name: g.evaluate(f"[...document.querySelectorAll('#gearList .gear-row')].find(r => r.querySelector('b').textContent.startsWith('{name}')).textContent")
+    check("Tackle Box: EQUIP the Sturdy Rod (2 misses), labelled EQUIPPED",
+          g.evaluate("[S.rodEq, allowedMiss()]") == ["sturdy", 2] and "EQUIPPED" in row_of("Sturdy Rod") and "EQUIP" in row_of("Bamboo Rod")
+          and "EQUIPPED" not in row_of("Bamboo Rod") and g.evaluate(SAVED + ".rodEq") == "sturdy")
+    check("Tackle Box: rods you don't own point to the Shop and can't be equipped",
+          "SHOP · 700 COINS" in row_of("Lucky Rod") and not g.evaluate("!!document.querySelector('[data-equip=\"lucky\"]')")
+          and (g.evaluate("equipRod('lucky'), S.rodEq") == "sturdy"))
+    g.click('[data-bait="shrimp"]'); g.wait_for_timeout(100)
+    check("Tackle Box: select Shrimp, labelled EQUIPPED", g.evaluate("S.baitSel") == "shrimp" and "EQUIPPED" in row_of("Shrimp")
+          and "EQUIPPED" not in row_of("Worm") and g.evaluate(SAVED + ".baitSel") == "shrimp")
+    check("Tackle Box: bait you have none of says BUY IN SHOP and can't be selected",
+          "BUY IN SHOP" in row_of("Golden Lure") and g.evaluate("selectBait('golden'), S.baitSel") == "shrimp")
+    g.screenshot(path=str(SHOTS / "35_tackle_equip.png"), full_page=True)
+
+    # fishing: bait use, HUD chips
+    g.evaluate("() => { island = 'harbor'; go('fishing'); }"); g.wait_for_timeout(300)
+    check("fishing HUD shows the equipped rod and selected bait", "Sturdy" in g.inner_text("#rodChip") and "Shrimp x5" in g.inner_text("#baitChip"))
+    g.click("#actBtn"); g.wait_for_timeout(100)
+    check("a cast uses one of the selected bait only", g.evaluate("[S.baits.shrimp, S.baits.worm, F.usedBait]") == [4, 5, "shrimp"]
+          and g.is_disabled("#rodChip") and g.is_disabled("#baitChip"))
+    g.evaluate("() => { stopFishing(); go('fishing'); }"); g.wait_for_timeout(100)
+    g.click("#baitChip"); g.wait_for_timeout(50)
+    check("tapping BAIT switches to the next bait (Shrimp -> no bait)", g.evaluate("S.baitSel") == "none" and "None" in g.inner_text("#baitChip"))
+    g.click("#actBtn"); g.wait_for_timeout(100)
+    check("casting with no bait uses none", g.evaluate("[S.baits.shrimp, S.baits.worm, F.usedBait]") == [4, 5, None])
+    g.evaluate("() => { stopFishing(); go('fishing'); }"); g.wait_for_timeout(100)
+    g.click("#baitChip"); g.wait_for_timeout(50)
+    check("tapping BAIT again picks Worm", g.evaluate("S.baitSel") == "worm")
+    g.click("#rodChip"); g.wait_for_timeout(50)
+    check("tapping ROD switches to the next rod you own", g.evaluate("S.rodEq") == "bamboo" and "Bamboo" in g.inner_text("#rodChip"))
+    g.evaluate("() => { S.baitSel = 'golden'; S.baits.golden = 0; save(); }")
+    g.reload(); g.wait_for_timeout(200)
+    check("a selected bait with none left loads as no bait", g.evaluate("S.baitSel") == "none")
+    g.click("#contBtn"); g.wait_for_timeout(200)
+
+    # effects of each rod on misses, zone and marker speed (Common fish: zone .26, speed .55), with island rewards on top
+    eff = """(rodId, mastery) => { S.rods = ['bamboo','sturdy','precision','lucky']; S.rodEq = rodId; S.mastery = mastery;
+        island = 'harbor'; go('fishing'); F = { phase: 'bite', fish: fishById('harbor_0') }; hook();
+        const r = [allowedMiss(), Math.round(F.zoneW * 1000) / 1000, Math.round(F.speed * 1000) / 1000]; stopFishing(); return r; }"""
+    effects = {r: g.evaluate(f"({eff})('{r}', {{}})") for r in ["bamboo", "sturdy", "precision", "lucky"]}
+    check("rod effects: Bamboo 1 miss, Sturdy 2, Precision zone x1.35, Lucky marker x1.1",
+          effects == {"bamboo": [1, .26, .55], "sturdy": [2, .26, .55], "precision": [1, .351, .55], "lucky": [1, .26, .605]}, str(effects))
+    with_rewards = g.evaluate(f"({eff})('lucky', {{ forest: true, frost: true }})"), g.evaluate(f"({eff})('sturdy', {{ forest: true }})")
+    check("island rewards stack on the rod (Master's Charm +1 miss, Steady Hands 20% slower)",
+          with_rewards[0] == [2, .26, .484] and with_rewards[1] == [3, .26, .55], str(with_rewards))
+
+    # odds: each bait / Lucky Rod / Lucky Lure, stacking, Legendary cap
+    odds = lambda bait, rod_id, desert=False: g.evaluate(f"(() => {{ S.mastery = {{ desert: {str(desert).lower()} }}; return rarityWeights('{bait}', '{rod_id}').map(v => Math.round(v * 100) / 100); }})()")
+    check("odds unchanged for no bait and Shrimp (60/30/8/2, 40/30/24/6) and the Desert reward",
+          odds("none", "bamboo") == [60, 30, 8, 2] and odds("shrimp", "bamboo") == [40, 30, 24, 6] and odds("none", "bamboo", True) == [52, 30, 13, 5])
+    check("Worm boosts Rare, Golden Lure boosts Epic and Legendary, Lucky Rod = Shrimp odds",
+          odds("worm", "bamboo") == [50, 40, 8, 2] and odds("golden", "bamboo") == [25, 25, 30, 20] and odds("none", "lucky") == [40, 30, 24, 6])
+    stack = odds("golden", "lucky"), odds("golden", "lucky", True), odds("shrimp", "lucky")
+    check("bait and Lucky Rod stack, with Legendary capped at 20%",
+          stack[0] == [5, 25, 50, 20] and stack[1][3] == 20 and min(stack[1]) >= 0 and abs(sum(stack[1]) - 100) < .01
+          and stack[2] == [20, 30, 40, 10], str(stack))
+    picked = g.evaluate("""(() => { const r = Math.random; Math.random = () => .5; island = 'harbor'; S.mastery = {}; S.rodEq = 'bamboo';
+        const out = [pickFish(null).rarity, pickFish('golden').rarity]; Math.random = r; return out; })()""")
+    check("the cast's fish is rolled with those odds", picked == ["Common", "Epic"], str(picked))
+    g.close()
+
+    # save migration from before the gear update
+    mig = b.new_page(viewport={"width": 1280, "height": 800})
+    def migrate(old):
+        mig.goto(URL); mig.evaluate(f"localStorage.setItem('littleLakeSave', JSON.stringify({old}))"); mig.reload(); mig.wait_for_timeout(150)
+        return mig.evaluate("({ rods: S.rods, rodEq: S.rodEq, baits: S.baits, baitSel: S.baitSel, coins: S.coins, miss: allowedMiss() })")
+    m1 = migrate("{ name: 'Old', coins: 50, rod: 1, bait: 0, bagMax: 5, bag: [] }")
+    check("old save rod level 1 -> Bamboo Rod", m1["rods"] == ["bamboo"] and m1["rodEq"] == "bamboo" and m1["baitSel"] == "none" and m1["coins"] == 50, str(m1))
+    m2 = migrate("{ name: 'Old', coins: 50, rod: 2, bait: 4, bagMax: 5, bag: [] }")
+    check("old save rod level 2 -> owns and equips Sturdy; bait becomes Shrimp (selected)",
+          m2["rods"] == ["bamboo", "sturdy"] and m2["rodEq"] == "sturdy" and m2["miss"] == 2 and m2["baits"] == {"worm": 0, "shrimp": 4, "golden": 0}
+          and m2["baitSel"] == "shrimp", str(m2))
+    m3 = migrate("{ name: 'Old', coins: 50, rod: 4, bait: 2, useBait: false, bagMax: 5, bag: [] }")
+    check("old save rod level 4 -> Sturdy + 400 coins refunded; USE BAIT off -> no bait selected",
+          m3["rodEq"] == "sturdy" and m3["coins"] == 450 and m3["baits"]["shrimp"] == 2 and m3["baitSel"] == "none", str(m3))
+    mig.evaluate("() => save()"); mig.reload(); mig.wait_for_timeout(150)
+    check("migration happens once (no second refund after saving)", mig.evaluate("S.coins") == 450 and mig.evaluate(SAVED + ".rod") is None)
+    mig.close()
+
+    # 360px layout
+    n = b.new_page(viewport={"width": 360, "height": 780})
+    n.on("pageerror", lambda e: errs.append(str(e)))
+    n.goto(URL); n.evaluate("localStorage.clear()"); n.reload(); n.wait_for_timeout(200); start_new(n, "Tiny")
+    n.evaluate("() => { S.coins = 400; S.rods.push('precision'); S.rodEq = 'precision'; S.baits = { worm: 3, shrimp: 12, golden: 2 }; S.baitSel = 'golden'; S.mastery = { harbor: true, frost: true, desert: true, forest: true }; save(); go('shop'); }")
+    n.wait_for_timeout(300)
+    check("360px: Shop with rods and baits has no side scroll", no_side_scroll(n))
+    n.screenshot(path=str(SHOTS / "36_mobile_shop.png"), full_page=True)
+    n.evaluate("() => go('tackle')"); n.wait_for_timeout(300)
+    check("360px: Tackle Box with rods and baits has no side scroll", no_side_scroll(n))
+    n.evaluate("() => { island = 'harbor'; go('fishing'); }"); n.wait_for_timeout(400)
+    r = n.evaluate("(() => { const a = document.getElementById('actBtn').getBoundingClientRect(), c = document.getElementById('baitChip'); return [a.bottom, innerHeight, document.documentElement.scrollHeight, c.scrollWidth <= c.clientWidth + 1]; })()")
+    check("360px: fishing HUD with rod + bait chips fits (no side scroll, no page scroll, chips not cut off)",
+          no_side_scroll(n) and r[0] <= r[1] and r[2] <= r[1] and r[3], str(r))
+    n.screenshot(path=str(SHOTS / "37_mobile_fishing_gear.png"))
+    n.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

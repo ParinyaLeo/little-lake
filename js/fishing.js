@@ -299,10 +299,17 @@ function stopFishing() { clearTimers(); F = { phase: "idle" }; $("meter").style.
 
 function renderFishingHud() {
   $("fBag").textContent = `${S.bag.length} / ${S.bagMax}`;
-  renderBaitBtn($("baitBtn"), F.phase !== "idle");
+  // equipped rod and selected bait (tap to switch to the next one you own)
+  const busy = F.phase !== "idle", b = BAITS[S.baitSel];
+  $("rodChip").innerHTML = `<span class="ico i-rod-${S.rodEq}"></span><span class="k">ROD</span>${rod().short}`;
+  $("rodChip").title = `${rod().name}: ${rodFx(S.rodEq)} Tap to switch rods.`;
+  $("baitChip").innerHTML = `<span class="ico i-bait-${b ? S.baitSel : "none"}"></span><span class="k">BAIT</span>` + (b ? `${b.short || b.name} x${S.baits[S.baitSel]}` : "None");
+  $("baitChip").title = `${baitName(S.baitSel)}: ${oddsText(rarityWeights(S.baitSel))}. Tap to switch bait.`;
+  $("rodChip").disabled = $("baitChip").disabled = busy;
   // small icons for the island rewards that are active (tap for details; hover shows the same text)
   $("bonuses").innerHTML = ISLAND_IDS.filter(i => S.mastery[i]).map(i => { const I = ISLANDS[i], tip = `${I.reward}: ${I.effect}`;
-    return `<button class="bonus" data-tip="${tip}" title="${tip}" aria-label="${tip}"><span class="ico i-${I.icon}"></span></button>`; }).join("");
+    return `<button class="bonus" data-tip="${tip}" title="${tip}" aria-label="${tip}"><span class="ico i-${I.icon}"></span></button>`; }).join("")
+    || `<span class="hint">Tap ROD or BAIT to change</span>`;
   $("fBagBtn").classList.toggle("glow", bagFull());
   const a = $("actBtn");
   if (F.phase === "idle") {
@@ -313,20 +320,22 @@ function renderFishingHud() {
   fitCanvas(); startLoop();
 }
 
-// USE BAIT button (fishing HUD and Tackle Box): shows on/off and how much bait is left
-function renderBaitBtn(b, busy) {
-  const on = S.useBait && S.bait > 0;
-  b.innerHTML = `<span class="ico i-bait"></span>` + (S.bait ? `USE BAIT: ${S.useBait ? "ON" : "OFF"} (${S.bait})` : "NO BAIT (SHOP)");
-  b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); b.disabled = !S.bait || !!busy;
-  b.title = `Bait: ${rarePlus(true)}% chance of Rare or better (${rarePlus(false)}% without). One bait per cast while ON.`;
-}
-function toggleBait() { if (F.phase !== "idle" || !S.bait) return; S.useBait = !S.useBait; save(); toast(S.useBait ? "Bait ON: better chance of Rare+ fish." : "Bait OFF: saving your bait."); render(); }
-$("baitBtn").onclick = toggleBait;
+// HUD chips: tap to switch to the next rod you own / the next bait you have (or no bait)
+$("rodChip").onclick = () => {
+  const own = ROD_IDS.filter(r => S.rods.includes(r));
+  if (own.length < 2) return toast(`${rod().name}: ${rodFx(S.rodEq)} Buy more rods in the Shop.`);
+  equipRod(own[(own.indexOf(S.rodEq) + 1) % own.length]);
+};
+$("baitChip").onclick = () => {
+  const opts = ["none", ...BAIT_IDS.filter(b => S.baits[b] > 0)];
+  if (opts.length < 2) return toast("You have no bait. Buy Worm, Shrimp or Golden Lure in the Shop.");
+  selectBait(opts[(opts.indexOf(S.baitSel) + 1) % opts.length]);
+};
 $("bonuses").onclick = e => { const b = e.target.closest(".bonus"); if (b) toast(b.dataset.tip); };
 
-function pickFish(withBait) {
+function pickFish(baitId) {
   if (island === "secret") return FISH.find(f => f.island === "secret");
-  const w = rarityWeights(withBait);
+  const w = rarityWeights(baitId || "none");
   const tiers = ["Common", "Rare", "Epic", "Legendary"];
   let r = Math.random() * w.reduce((a, b) => a + b), tier = tiers[0];
   for (let i = 0; i < 4; i++) { if (r < w[i]) { tier = tiers[i]; break; } r -= w[i]; }
@@ -350,10 +359,14 @@ document.addEventListener("keydown", e => {
 document.addEventListener("keyup", e => { if (e.code === "Space" && current === "fishing") e.preventDefault(); });
 function cast() {
   if (bagFull()) { toast("Your bag is full."); return; }
-  const usedBait = S.useBait && S.bait > 0; if (usedBait) { S.bait--; save(); }
+  // one bait of the selected kind; when it runs out the selection goes back to "no bait"
+  const usedBait = BAITS[S.baitSel] && S.baits[S.baitSel] > 0 ? S.baitSel : null;
+  if (usedBait) { S.baits[usedBait]--; if (!S.baits[usedBait]) S.baitSel = "none"; save(); }
   F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait };
   sfx.cast(); $("actBtn").disabled = true; $("actBtn").textContent = "...";
-  $("fMsg").textContent = usedBait ? `Cast with bait (${S.bait} left)... waiting` : "Waiting for a bite..."; renderFishingHud();
+  const left = usedBait && S.baits[usedBait];
+  $("fMsg").textContent = !usedBait ? "Waiting for a bite..." : left ? `Cast with ${BAITS[usedBait].name} (${left} left)... waiting` : `Cast with your last ${BAITS[usedBait].name}... waiting`;
+  renderFishingHud();
   $("actBtn").disabled = true;
   later(() => { F.phase = "waiting"; }, 500);
   later(bite, 500 + 1000 + Math.random() * 4000);   // 1-5 s random wait
@@ -369,7 +382,7 @@ function hook() {
   clearTimeout(F.biteTimer); $("bang").style.display = "none";
   const d = DIFF[F.fish.rarity];
   Object.assign(F, { phase: "reeling", pos: 0, dir: 1, hits: 0, misses: 0, lastT: 0,
-    speed: d.speed * (S.mastery.frost ? .8 : 1), zoneW: d.zone });
+    speed: d.speed * (S.mastery.frost ? .8 : 1) * rod().speed, zoneW: d.zone * rod().zone });   // rod + Steady Hands
   newZone(); $("meter").style.visibility = "visible";
   const a = $("actBtn"); a.textContent = "REEL"; a.className = "btn green";
   $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit();

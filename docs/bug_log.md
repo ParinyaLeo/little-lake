@@ -43,11 +43,12 @@ The playtest note pointed to five things to check. Three were real bugs; two are
 ### BUG-6 – The last bait was used up with no-bait odds
 - **Cause:** `cast()` took the bait first, then `pickFish()` checked `S.bait > 0`. With 1 bait left the check saw 0, so the last bait was spent but the fish was rolled with the no-bait odds (60/30/8/2 instead of 40/30/24/6).
 - **Fix:** `cast()` passes whether bait was used to `pickFish(withBait)`. The odds themselves are unchanged (they now live in `rarityWeights()`, also used for the % shown in the Shop and Tackle Box).
-- **Test:** `the last bait still gives bait odds`.
+- **Test:** `the last bait still gives bait odds` (now checks that the last Shrimp is rolled with Shrimp odds).
 
 ### BUG-6b – Bait was used automatically with no choice
 - **Fix:** a **USE BAIT: ON / OFF (count)** button on the fishing screen and in the Tackle Box (`S.useBait`, saved; older saves default to ON). Bait is used only while it is ON. The button can't change mid-cast.
 - **Tests:** `fishing HUD shows USE BAIT: ON with the bait count`, `USE BAIT can be turned off and is saved`, `casting with USE BAIT off keeps the bait`, `older save without the bait toggle loads with USE BAIT on`.
+- **Superseded by GEAR-1 (report e):** the ON/OFF toggle became a bait choice (Worm / Shrimp / Golden Lure / no bait). Choosing "no bait" replaces OFF; these four tests were replaced by the bait-selection and migration tests listed there.
 
 ### BUG-7 – Players couldn't see what the rod does
 - **Fix:** during reeling, hearts show the misses you have left (one heart per allowed miss; "NO MISSES LEFT!" means the next miss loses the fish).
@@ -56,6 +57,7 @@ The playtest note pointed to five things to check. Three were real bugs; two are
 ### BUG-8 – The Shop didn't say what an item would do
 - **Fix:** each item shows its effect before buying: "Rod Lv.2: 2 misses allowed (now 1)", "Bait: better chance of Rare+ fish while USE BAIT is on (60% instead of 40%)", "Bag: 10 slots (now 5)". The text updates after each purchase.
 - **Tests:** `Shop: rod shows 'Rod Lv.2: 2 misses allowed (now 1)'`, `Shop: bait says it works while USE BAIT is on`, `Shop: bag shows new and current size`, `Shop effect text updates after buying`.
+- **Superseded by GEAR-1 (report e):** rod levels became separate rods. `Shop: bag shows new and current size` is kept; the rod/bait text tests were replaced by `Shop lists 4 rods with exact effects` and `Shop lists 3 baits with pack size, price and exact odds`.
 
 ## Report (c): Island Mastery rewards were invisible
 
@@ -84,3 +86,26 @@ The playtest note pointed to five things to check. Three were real bugs; two are
   - **Space** (desktop) and **tapping anywhere on the scene** do the same as the main button. They do nothing when the button is disabled or outside the fishing screen, and Space on a focused button doesn't act twice.
   - Rules and timings are unchanged.
 - **Tests:** for 1366x768, 1280x720 and 390x844: `<size>: CAST/HOOK/REEL button stays put in every phase (<= 1px)` (idle, waiting, bite, reeling, and reeling after a press) and `<size>: button is inside the viewport and the page doesn't scroll while fishing`. Also `Space casts on the fishing screen`, `tapping the scene hooks the fish`, `Space reels exactly once, even with the button focused`, `Space on a focused button acts only once`, `Space / tap do nothing while the main button is disabled (full bag)`, `Space does nothing outside the fishing screen`.
+
+## Report (e): the shop had no real choices
+
+### GEAR-1 – One rod upgrade and one bait gave players nothing to decide
+- **Problem (design):** the Shop had a single "Rod upgrade" (always better) and a single bait, so there was never a trade-off.
+- **Change:** four rods, bought once and equipped one at a time, and three baits, one of which (or none) is selected:
+  - Bamboo Rod (free, 1 miss), Sturdy Rod (200, 2 misses), Precision Rod (450, green zone 35% wider, 1 miss), Lucky Rod (700, Shrimp-like odds, 1 miss, marker 10% faster).
+  - Worm x5 (60, small Rare boost), Shrimp x5 (100, the old bait odds 40/30/24/6), Golden Lure x3 (250, strong Epic/Legendary boost).
+  - Bait and Lucky Rod boosts stack, with Legendary capped at 20%. Island rewards still apply on top of the rod.
+  - The Shop shows OWNED / EQUIPPED tags, exact effects and odds, and "Need N more coins". The Tackle Box has EQUIP / USE buttons, and the fishing HUD shows the rod and bait (tap to switch).
+- **Save migration:** old `rod` level 1 → Bamboo; level 2+ → owns and equips Sturdy. Levels above 2 are refunded 200 coins each, because those players paid for misses the Sturdy Rod doesn't give. The old bait count becomes Shrimp (selected unless USE BAIT was off). It runs once, because the new save has no `rod` level.
+- **Tests:** `new game starts with only the Bamboo Rod equipped and no bait`, `Shop lists 4 rods with exact effects`, `Shop: equipped starter rod is marked and can't be bought`, `Shop: items you can't afford are disabled and say how much is missing (300 coins)`, `Shop lists 3 baits with pack size, price and exact odds`, `buying a rod takes the coins, adds it, and marks it OWNED (not equipped yet)`, `can't buy a rod twice or without enough coins`, `can't buy bait without enough coins`, `buying bait with no bait selected selects it`, `buying another bait keeps the current selection`, `Tackle Box: EQUIP the Sturdy Rod (2 misses), labelled EQUIPPED`, `Tackle Box: rods you don't own point to the Shop and can't be equipped`, `Tackle Box: select Shrimp, labelled EQUIPPED`, `Tackle Box: bait you have none of says BUY IN SHOP and can't be selected`, `fishing HUD shows the equipped rod and selected bait`, `a cast uses one of the selected bait only`, `tapping BAIT switches to the next bait (Shrimp -> no bait)`, `casting with no bait uses none`, `tapping BAIT again picks Worm`, `tapping ROD switches to the next rod you own`, `a selected bait with none left loads as no bait`, `rod effects: Bamboo 1 miss, Sturdy 2, Precision zone x1.35, Lucky marker x1.1`, `island rewards stack on the rod (Master's Charm +1 miss, Steady Hands 20% slower)`, `odds unchanged for no bait and Shrimp (60/30/8/2, 40/30/24/6) and the Desert reward`, `Worm boosts Rare, Golden Lure boosts Epic and Legendary, Lucky Rod = Shrimp odds`, `bait and Lucky Rod stack, with Legendary capped at 20%`, `the cast's fish is rolled with those odds`, `old save rod level 1 -> Bamboo Rod`, `old save rod level 2 -> owns and equips Sturdy; bait becomes Shrimp (selected)`, `old save rod level 4 -> Sturdy + 400 coins refunded; USE BAIT off -> no bait selected`, `migration happens once (no second refund after saving)`, `360px: Shop with rods and baits has no side scroll`, `360px: Tackle Box with rods and baits has no side scroll`, `360px: fishing HUD with rod + bait chips fits (no side scroll, no page scroll, chips not cut off)`.
+
+### BUG-10 – "Golden Lure x2" was cut off on 360px phones
+- **Problem:** found while testing GEAR-1. On a 360px phone the bait button on the fishing screen showed "Golden Lure…".
+- **Cause:** the rod and bait buttons share one row on phones, and the full bait name doesn't fit. The 360px test measured the overflow but its result wasn't part of the check.
+- **Fix:** the HUD uses short bait names ("Golden x2"), and the test now fails if either button's text is cut off.
+- **Test:** `360px: fishing HUD with rod + bait chips fits (no side scroll, no page scroll, chips not cut off)`.
+
+### BUG-11 – `play_test.py` crashed on Windows when a detail contained "·"
+- **Cause:** the Windows console can't print some characters, and Python stopped with a `UnicodeEncodeError` halfway through the tests.
+- **Fix:** `play_test.py` sets `sys.stdout.reconfigure(errors="replace")`, so details print with a replacement character instead of crashing.
+- **Test:** the full run (`python play_test.py`) completes and prints its summary.

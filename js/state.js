@@ -1,22 +1,32 @@
 // Save data, shared helpers (toast, sound, confetti, banner, fish drawing) and progress checks. Loaded after data.js.
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
-const DEFAULT = () => ({ name: "Angler", coins: 300, rod: 1, bait: 0, bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, useBait: true, pending: null });
+const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none",
+  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, pending: null });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
   try { raw = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { raw = null; }
   const d = DEFAULT(); if (!raw || typeof raw !== "object") return d;
+  // Saves from before the gear update have rod (level 1+), bait (count) and useBait instead of rods/baits:
+  // level 1 = Bamboo; level 2+ also owns and equips the Sturdy Rod (levels above 2 are refunded, 200 coins each);
+  // the old bait count becomes Shrimp.
+  const legacy = !Array.isArray(raw.rods), oldRod = num(raw.rod, 1, 1);
+  const rods = ["bamboo", ...(legacy ? (oldRod >= 2 ? ["sturdy"] : []) : raw.rods.filter(r => RODS[r] && r !== "bamboo"))];
+  const baits = {}; BAIT_IDS.forEach(b => baits[b] = legacy ? (b === "shrimp" ? num(raw.bait, 0) : 0) : num(raw.baits && raw.baits[b], 0));
+  let baitSel = legacy ? (raw.useBait !== false ? "shrimp" : "none") : raw.baitSel;
+  if (!BAITS[baitSel] || !baits[baitSel]) baitSel = "none";
   const s = {
     name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 20) : d.name,
-    coins: num(raw.coins, d.coins), rod: num(raw.rod, 1, 1), bait: num(raw.bait, 0), bagMax: num(raw.bagMax, 5, 5),
+    coins: num(raw.coins, d.coins) + (legacy && oldRod > 2 ? (oldRod - 2) * 200 : 0),
+    rods: [...new Set(rods)], rodEq: legacy ? (oldRod >= 2 ? "sturdy" : "bamboo") : rods.includes(raw.rodEq) ? raw.rodEq : "bamboo",
+    baits, baitSel, bagMax: num(raw.bagMax, 5, 5),
     bag: Array.isArray(raw.bag) ? raw.bag.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)) : [],
     discovered: raw.discovered && typeof raw.discovered === "object" ? raw.discovered : {},
     records: raw.records && typeof raw.records === "object" ? raw.records : {},
     mastery: raw.mastery && typeof raw.mastery === "object" ? raw.mastery : {},
     totalCaught: num(raw.totalCaught, 0), mythical: raw.mythical === true,
     sound: raw.sound !== false,                       // older saves have no sound setting: default on
-    useBait: raw.useBait !== false,                   // older saves have no bait toggle: default on
     pending: validCatch(raw.pending) ? raw.pending : null,   // a catch still waiting for KEEP / RELEASE
   };
   s.bag = s.bag.slice(0, s.bagMax);
@@ -202,15 +212,42 @@ const discCount = isl => FISH.filter(f => f.island === isl && S.discovered[f.id]
 const totalDisc = () => FISH.filter(f => f.island !== "secret" && S.discovered[f.id]).length;
 const masteredCount = () => ISLAND_IDS.filter(i => S.mastery[i]).length;
 const secretOpen = () => masteredCount() === 4;
-const allowedMiss = () => S.rod + (S.mastery.forest ? 1 : 0);
+const rod = () => RODS[S.rodEq];                     // equipped rod
+const allowedMiss = () => rod().miss + (S.mastery.forest ? 1 : 0);
 const bagFull = () => S.bag.length >= S.bagMax;
-// rarity weights (Common, Rare, Epic, Legendary) for one cast
-function rarityWeights(withBait) {
-  const w = withBait ? [40, 30, 24, 6] : [60, 30, 8, 2];
-  return S.mastery.desert ? [w[0] - 8, w[1], w[2] + 5, w[3] + 3] : w;
+// Rarity chances in % (Common, Rare, Epic, Legendary) for one cast: base odds + bait + Lucky Rod + Lucky Lure,
+// each tier at least 0, scaled to 100%, then Legendary capped at LEGENDARY_CAP (the rest goes to Epic).
+function rarityWeights(baitId = "none", rodId = S.rodEq) {
+  const w = [...BASE_ODDS], add = d => d.forEach((v, i) => w[i] += v);
+  if (BAITS[baitId]) add(BAITS[baitId].odds);
+  if (RODS[rodId] && RODS[rodId].luck) add(LUCKY_ROD_ODDS);
+  if (S.mastery.desert) add(LUCKY_LURE_ODDS);
+  const pos = w.map(v => Math.max(0, v)), tot = pos.reduce((a, b) => a + b);
+  const p = pos.map(v => v / tot * 100);
+  if (p[3] > LEGENDARY_CAP) { p[2] += p[3] - LEGENDARY_CAP; p[3] = LEGENDARY_CAP; }
+  return p;
 }
-// chance (%) of a Rare or better fish
-const rarePlus = withBait => { const w = rarityWeights(withBait); return Math.round((w[1] + w[2] + w[3]) / w.reduce((a, b) => a + b) * 100); };
+const pct = v => `${Math.round(v * 10) / 10}%`;
+const oddsText = w => TIERS.map((t, i) => `${t} ${pct(w[i])}`).join(" · ");
+// one-line effect of a rod, e.g. "1 miss allowed, green zone 35% wider."
+function rodFx(id) {
+  const r = RODS[id], p = [`${misses(r.miss)} allowed`];
+  if (r.zone !== 1) p.push(`green zone ${Math.round((r.zone - 1) * 100)}% wider`);
+  if (r.luck) p.push("better rarity odds (like Shrimp bait)");
+  if (r.speed !== 1) p.push(`marker ${Math.round((r.speed - 1) * 100)}% faster`);
+  if (p.length === 1) p.push("normal zone and speed");
+  return p.join(", ") + ".";
+}
+const baitName = id => BAITS[id] ? BAITS[id].name : "No bait";
+// equip a rod you own / select a bait you have (or "none"); used by the Tackle Box and the fishing HUD
+function equipRod(id) {
+  if (!S.rods.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
+  S.rodEq = id; save(); toast(`Equipped ${RODS[id].name}: ${rodFx(id)}`); render();
+}
+function selectBait(id) {
+  if ((id !== "none" && !(S.baits[id] > 0)) || (typeof F !== "undefined" && F.phase !== "idle")) return;
+  S.baitSel = id; save(); toast(id === "none" ? "No bait: your bait is saved for later." : `Using ${BAITS[id].name}: ${BAITS[id].blurb}`); render();
+}
 const misses = n => `${n} miss${n === 1 ? "" : "es"}`;
 
 function checkMastery() {

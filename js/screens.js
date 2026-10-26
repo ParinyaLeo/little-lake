@@ -23,7 +23,7 @@ function render() {
     $("homeName").textContent = S.mythical ? `🏆 ${S.name} – Lake Legend` : S.name;
     $("hCoins").textContent = fmt(S.coins); $("hCaught").textContent = fmt(S.totalCaught);
     $("hColl").textContent = `${totalDisc()} / 40`; $("hBag").textContent = `${S.bag.length} / ${S.bagMax}`;
-    $("hBag").style.color = bagFull() ? "#ffb4a2" : ""; $("hRod").textContent = S.rod; $("hMastery").textContent = `${masteredCount()} / 4`;
+    $("hBag").style.color = bagFull() ? "#ffb4a2" : ""; $("hRod").textContent = rod().short; $("hMastery").textContent = `${masteredCount()} / 4`;
   }
   if (current === "map") renderMap();
   if (current === "fishing") renderFishingHud();
@@ -111,38 +111,77 @@ $("sellAll").onclick = () => sell(S.bag.map((_, i) => i));
 $("bagBack").onclick = () => go(prevScreen === "bag" ? "home" : prevScreen);
 
 /* ===================== SHOP ===================== */
-// every item says what it will do before you buy it
+// every item says exactly what it does, whether you own / use it, and why it can't be bought
+function shopItem({ buy, icon, name, tag, fx, odds, note, label, can }) {
+  return `<div class="item${tag === "EQUIPPED" ? " equipped" : ""}"><b><span class="ico i-${icon}"></span>${name}</b>` +
+    (tag ? `<span class="tag">${tag}</span>` : "") + `<span class="fx">${fx}</span>` + (odds ? `<span class="odds">${odds}</span>` : "") +
+    (note || "") + `<button class="btn green" data-buy="${buy}"${can ? "" : " disabled"}>${label}</button></div>`;
+}
+const needMore = price => S.coins < price ? `<span class="need">Need ${fmt(price - S.coins)} more coins</span>` : "";
 function renderShop() {
-  $("sRodFx").textContent = `Rod Lv.${S.rod + 1}: ${misses(allowedMiss() + 1)} allowed (now ${allowedMiss()})`;
-  $("sRod").textContent = `Lv.${S.rod}`;
-  $("sBaitFx").textContent = `Bait: better chance of Rare+ fish while USE BAIT is on (${rarePlus(true)}% instead of ${rarePlus(false)}%). One bait per cast.`;
-  $("sBait").textContent = `${S.bait} · USE BAIT is ${S.useBait ? "ON" : "OFF"}`;
+  $("shopRods").innerHTML = ROD_IDS.map(id => {
+    const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
+    return shopItem({ buy: `rod:${id}`, icon: `rod-${id}`, name: r.name, tag: eq ? "EQUIPPED" : own ? "OWNED" : "",
+      fx: rodFx(id), odds: r.luck ? `Odds without bait: ${oddsText(rarityWeights("none", id))}` : "",
+      note: own ? "" : needMore(r.price), can: !own && S.coins >= r.price,
+      label: own ? (eq ? "EQUIPPED" : "OWNED") : r.price ? `${r.price} COINS` : "FREE" });
+  }).join("");
+  $("shopBaits").innerHTML = BAIT_IDS.map(id => {
+    const b = BAITS[id];
+    return shopItem({ buy: `bait:${id}`, icon: `bait-${id}`, name: `${b.name} x${b.pack}`, tag: S.baitSel === id ? "EQUIPPED" : "",
+      fx: `${b.blurb} You have: ${S.baits[id]}.`, odds: `With your ${rod().short} rod: ${oddsText(rarityWeights(id))}`,
+      note: needMore(b.price), can: S.coins >= b.price, label: `${b.price} COINS` });
+  }).join("");
+  $("shopNoBait").textContent = `Without bait (${rod().short} rod): ${oddsText(rarityWeights("none"))}`;
   $("sBagFx").textContent = `Bag: ${S.bagMax + 5} slots (now ${S.bagMax})`;
   $("sBag").textContent = `${S.bag.length} / ${S.bagMax}`;
-  $("buyRod").disabled = S.coins < 200; $("buyBait").disabled = S.coins < 100; $("buyBag").disabled = S.coins < 150;
+  $("buyBag").disabled = S.coins < 150;
 }
 function buy(cost, fn, msg) { if (S.coins < cost) { toast("Not enough coins."); return; } S.coins -= cost; fn(); save(); sfx.coin(); toast(msg); render(); }
-$("buyRod").onclick = () => buy(200, () => S.rod++, "Rod upgraded!");
-$("buyBait").onclick = () => buy(100, () => S.bait += 5, "Bought 5 bait.");
+function buyRod(id) {
+  const r = RODS[id]; if (!r || S.rods.includes(id)) return toast("You already own this rod.");
+  buy(r.price, () => S.rods.push(id), `Bought the ${r.name}! Equip it in your Tackle Box.`);
+}
+function buyBait(id) {
+  const b = BAITS[id], auto = S.baitSel === "none";        // with no bait selected, the new bait is selected
+  buy(b.price, () => { S.baits[id] += b.pack; if (auto) S.baitSel = id; }, `Bought ${b.pack} ${b.name}.` + (auto ? ` ${b.name} is now your bait.` : ""));
+}
+document.querySelector("#shop .panel").addEventListener("click", e => {
+  const btn = e.target.closest("[data-buy]"); if (!btn || btn.disabled) return;
+  const [kind, id] = btn.dataset.buy.split(":"); kind === "rod" ? buyRod(id) : buyBait(id);
+});
 $("buyBag").onclick = () => buy(150, () => S.bagMax += 5, "Bag expanded by 5 slots.");
 
 /* ===================== TACKLE BOX ===================== */
-// all gear and island rewards in one place, each with its icon and a one-line effect
+// all gear in one place: equip a rod, select a bait, see bag and island rewards; every row has an icon and its effect
 function renderTackle() {
-  const row = (icon, name, fx, chip, cls = "") => `<div class="gear-row ${cls}"><span class="ico i-${icon}"></span>` +
-    `<div class="grow"><b>${name}</b><div class="fx">${fx}</div></div><span class="chip">${chip}</span></div>`;
-  const charm = S.mastery.forest ? ` (Lv.${S.rod} rod + 1 from Master's Charm)` : "";
+  const row = (icon, name, fx, right, cls = "") => `<div class="gear-row ${cls}"><span class="ico i-${icon}"></span>` +
+    `<div class="grow"><b>${name}</b><div class="fx">${fx}</div></div>${right}</div>`;
+  const chip = t => `<span class="chip">${t}</span>`, charm = S.mastery.forest ? " +1 miss from Master's Charm." : "";
+  const rods = ROD_IDS.map(id => {
+    const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
+    return row(`rod-${id}`, r.name, rodFx(id) + (own ? charm : ""),
+      eq ? chip("EQUIPPED") : own ? `<button class="btn small green" data-equip="${id}">EQUIP</button>` : chip(`SHOP · ${r.price} COINS`),
+      eq ? "active" : own ? "" : "notowned");
+  }).join("");
+  const baits = ["none", ...BAIT_IDS].map(id => {
+    const b = BAITS[id], n = b ? S.baits[id] : 0, sel = S.baitSel === id;
+    return row(`bait-${id}`, b ? `${b.name} x${n}` : "No bait", (b ? b.blurb + " " : "Saves your bait. ") + oddsText(rarityWeights(id)) + ".",
+      sel ? chip("EQUIPPED") : (!b || n) ? `<button class="btn small green" data-bait="${id}">USE</button>` : chip("BUY IN SHOP"),
+      sel ? "active" : (!b || n) ? "" : "notowned");
+  }).join("");
   $("gearList").innerHTML =
-    row("rod", `Rod Lv.${S.rod}`, `${misses(allowedMiss())} allowed while reeling${charm}. Upgrade in the Shop for one more.`, "ROD") +
-    row("bait", `Bait x${S.bait}`, `Raises the chance of Rare or better fish to ${rarePlus(true)}% (${rarePlus(false)}% without). One bait per cast while USE BAIT is on.`,
-        S.bait ? `USE BAIT: ${S.useBait ? "ON" : "OFF"}` : "NONE", S.bait && S.useBait ? "active" : "") +
-    row("bag", `Bag ${S.bag.length} / ${S.bagMax}`, `Holds up to ${S.bagMax} fish. Sell them in the Bag for coins.`, "BAG") +
-    `<h3>Island rewards <small>always on once unlocked – nothing to equip</small></h3>` +
+    `<h3>Rod <small>${misses(allowedMiss())} allowed in total with your ${rod().name}</small></h3>` + rods +
+    `<h3>Bait <small>one per cast from the bait you choose</small></h3>` + baits +
+    `<h3>Bag</h3>` + row("bag", `Bag ${S.bag.length} / ${S.bagMax}`, `Holds up to ${S.bagMax} fish. Sell them in the Bag for coins.`, chip("BAG")) +
+    `<h3>Island rewards <small>always on once unlocked, on top of your rod – nothing to equip</small></h3>` +
     ISLAND_IDS.map(i => { const I = ISLANDS[i], on = !!S.mastery[i];
-      return row(on ? I.icon : "lock", I.reward, I.effect + ".", on ? "UNLOCKED" : `LOCKED · ${discCount(i)} / 10 ${I.name} fish`, on ? "active" : "locked"); }).join("");
-  renderBaitBtn($("tbBait"));
+      return row(on ? I.icon : "lock", I.reward, I.effect + ".", chip(on ? "UNLOCKED" : `LOCKED · ${discCount(i)} / 10 ${I.name} fish`), on ? "active" : "locked"); }).join("");
 }
-$("tbBait").onclick = toggleBait;
+$("gearList").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.equip) equipRod(b.dataset.equip); else if (b.dataset.bait) selectBait(b.dataset.bait);
+});
 
 /* ===================== COLLECTION ===================== */
 let collTab = "harbor";

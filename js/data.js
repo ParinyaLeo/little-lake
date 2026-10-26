@@ -1,4 +1,4 @@
-// Static game data: islands, fish species and minigame difficulty. Loaded first.
+// Static game data: islands, fish species, minigame difficulty, rods and baits. Loaded first.
 /* ===================== DATA ===================== */
 const ISLANDS = {
   harbor: { name: "Harbor", bg: "bg-harbor", reward: "Golden Hook", icon: "hook", effect: "Fish sell for 20% more coins" },
@@ -36,3 +36,27 @@ const FISH = [];
 for (const isl in RAW) RAW[isl].forEach((r, i) => FISH.push({ id: `${isl}_${i}`, island: isl, name: r[0], rarity: r[1], price: r[2], min: r[3], max: r[4], len: r[5], h: r[6], body: r[7], belly: r[8], fin: r[9], stripe: r[10] }));
 const fishById = id => FISH.find(f => f.id === id);
 const DIFF = { Common: { speed: .55, zone: .26 }, Rare: { speed: .8, zone: .2 }, Epic: { speed: 1.05, zone: .15 }, Legendary: { speed: 1.35, zone: .11 }, Mythical: { speed: 1.6, zone: .09 } };
+
+/* ===================== GEAR ===================== */
+// Rods: bought once, one is equipped. miss = misses allowed; zone / speed multiply the green zone width and
+// the marker speed; luck = the same odds boost as Shrimp bait. Island rewards apply on top.
+const RODS = {
+  bamboo:    { name: "Bamboo Rod",    short: "Bamboo",    price: 0,   miss: 1, zone: 1,    speed: 1,   luck: false },
+  sturdy:    { name: "Sturdy Rod",    short: "Sturdy",    price: 200, miss: 2, zone: 1,    speed: 1,   luck: false },
+  precision: { name: "Precision Rod", short: "Precision", price: 450, miss: 1, zone: 1.35, speed: 1,   luck: false },
+  lucky:     { name: "Lucky Rod",     short: "Lucky",     price: 700, miss: 1, zone: 1,    speed: 1.1, luck: true },
+};
+const ROD_IDS = Object.keys(RODS);
+// Baits: bought in packs, one is used per cast from the selected kind. odds = change to the
+// [Common, Rare, Epic, Legendary] chances (in % points) on top of BASE_ODDS.
+const BAITS = {
+  worm:   { name: "Worm",        pack: 5, price: 60,  odds: [-10, 10, 0, 0],   blurb: "Small boost to Rare fish." },
+  shrimp: { name: "Shrimp",      pack: 5, price: 100, odds: [-20, 0, 16, 4],   blurb: "Better chance of Epic and Legendary fish." },
+  golden: { name: "Golden Lure", short: "Golden", pack: 3, price: 250, odds: [-35, -5, 22, 18], blurb: "Strong boost to Epic and Legendary fish." },
+};
+const BAIT_IDS = Object.keys(BAITS);
+const BASE_ODDS = [60, 30, 8, 2];            // no bait, no bonuses
+const LUCKY_ROD_ODDS = BAITS.shrimp.odds;    // Lucky Rod: "like Shrimp bait"
+const LUCKY_LURE_ODDS = [-8, 0, 5, 3];       // Desert mastery reward
+const LEGENDARY_CAP = 20;                    // stacked boosts never push Legendary above 20%
+const TIERS = ["Common", "Rare", "Epic", "Legendary"];

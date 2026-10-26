@@ -18,7 +18,7 @@ A pixel-art fishing game (version 0.1). Final project for **1305311 Low-Code App
 ```
 index.html        Page markup (all screens) + <link>/<script> tags
 css/style.css     All styles
-js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fishById, DIFF
+js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fishById, DIFF, RODS, BAITS, odds constants
 js/state.js       Save/load (S, load, save), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
                   rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
@@ -55,24 +55,29 @@ them with `go(id)` or with any element that has `data-go="<screen id>"`.
 `beep()`, which does nothing when sound is off. A save that holds only `{ sound }` (sound toggled before
 any game was started) does not count as a game, so CONTINUE stays disabled.
 
-**New save:** 300 coins, rod level 1, 0 bait, bag capacity 5, `useBait: true`, `pending: null`.
-Other save fields added later: `useBait` (older saves load as `true`) and `pending` (the catch waiting on the
-Result screen, or `null`). If another tab saves, the `storage` listener reloads `S` so tabs don't overwrite each other.
+**New save:** 300 coins, `rods: ["bamboo"]`, `rodEq: "bamboo"`, `baits: { worm: 0, shrimp: 0, golden: 0 }`,
+`baitSel: "none"`, bag capacity 5, `pending: null` (the catch waiting on the Result screen).
+**Old saves** (from before rods/baits) have `rod` (level), `bait` (count) and `useBait`. `load()` migrates them once:
+level 1 → Bamboo; level 2+ → also owns and equips the Sturdy Rod, and each level above 2 is refunded 200 coins; the old
+bait count becomes Shrimp, selected unless `useBait` was false. A selected bait with 0 left loads as `"none"`.
+If another tab saves, the `storage` listener reloads `S` so tabs don't overwrite each other.
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all
 4 islands are mastered.
 
 **Fishing:**
-1. **CAST**. You can't cast if the bag is full. One bait is used per cast only while **USE BAIT** is ON
-   (`S.useBait`, toggled on the fishing screen or in the Tackle Box; it can't change mid-cast).
+1. **CAST**. You can't cast if the bag is full. One bait of the selected kind (`S.baitSel`) is used per cast;
+   when it runs out the selection goes back to `"none"`. Rod and bait can't change mid-cast.
 2. A bite comes after a random **1–5 s** wait. Press **HOOK!** within **1 s** or the fish swims away.
 3. **Reel minigame:** a marker moves across a meter. Press **REEL** while it is inside the green zone.
-   **3 hits** = caught. You may miss up to `allowedMiss()` times (= rod level, +1 with the Forest reward).
+   **3 hits** = caught. You may miss up to `allowedMiss()` times (= equipped rod's `miss`, +1 with the Forest reward).
    One more miss and the fish escapes. The HUD shows one heart per allowed miss; each miss empties one. After every press the marker resets and the zone moves.
-   Marker speed and zone width depend on rarity (`DIFF`).
-4. **Rarity odds** (Common/Rare/Epic/Legendary): 60/30/8/2 without bait, 40/30/24/6 with bait.
-   The Desert reward changes them by −8/0/+5/+3. They live in `rarityWeights(withBait)` (also used for the % text).
+   Marker speed and zone width depend on rarity (`DIFF`) × the rod's `speed` / `zone` (× 0.8 speed with Steady Hands).
+4. **Rarity odds** (Common/Rare/Epic/Legendary, `rarityWeights(baitId, rodId)`): base 60/30/8/2, plus the selected
+   bait's change (Worm −10/+10/0/0, Shrimp −20/0/+16/+4, Golden Lure −35/−5/+22/+18), plus Shrimp's change again with
+   the Lucky Rod, plus −8/0/+5/+3 with the Desert reward. Each tier is at least 0, the total is scaled to 100%, and
+   Legendary is capped at 20% (the rest goes to Epic). So no bait = 60/30/8/2 and Shrimp = 40/30/24/6 as before.
 5. **Weight** is random between the fish's min and max (skewed toward light). **Price** = base ×
    (0.7 + 0.3 × weight / mid-weight), ×1.2 with the Harbor reward. Heavier than your best = **NEW RECORD**.
 6. Every catch is added to the Collection Book and saved as `S.pending` until the player decides, so a reload
@@ -87,16 +92,30 @@ all call `act()`. It does nothing while the button is disabled or outside the fi
 **Fishing screen layout (don't break this):** the CAST/HOOK/REEL button must not move between phases, and the
 screen must fit 1366x768, 1280x720 and phones without page scroll. While fishing, `.app` is exactly one viewport
 tall and the scene takes the leftover height. The meter is hidden with `visibility` (never `display: none`), and the
-message line, bait/reward row and dots/hearts row have fixed heights. Anything new on this screen needs a fixed
+message line, rod/bait/reward row and dots/hearts row have fixed heights. Anything new on this screen needs a fixed
 size too; the `stays put in every phase` tests in `play_test.py` check it.
 
 **Bag:** sell fish one at a time or **SELL ALL** for coins.
 
-**Shop:** Rod upgrade 200 coins (+1 allowed miss), Bait pack ×5 for 100 coins (better rare odds),
-Bigger bag +5 for 150 coins. Each item shows its effect before buying, e.g. "Rod Lv.2: 2 misses allowed (now 1)".
+**Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a trade-off):
 
-**Tackle Box** (button on Home): rod level and misses allowed, bait count and USE BAIT, bag, and each island
-reward with icon, effect and UNLOCKED / LOCKED (with progress). Rewards are automatic; there is no equip system.
+| Rod | Price | Misses | Other |
+|-----|-------|--------|-------|
+| Bamboo Rod | free (starter) | 1 | – |
+| Sturdy Rod | 200 | 2 | – |
+| Precision Rod | 450 | 1 | green zone 35% wider |
+| Lucky Rod | 700 | 1 | Shrimp-like odds boost, but marker 10% faster |
+
+**Baits** (`BAITS`, consumable, one kind selected in `S.baitSel` or `"none"`): Worm x5 60 coins (small Rare boost),
+Shrimp x5 100 coins (the old bait odds), Golden Lure x3 250 coins (strong Epic/Legendary boost).
+
+**Shop:** rods, baits and Bigger bag +5 (150 coins). Every item shows its exact effect (rods: `rodFx()`; baits: the
+odds with your equipped rod), OWNED / EQUIPPED tags, and "Need N more coins". Buttons are disabled for items you
+own or can't afford. A new rod is not equipped automatically; a new bait is selected if no bait was selected.
+
+**Tackle Box** (button on Home and in the Shop): EQUIP a rod you own and USE a bait you have (EQUIPPED labels), plus
+the bag and each island reward with icon, effect and UNLOCKED / LOCKED (with progress). The fishing HUD shows the
+equipped rod and selected bait as buttons; tapping them switches to the next rod you own / the next bait you have.
 
 **Mastery:** find all 10 fish on an island to master it and unlock its reward:
 - Harbor → *Golden Hook*: fish sell for 20% more
@@ -104,7 +123,8 @@ reward with icon, effect and UNLOCKED / LOCKED (with progress). Rewards are auto
 - Desert → *Lucky Lure*: higher Epic/Legendary chance
 - Forest → *Master's Charm*: one extra allowed miss (renamed from "Master Rod" so it isn't confused with the shop rod)
 
-Active rewards also show as small icons on the fishing screen (hover or tap for the effect).
+Rewards are automatic and apply on top of the equipped rod. Active rewards also show as small icons on the fishing
+screen (hover or tap for the effect).
 
 Catching the Lake Guardian sets `S.mythical`. The Home screen then shows the "Lake Legend" trophy title.
 
@@ -117,7 +137,8 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   small text and numbers. The `@font-face` leaves out the digits (`unicode-range`) because the font's 5 and 7 look
   like letters. Ligatures are off because "fi" turned into one odd glyph.
 - **Icons:** 12x12 pixel art in `css/style.css` as inline SVG data URIs (`.ico .i-coin`, `i-fish`, `i-book`,
-  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`, `i-box`, `i-bait`, `i-heart`, `i-heart0`, `i-lock`, and the reward icons
+  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`, `i-box`, `i-bait`, `i-heart`, `i-heart0`, `i-lock`, `i-rod-<rod id>`,
+  `i-bait-<bait id>` / `i-bait-none`, and the reward icons
   `i-hook`, `i-hands`, `i-lure`, `i-charm` named by `ISLANDS[id].icon`). Icon rules must come after the `.ico` rule,
   because its `background` shorthand resets `background-image`. Use `<span class="ico i-NAME"></span>` inside a button or card.
 - **Rarity colours:** Common `#cfd8dc`, Rare `#64b5f6`, Epic `#ce93d8`, Legendary `#ffd54f`, Mythical `#ff80ab`.
