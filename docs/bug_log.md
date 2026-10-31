@@ -130,3 +130,16 @@ The playtest note pointed to five things to check. Three were real bugs; two are
 - **Problem:** on a 360px phone, locked items in Choose Rod / Choose Bait showed "100 COINS · Buy in Shop", which pushed the item name onto two lines.
 - **Fix:** below 700px the label is just "🪙100" (`lockedLabel()` renders both texts, and CSS shows one). Wider screens keep the full text.
 - **Tests:** `360px: locked rod shows the short price label and its name stays on one line`, `360px: locked bait shows the short price label and its name stays on one line`, `wide screens keep the full '700 COINS · Buy in Shop' label`.
+
+## Report (g): the Harbor fisherman never moved
+
+### ANIM-1 – The fisherman was part of the photo, so only the line and bobber moved
+- **Problem:** on the Harbor scene the fisherman and his rod are baked into `assets/harbor.jpg`. Casting, a bite, reeling and a catch all looked the same: he sat still while the line moved, and the line started at a fixed point (`SCENES.harbor.rod`).
+- **Fix:**
+  - `cleanPlate()` (new `js/fisherman.js`) hides him: it copies water, chest lid and dock planks from beside him over the figure and the old rod, once, into an offscreen canvas. `harbor.jpg` itself is unchanged.
+  - A new pixel-art fisherman (straw hat with a blue band, blue shirt, olive trousers, brown boots, sitting on the chest) is drawn in code from small pixel maps, with one cached canvas per body frame. The rod is drawn each frame as a bent curve of art pixels from his hands, and the line now starts at its drawn tip.
+  - Poses per phase: idle breathing, a wind-up and fast swing when casting (the bobber now leaves the tip after the wind-up), a head tilt while waiting, a startled lean at the bite, leaning back with a bent rod while reeling (a tug on each hit, a slack wobble on each miss), a raised rod for 700 ms after a catch, and drooping shoulders after an escape.
+  - The Result screen now opens 700 ms after a reeled catch so the celebration is visible. The catch is saved straight away as before, and CAST is disabled meanwhile.
+  - With `prefers-reduced-motion`, each pose is one still frame.
+- **Found while fixing:** the first patch missed the dark outline of the old rod (the band followed a guessed line), and copying the chest lid sideways repeated its left edge as stripes. The band was widened and the lid is now filled from a plain slice of it.
+- **Tests:** `fisherman pose follows the phase (idle, casting, waiting, bite, reeling, escaped, caught)`, `caught: he celebrates on the fishing screen (button disabled), then the Result screen opens`, `the line starts at the drawn rod tip in every phase (<= 2px)`, `the rod moves between poses`, `360x640: CAST button stays put in every fisherman pose, no side scroll`, `the fisherman baked into the photo is gone (shirt and hat colours in his spot: photo vs patched)`, `prefers-reduced-motion: one still fisherman pose per phase`, and `no JavaScript errors`. The `perfect timing catches fish` check now waits 1 s for the Result screen. Screenshots: `shots/42_fisher_<pose>.png`.

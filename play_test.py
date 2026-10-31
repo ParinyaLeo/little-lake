@@ -1,4 +1,4 @@
-import json, sys
+import base64, json, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 sys.stdout.reconfigure(errors="replace")   # Windows consoles can't print every character in the details
@@ -52,7 +52,7 @@ with sync_playwright() as p:
         pg.wait_for_function("F.phase !== 'reeling' || (F.pos > F.zoneX + 0.01 && F.pos < F.zoneX + F.zoneW - 0.01)", timeout=8000, polling=5)
         if pg.evaluate("F.phase") != "reeling": break
         pg.click("#actBtn"); pg.wait_for_timeout(30)
-    pg.wait_for_timeout(500)
+    pg.wait_for_timeout(1000)                             # the fisherman celebrates for 700 ms first
     check("perfect timing catches fish", pg.is_visible("#result"), pg.inner_text("#resName"))
     pg.screenshot(path=str(SHOTS / "06_result.png"))
     pg.click("#keepBtn"); pg.wait_for_timeout(200)
@@ -666,6 +666,84 @@ with sync_playwright() as p:
     n.keyboard.press("Escape"); n.wait_for_timeout(100)
     n.set_viewport_size({"width": 360, "height": 780})
     n.close()
+
+    # ---------- animated Harbor fisherman (js/fisherman.js) ----------
+    STATE = """() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => {
+        const t = fisherTip(), m = window.__mt, a = document.getElementById('actBtn').getBoundingClientRect(); window.__mt = null;
+        r({ pose: fisherPose(), phase: F.phase, gap: m ? Math.hypot(m[0] - t.x, m[1] - t.y) : null, tip: [t.x, t.y], top: a.top + scrollY }); })))"""
+    SPY = "() => { const o = ctx.moveTo; ctx.moveTo = function (x, y) { window.__mt = [x, y]; return o.call(this, x, y); }; }"   # records where the line starts
+    fz = b.new_page(viewport={"width": 360, "height": 640})
+    fz.on("pageerror", lambda e: errs.append(str(e))); fz.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    fz.goto(URL); fz.evaluate("localStorage.clear()"); fz.reload(); fz.wait_for_timeout(200); start_new(fz, "Angler")
+    fz.add_style_tag(content="#toast { display: none !important; }")             # keep the screenshots clear
+    fz.evaluate("() => { island = 'harbor'; go('fishing'); }"); fz.wait_for_timeout(400); fz.evaluate(SPY)
+    seen = {}
+    def snap(label):
+        st = fz.evaluate(STATE); seen[label] = st
+        fz.locator("#scene").screenshot(path=str(SHOTS / f"42_fisher_{label}.png")); return st
+    snap("idle")
+    fz.click("#actBtn"); snap("casting")
+    fz.wait_for_function("F.phase === 'waiting'"); fz.wait_for_timeout(100); snap("waiting")
+    fz.wait_for_function("F.phase === 'bite'", timeout=8000); snap("bite")
+    fz.click("#actBtn"); fz.wait_for_timeout(100); snap("reeling")
+    fz.wait_for_function("F.phase !== 'reeling' || (F.pos > F.zoneX + 0.01 && F.pos < F.zoneX + F.zoneW - 0.01)", timeout=8000, polling=5)
+    fz.click("#actBtn"); fz.wait_for_timeout(40); snap("reeling_tug")
+    fz.wait_for_function("F.phase !== 'reeling' || (F.pos < F.zoneX - 0.05 || F.pos > F.zoneX + F.zoneW + 0.05)", timeout=8000, polling=5)
+    fz.click("#actBtn"); fz.wait_for_timeout(40); snap("reeling_slack")
+    while fz.evaluate("F.phase") == "reeling":                                       # Bamboo Rod: the 2nd miss loses the fish
+        fz.wait_for_function("F.phase !== 'reeling' || (F.pos < F.zoneX - 0.05 || F.pos > F.zoneX + F.zoneW + 0.05)", timeout=8000, polling=5)
+        if fz.evaluate("F.phase") == "reeling": fz.click("#actBtn"); fz.wait_for_timeout(30)
+    snap("escaped")
+    fz.wait_for_timeout(1500); fz.click("#actBtn")
+    fz.wait_for_function("F.phase === 'bite'", timeout=8000); fz.click("#actBtn")
+    while fz.evaluate("F.phase") == "reeling":
+        fz.wait_for_function("F.phase !== 'reeling' || (F.pos > F.zoneX + 0.01 && F.pos < F.zoneX + F.zoneW - 0.01)", timeout=8000, polling=5)
+        if fz.evaluate("F.phase") == "reeling": fz.click("#actBtn"); fz.wait_for_timeout(30)
+    snap("caught")
+    celebrating = fz.evaluate("[current, document.getElementById('actBtn').disabled]")
+    fz.wait_for_timeout(900)
+    poses = {k: v["pose"] for k, v in seen.items()}
+    check("fisherman pose follows the phase (idle, casting, waiting, bite, reeling, escaped, caught)",
+          all(poses[k] == k.split("_")[0] for k in poses), str(poses))
+    check("caught: he celebrates on the fishing screen (button disabled), then the Result screen opens",
+          celebrating == ["fishing", True] and fz.is_visible("#result"), f"{celebrating} result {fz.is_visible('#result')}")
+    gaps = {k: v["gap"] for k, v in seen.items() if v["phase"] != "idle"}
+    check("the line starts at the drawn rod tip in every phase (<= 2px)",
+          len(gaps) == 6 and all(g is not None and g <= 2 for g in gaps.values()), str({k: None if g is None else round(g, 2) for k, g in gaps.items()}))
+    tips = {k: tuple(round(x) for x in v["tip"]) for k, v in seen.items()}
+    check("the rod moves between poses", len(set(tips.values())) >= 6, str(tips))
+    tops = [v["top"] for v in seen.values()]
+    check("360x640: CAST button stays put in every fisherman pose, no side scroll", max(tops) - min(tops) <= 1 and no_side_scroll(fz),
+          ", ".join(f"{k} {v['top']:.1f}" for k, v in seen.items()))
+    # the fisherman baked into the photo is patched out: count shirt-blue and straw-hat pixels where he sat
+    fz.evaluate("""() => { const sc = SCENES.harbor, c = document.createElement('canvas'), g = c.getContext('2d'); c.id = 'plateTest'; c.width = 100; c.height = 162;
+        c.style.cssText = 'position:fixed;left:0;top:0;z-index:999;width:100px;height:162px';
+        g.drawImage(sc.img, 190, 174, 100, 81, 0, 0, 100, 81); g.drawImage(sc.plate, 190, 174, 100, 81, 0, 81, 100, 81); document.body.appendChild(c); }""")
+    png = fz.locator("#plateTest").screenshot(); fz.evaluate("document.getElementById('plateTest').remove()")
+    counts = fz.evaluate("""async src => { const im = new Image(); im.src = src; await im.decode();
+        const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = im.width; c.height = im.height; g.drawImage(im, 0, 0);
+        const d = g.getImageData(0, 0, c.width, c.height).data, out = [0, 0];
+        for (let i = 0; i < d.length; i += 4) { const r = d[i], gg = d[i + 1], bl = d[i + 2];
+            if ((bl > 140 && r < 100 && gg < 100) || (r > 200 && gg > 150 && bl < 120)) out[(i / 4 / c.width) < c.height / 2 ? 0 : 1]++; }
+        return out; }""", "data:image/png;base64," + base64.b64encode(png).decode())
+    check("the fisherman baked into the photo is gone (shirt and hat colours in his spot: photo vs patched)",
+          counts[0] > 800 and counts[1] < counts[0] * .02, str(counts))
+    fz.close()
+
+    rmf = b.new_page(viewport={"width": 360, "height": 640}, reduced_motion="reduce")
+    rmf.on("pageerror", lambda e: errs.append(str(e)))
+    rmf.goto(URL); rmf.evaluate("localStorage.clear()"); rmf.reload(); rmf.wait_for_timeout(200); start_new(rmf, "Calm")
+    rmf.evaluate("() => { island = 'harbor'; go('fishing'); }"); rmf.wait_for_timeout(400)
+    still = []
+    for _ in range(6): still.append(rmf.evaluate("[fisherPose(), Math.round(fisherTip().x), Math.round(fisherTip().y)]")); rmf.wait_for_timeout(300)
+    rmf.evaluate("() => { F = { phase: 'waiting', castAt: performance.now() - 2000 }; }"); rmf.wait_for_timeout(100)
+    wait_still = []
+    for _ in range(4): wait_still.append(rmf.evaluate("[fisherPose(), Math.round(fisherTip().x), Math.round(fisherTip().y)]")); rmf.wait_for_timeout(250)
+    rmf.evaluate("() => stopFishing()")
+    check("prefers-reduced-motion: one still fisherman pose per phase",
+          len({tuple(x) for x in still}) == 1 and still[0][0] == "idle" and len({tuple(x) for x in wait_still}) == 1 and wait_still[0][0] == "waiting",
+          f"{still[0]} {wait_still[0]}")
+    rmf.close()
 
     # ---------- full-screen Title art ----------
     TITLE = """(() => { const img = document.querySelector('#titleScreen .title-bg'), r = img.getBoundingClientRect(), cs = getComputedStyle(img);

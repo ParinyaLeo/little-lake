@@ -9,10 +9,18 @@ let ROD_TIP = { x: .36, y: .25 }; const BOB = { x: .58, y: .66 };
    (1 art pixel = PX screen pixels). The painted background is drawn once and cached; only the light
    effects (fx) are drawn every frame, so phones stay smooth.
    To use a picture instead of a painter later:  frost: { image: "assets/frost.jpg", rod: { x: .3, y: .3 } }
-   (rod = where the rod tip is in the picture, as 0-1 fractions of width and height). */
+   (rod = where the rod tip is in the picture, as 0-1 fractions of width and height).
+   A picture can also have a fisher config (js/fisherman.js): the figure baked into the photo is patched out
+   (patch / rodClear, in photo pixels) and an animated one is drawn at x, y (top-left of his 28x36 art grid)
+   with scale photo pixels per art pixel. Then the line starts at his drawn rod tip instead of rod. */
 const PX = 3;
 const SCENES = {
-  harbor: { image: "assets/harbor.jpg", rod: { x: .34, y: .31 } },
+  harbor: { image: "assets/harbor.jpg", rod: { x: .34, y: .31 },
+    fisher: { x: 194, y: 182, scale: 3.6,
+      rodClear: [386, 132, 262, 268, 24, 26, 120],   // old rod + line: from (x0,y0) to (x1,y1), band left/right width, copied from dx
+      patch: [[192, 174, 98, 84, 100, 0], [227, 258, 63, 26, 115, 0],                                  // water behind him
+        [200, 254, 6, 24, -10, 0], [206, 254, 6, 24, -16, 0], [212, 254, 6, 24, -22, 0], [218, 254, 6, 24, -28, 0], [224, 254, 4, 24, -34, 0],   // chest lid
+        [228, 284, 61, 30, -112, -15]] } },                                                            // dock under his legs
   frost:  { paint: paintFrost,  fx: fxSnow },
   desert: { paint: paintDesert, fx: fxHeat },
   forest: { paint: paintForest, fx: fxWaterfall },
@@ -22,6 +30,7 @@ const DEFAULT_ROD = { x: .36, y: .25 };
 for (const k in SCENES) if (SCENES[k].image) { SCENES[k].img = new Image(); SCENES[k].img.src = SCENES[k].image; }
 const REDUCED = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)") : null;
 let sceneBg = null;   // cached painted background: { key, canvas, info }
+const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1 };   // reused every frame (no allocations)
 
 function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = SCENES[island].rod || DEFAULT_ROD; }
 window.addEventListener("resize", () => current === "fishing" && fitCanvas());
@@ -246,8 +255,15 @@ function drawScene(t) {
       const ir = sc.img.naturalWidth / sc.img.naturalHeight, cr = W / H;
       let sw = sc.img.naturalWidth, sh = sc.img.naturalHeight;
       if (ir > cr) sw = sh * cr; else sh = sw / cr;
-      ctx.drawImage(sc.img, 0, 0, sw, sh, 0, 0, W, H);
-      ROD_TIP = { x: sc.rod.x * sc.img.naturalWidth / sw, y: sc.rod.y * sc.img.naturalHeight / sh };
+      const k = W / sw, fc = sc.fisher;
+      if (fc && !sc.plate) sc.plate = cleanPlate(sc.img, fc);                      // photo without the baked-in fisherman
+      ctx.drawImage(sc.plate || sc.img, 0, 0, sw, sh, 0, 0, W, H);
+      ROD_TIP = TIP;
+      if (fc) {
+        FCFG.x = fc.x * k; FCFG.y = fc.y * k; FCFG.p = fc.scale * k;
+        drawFisherman(ctx, FCFG, fisherPoseFor(F.phase, t), t, still);
+        TIP.x = FISHER.tipX / W; TIP.y = FISHER.tipY / H;                           // the line starts at the drawn rod tip
+      } else { TIP.x = sc.rod.x * sc.img.naturalWidth / sw; TIP.y = sc.rod.y * sc.img.naturalHeight / sh; }
     }
     if (sc.fx) sc.fx(ctx, W, H, ft, sc.info || {}, null);
   } else {
@@ -259,13 +275,18 @@ function drawScene(t) {
   // line + bobber
   if (F.phase !== "idle") {
     let bx = W * BOB.x, by = H * BOB.y;
-    if (F.phase === "casting") { const k = Math.min(1, (t - F.castAt) / 500); bx = W * (ROD_TIP.x + (BOB.x - ROD_TIP.x) * k); by = H * (ROD_TIP.y + (BOB.y - ROD_TIP.y) * k) - Math.sin(k * Math.PI) * H * .25; }
+    if (F.phase === "casting") {
+      let k = Math.min(1, (t - F.castAt) / 500);
+      if (sc.fisher) k = Math.max(0, (k - .4) / .6);                                      // the bobber flies after his wind-up
+      bx = W * (ROD_TIP.x + (BOB.x - ROD_TIP.x) * k); by = H * (ROD_TIP.y + (BOB.y - ROD_TIP.y) * k) - Math.sin(k * Math.PI) * H * .25; }
     else if (F.phase === "waiting") by += Math.sin(t / 300) * 3;
     else if (F.phase === "bite") by += 8 + Math.sin(t / 40) * 5;
     else if (F.phase === "reeling") by += Math.sin(t / 60) * 6;
     const since = t - F.castAt - 500;                                                         // ms since the bobber landed
     ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(W * ROD_TIP.x, H * ROD_TIP.y); ctx.quadraticCurveTo(W * .45, H * .45, bx, by); ctx.stroke();
+    const tx = W * ROD_TIP.x, ty = H * ROD_TIP.y;                                          // a drawn rod moves, so the line sags between tip and bobber
+    const qx = sc.fisher ? (tx + bx) / 2 : W * .45, qy = sc.fisher ? (ty + by) / 2 + (F.phase === "reeling" ? 0 : H * .06) : H * .45;
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.quadraticCurveTo(qx, qy, bx, by); ctx.stroke();
     if (F.phase === "waiting" && since > 0) {                                                // soft rings while waiting
       ctx.lineWidth = 2;
       for (let j = 0; j < 2; j++) {
@@ -432,16 +453,18 @@ function updateDots() {
 function reel() {
   const inside = F.pos >= F.zoneX && F.pos <= F.zoneX + F.zoneW;
   if (inside) { F.hits++; sfx.hit(); vibrate(40); } else { F.misses++; sfx.miss(); vibrate([30, 30, 30]); }
+  fisherTug(inside);                                  // fisherman: strong tug on a hit, slack wobble on a miss
   updateDots();
-  if (F.hits >= 3) return caught();
+  if (F.hits >= 3) return caught(true);
   if (F.misses > allowedMiss()) return escape("Too many misses. The fish escaped!");
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
   sfx.fail(); vibrate(300); $("meter").style.visibility = "hidden"; $("bang").style.display = "none";
-  clearTimers(); F = { phase: "idle" }; renderFishingHud(); $("fMsg").textContent = text; toast(text);
+  clearTimers(); F = { phase: "idle" }; fisherEvent("escaped"); renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
-function caught() {
+// reeled = caught on the fishing screen: the fisherman lifts the rod for a moment before the Result screen
+function caught(reeled) {
   const f = F.fish; clearTimers(); F = { phase: "idle" }; $("meter").style.visibility = "hidden";
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);
@@ -454,9 +477,13 @@ function caught() {
   if (f.rarity === "Mythical") S.mythical = true;
   save();
   sfx.catch(); vibrate([60, 40, 120]); confetti();
-  go("result");
-  if (f.rarity === "Mythical") setTimeout(() => banner("You caught the Lake Guardian!", "You completed Little Lake. A trophy has been added to your Home screen."), 600);
-  else setTimeout(checkMastery, 400);
+  const wait = reeled && current === "fishing" ? FISHER_HOLD.caught : 0;
+  if (wait) {
+    fisherEvent("caught"); $("actBtn").disabled = true; $("fMsg").textContent = "Got it!";   // no new cast during the celebration
+    setTimeout(() => { if (current === "fishing") go("result"); }, wait);
+  } else go("result");
+  if (f.rarity === "Mythical") setTimeout(() => banner("You caught the Lake Guardian!", "You completed Little Lake. A trophy has been added to your Home screen."), 600 + wait);
+  else setTimeout(checkMastery, 400 + wait);
 }
 function renderResult() {
   const p = S.pending; if (!p) return;

@@ -22,6 +22,8 @@ js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fis
 js/state.js       Save/load (S, load, save), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
                   rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
+js/fisherman.js   Animated Harbor fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, poses,
+                  drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip() for tests
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
 js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens;
@@ -34,9 +36,9 @@ docs/bug_log.md   Playtest bugs: problem, cause, fix and the test that covers ea
 
 ### Script load order matters
 
-`data.js` → `state.js` → `fishing.js` → `screens.js`. The scripts are classic scripts, so their top-level
+`data.js` → `state.js` → `fisherman.js` → `fishing.js` → `screens.js`. The scripts are classic scripts, so their top-level
 `const`/`let`/`function` declarations share one global scope. Later files use names from earlier ones,
-and the tests read globals such as `S`, `F`, `save()`, `render()`, `secretOpen()` and `allowedMiss()`.
+and the tests read globals such as `S`, `F`, `save()`, `render()`, `secretOpen()`, `allowedMiss()`, `fisherPose()` and `fisherTip()`.
 Keep those names global. Don't wrap the files in IIFEs or modules.
 
 ## Game rules
@@ -82,7 +84,8 @@ The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It
    (0.7 + 0.3 × weight / mid-weight), ×1.2 with the Harbor reward. Heavier than your best = **NEW RECORD**.
 6. Every catch is added to the Collection Book and saved as `S.pending` until the player decides, so a reload
    can't lose it (CONTINUE returns to it, and `go()` only allows the Result, Bag and Title screens meanwhile).
-   On the Result screen, **KEEP** puts the fish in the bag ("+1 Name added to bag"); **RELEASE** throws it back.
+   A catch reeled in on the fishing screen first shows the fisherman celebrating for 700 ms (`FISHER_HOLD.caught`,
+   CAST disabled), then the Result screen opens. On the Result screen, **KEEP** puts the fish in the bag ("+1 Name added to bag"); **RELEASE** throws it back.
    If the bag is full, KEEP is replaced by **SELL A FISH** (sells the cheapest fish, keeps the new one),
    **OPEN BAG** (BACK returns to the catch) or **RELEASE**. A fish is never dropped silently.
 
@@ -157,6 +160,14 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   Only the light effects (snow, heat shimmer, waterfall, stars, water glints) are redrawn each frame.
   To swap a painted island for a picture: `frost: { image: "assets/frost.jpg", rod: { x: .3, y: .3 } }`, where
   `rod` is the rod-tip position in the picture as 0-1 fractions.
+- **Harbor fisherman** (`js/fisherman.js`, `SCENES.harbor.fisher`): the man baked into `harbor.jpg` is hidden by
+  `cleanPlate()`, which copies water, chest and dock pixels from beside him (`patch` rects and the `rodClear` band, in
+  photo pixels) into an offscreen canvas built once. A new 28x36 pixel-art fisherman is drawn at `x, y` with `scale`
+  photo pixels per art pixel. Body frames are cached canvases; the rod is a curve of art-pixel blocks drawn each frame,
+  and the line starts at its drawn tip (`ROD_TIP` is updated from it). Poses: idle (breathing), casting (wind-up, swing),
+  waiting (head tilt, tip dips with the bobber), bite (startled), reeling (rod bent; `fisherTug()` = tug on a hit,
+  slack wobble on a miss), caught (700 ms) and escaped (1.4 s). With reduced motion each pose is one still frame.
+  A scene without `fisher` draws no figure. Don't allocate objects per frame in this code.
 - **Fish drawings** (`drawFish` in `js/state.js`, 24x16 grid): `fishShape(f)` picks slim / regular / flat / round /
   long / eel / ray from the fish's `len` and `h` (named exceptions in `FISH_SHAPES`). Rare and better fish get glints;
   Legendary and Mythical get sparkles. Keep the 24x16 size: it scales to exactly 8x (Result), 4x (Collection), 3x (Bag).
