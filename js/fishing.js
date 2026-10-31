@@ -8,8 +8,10 @@ let ROD_TIP = { x: .36, y: .25 }; const BOB = { x: .58, y: .66 };
    Each island is either a picture file (image) or a painter that draws pixel art onto a small canvas
    (1 art pixel = PX screen pixels). The painted background is drawn once and cached; only the light
    effects (fx) are drawn every frame, so phones stay smooth.
-   To use a picture instead of a painter later:  frost: { image: "assets/frost.jpg", rod: { x: .3, y: .3 } }
-   (rod = where the rod tip is in the picture, as 0-1 fractions of width and height).
+   A picture scene: image (file), anchor ([x, y] 0-1: which part stays in view when the picture is cropped to the
+   canvas; default [0, 0] = top-left), and rod (where the rod tip is in the picture, as 0-1 fractions) or fisher.
+   Pictures load after the Title screen appears (preloadScenes). Until one is ready, or if it fails to load, an
+   island with a painter shows its painted scene instead. To swap in an artist's picture, change image (and fisher).
    A picture can also have a fisher config (js/fisherman.js): the figure baked into the photo is patched out
    (patch / rodClear, in photo pixels) and an animated one is drawn at x, y (top-left of his 28x36 art grid)
    with scale photo pixels per art pixel. Then the line starts at his drawn rod tip instead of rod. */
@@ -21,16 +23,27 @@ const SCENES = {
       patch: [[192, 174, 98, 84, 100, 0], [227, 258, 63, 26, 115, 0],                                  // water behind him
         [200, 254, 6, 24, -10, 0], [206, 254, 6, 24, -16, 0], [212, 254, 6, 24, -22, 0], [218, 254, 6, 24, -28, 0], [224, 254, 4, 24, -34, 0],   // chest lid
         [228, 284, 61, 30, -112, -15]] } },                                                            // dock under his legs
-  frost:  { paint: paintFrost,  fx: fxSnow },
-  desert: { paint: paintDesert, fx: fxHeat },
-  forest: { paint: paintForest, fx: fxWaterfall },
-  secret: { paint: paintSecret, fx: fxStars },
+  // painted by tools/make_backgrounds.py (1920x800, 4 image pixels per art pixel); the fisherman sits on the crate on the dock
+  frost:  { image: "assets/frost.png",  anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, picFx: fxSnow, paint: paintFrost,  fx: fxSnow },
+  desert: { image: "assets/desert.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, paint: paintDesert, fx: fxHeat },
+  forest: { image: "assets/forest.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, paint: paintForest, fx: fxWaterfall },
+  secret: { image: "assets/secret.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, paint: paintSecret, fx: fxStars },
 };
-const DEFAULT_ROD = { x: .36, y: .25 };
-for (const k in SCENES) if (SCENES[k].image) { SCENES[k].img = new Image(); SCENES[k].img.src = SCENES[k].image; }
+const DEFAULT_ROD = { x: .36, y: .25 }, NO_ANCHOR = [0, 0];
+// start loading every picture (once); sc.img is only set when the picture is ready, sc.failed if it can't load
+function preloadScenes() {
+  for (const k in SCENES) {
+    const sc = SCENES[k]; if (!sc.image || sc.loading) continue;
+    const im = new Image(); sc.loading = true;
+    im.onload = () => { if (im.naturalWidth) sc.img = im; else sc.failed = true; };
+    im.onerror = () => { sc.failed = true; };       // keep the painted scene
+    im.src = sc.image;
+  }
+}
 const REDUCED = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)") : null;
 let sceneBg = null;   // cached painted background: { key, canvas, info }
 const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1 };   // reused every frame (no allocations)
+const CROP = { sx: 0, sy: 0, sw: 1, sh: 1 };              // part of the picture shown on the canvas (image pixels)
 
 function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = SCENES[island].rod || DEFAULT_ROD; }
 window.addEventListener("resize", () => current === "fishing" && fitCanvas());
@@ -249,24 +262,27 @@ function splash(bx, by, k, W) {
 function drawScene(t) {
   const W = cv.width, H = cv.height, sc = SCENES[island], still = !!(REDUCED && REDUCED.matches), ft = still ? 0 : t;
   ctx.imageSmoothingEnabled = false;
-  if (sc.img) {
+  if (sc.img || !sc.paint) {
     ctx.fillStyle = "#7fd0f5"; ctx.fillRect(0, 0, W, H);
-    if (sc.img.complete && sc.img.naturalWidth) {
-      const ir = sc.img.naturalWidth / sc.img.naturalHeight, cr = W / H;
-      let sw = sc.img.naturalWidth, sh = sc.img.naturalHeight;
-      if (ir > cr) sw = sh * cr; else sh = sw / cr;
-      const k = W / sw, fc = sc.fisher;
-      if (fc && !sc.plate) sc.plate = cleanPlate(sc.img, fc);                      // photo without the baked-in fisherman
-      ctx.drawImage(sc.plate || sc.img, 0, 0, sw, sh, 0, 0, W, H);
+    const img = sc.img;
+    if (img) {
+      const nw = img.naturalWidth, nh = img.naturalHeight, ir = nw / nh, cr = W / H, an = sc.anchor || NO_ANCHOR;
+      let sw = nw, sh = nh;
+      if (ir > cr) sw = sh * cr; else sh = sw / cr;                                  // cover: crop the sides or the top/bottom
+      const sx = (nw - sw) * an[0], sy = (nh - sh) * an[1], k = W / sw, fc = sc.fisher;
+      CROP.sx = sx; CROP.sy = sy; CROP.sw = sw; CROP.sh = sh;
+      if (fc && (fc.patch || fc.rodClear) && !sc.plate) sc.plate = cleanPlate(img, fc);   // photo without the baked-in fisherman
+      ctx.drawImage(sc.plate || img, sx, sy, sw, sh, 0, 0, W, H);
       ROD_TIP = TIP;
       if (fc) {
-        FCFG.x = fc.x * k; FCFG.y = fc.y * k; FCFG.p = fc.scale * k;
+        FCFG.x = (fc.x - sx) * k; FCFG.y = (fc.y - sy) * k; FCFG.p = fc.scale * k;
         drawFisherman(ctx, FCFG, fisherPoseFor(F.phase, t), t, still);
         TIP.x = FISHER.tipX / W; TIP.y = FISHER.tipY / H;                           // the line starts at the drawn rod tip
-      } else { TIP.x = sc.rod.x * sc.img.naturalWidth / sw; TIP.y = sc.rod.y * sc.img.naturalHeight / sh; }
+      } else { TIP.x = (sc.rod.x * nw - sx) / sw; TIP.y = (sc.rod.y * nh - sy) / sh; }
     }
-    if (sc.fx) sc.fx(ctx, W, H, ft, sc.info || {}, null);
-  } else {
+    if (sc.picFx) sc.picFx(ctx, W, H, ft);
+  } else {                                                                          // painted scene (picture not ready or failed)
+    ROD_TIP = sc.rod || DEFAULT_ROD;
     const bg = sceneBackground(W, H);
     ctx.drawImage(bg.canvas, 0, 0, bg.canvas.width * PX, bg.canvas.height * PX);
     fxWater(ctx, W, H, ft, bg.info);
@@ -338,7 +354,7 @@ function renderFishingHud() {
     $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag." : `${ISLANDS[island].name}: Ready? Cast your line!`;
     $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
-  fitCanvas(); startLoop();
+  preloadScenes(); fitCanvas(); startLoop();
 }
 
 // HUD chips open the "Choose Rod" / "Choose Bait" popup: every item with its effect and odds, pick one = 2 taps.

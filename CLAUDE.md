@@ -29,6 +29,11 @@ js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel 
 js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens;
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image
+assets/frost.png, desert.png, forest.png, secret.png
+                  Island backgrounds painted by tools/make_backgrounds.py (1920x800 = 480x200 art pixels x4)
+tools/make_backgrounds.py
+                  Pillow script (tool only, never loaded by the game) that paints the 4 island PNGs with fixed seeds,
+                  writes tools/water_masks/<island>.png (white = open water, used by the tests) and shots/backgrounds_contact.png
 assets/fonts/     Pixelify Sans (PixelifySans.woff2) + its licence OFL.txt (SIL Open Font License 1.1)
 play_test.py      Playwright end-to-end tests
 docs/bug_log.md   Playtest bugs: problem, cause, fix and the test that covers each one
@@ -155,11 +160,21 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   near the top and the 4 buttons sit at the bottom (2x2 on phones) over a dark gradient (`.title-shade`). The only
   effect is `.title-shimmer`, a soft blurred light band. Its fade-in is opacity-only, because a transform on the screen would
   detach the fixed picture. The pixel clouds and water dashes (`.bgfx`) are used only on Home.
-- **Island scenes** (`js/fishing.js`, `SCENES`): Harbor uses `assets/harbor.jpg`; Frost, Desert, Forest and
-  Little Lake are pixel art painted on a small canvas (1 art pixel = 3 screen pixels), cached, and scaled up.
-  Only the light effects (snow, heat shimmer, waterfall, stars, water glints) are redrawn each frame.
-  To swap a painted island for a picture: `frost: { image: "assets/frost.jpg", rod: { x: .3, y: .3 } }`, where
-  `rod` is the rod-tip position in the picture as 0-1 fractions.
+- **Island scenes** (`js/fishing.js`, `SCENES`): every island is a picture: Harbor uses `assets/harbor.jpg`, the
+  others `assets/<island>.png` from `tools/make_backgrounds.py` (run `pip install pillow`, then
+  `python tools/make_backgrounds.py`; same output every run). Pictures are cover-cropped to the canvas; `anchor: [x, y]`
+  (0-1) picks which part stays in view (new islands use `[0, .8]` so the dock in the lower-left is never cut off on wide
+  screens; Harbor has none = top-left). `fisher: { x, y, scale }` (image pixels) places the drawn fisherman on the crate:
+  every PNG has its dock and crate in the same spot, so all four use `{ x: 232, y: 400, scale: 6 }`. The bobber lands at
+  `BOB` (canvas fractions), which is open water in every picture at every screen size. Frost also gets falling snow (`picFx`).
+  `preloadScenes()` starts loading the pictures after the Title screen appears; `sc.img` is set only when a picture is
+  ready. Until then, or if it fails (`sc.failed`), Frost, Desert, Forest and Little Lake fall back to their painted
+  scenes (pixel art painted on a small canvas, 1 art pixel = 3 screen pixels, cached; only snow, heat shimmer,
+  waterfall, stars and water glints are redrawn each frame). To use an artist's picture later, replace the PNG (same
+  name) and adjust `anchor` and `fisher`; `CROP` holds the part of the picture currently shown.
+- **Town Map cards:** `.bg-<island>` = a soft dark shade (so the name stays readable), the island picture
+  (`cover`, positioned on its best part), then the old gradient as a fallback if the picture can't load. The secret
+  card shows `secret.png` only when unlocked (`.bg-secret:not(.locked)`); the locked "???" card keeps its gradient.
 - **Harbor fisherman** (`js/fisherman.js`, `SCENES.harbor.fisher`): the man baked into `harbor.jpg` is hidden by
   `cleanPlate()`, which copies water, chest and dock pixels from beside him (`patch` rects and the `rodClear` band, in
   photo pixels) into an offscreen canvas built once. A new 28x36 pixel-art fisherman is drawn at `x, y` with `scale`
@@ -189,6 +204,6 @@ python -m playwright install chromium
 python play_test.py
 ```
 
-The script opens `index.html` over `file://` at 1280×800 and 360×780 and prints PASS/FAIL for each check.
+The tests don't need Pillow; only `tools/make_backgrounds.py` does. The script opens `index.html` over `file://` at 1280×800 and 360×780 and prints PASS/FAIL for each check.
 It writes screenshots to `shots/` and a summary to `results.json` (both are git-ignored).
 All checks must pass before committing.

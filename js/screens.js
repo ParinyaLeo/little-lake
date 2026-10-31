@@ -224,3 +224,4 @@ $("dFill").onclick = () => { while (!bagFull()) { const f = FISH[Math.floor(Math
 $("dReset").onclick = () => { localStorage.removeItem(SAVE_KEY); S = load(); render(); toast("Save reset"); };
 
 render();
+setTimeout(preloadScenes, 0);   // island pictures load after the Title screen is up

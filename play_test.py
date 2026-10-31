@@ -255,6 +255,9 @@ with sync_playwright() as p:
 
     # ---------- scene art + fish drawings (display only) ----------
     t.evaluate("() => { ['harbor','frost','desert','forest'].forEach(i => S.mastery[i] = true); }")
+    # the painted scenes are the fallback when a picture can't load: hide the pictures to check the painters
+    t.wait_for_function("Object.values(SCENES).every(s => s.img || s.failed)", timeout=8000)
+    t.evaluate("() => { for (const k in SCENES) if (SCENES[k].paint) { SCENES[k].saved = SCENES[k].img; SCENES[k].img = null; } }")
     looks = {}
     for isl in ["frost", "desert", "forest", "secret"]:
         t.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); t.wait_for_timeout(400)
@@ -268,6 +271,7 @@ with sync_playwright() as p:
           all(v[0] >= 25 for v in looks.values()) and all(sum(abs(a - b) for a, b in zip(avg[i], avg[j])) > 40 for i in range(4) for j in range(i + 1, 4)), str(looks))
     t.click("#actBtn"); t.wait_for_timeout(700)
     check("casting on a painted island still works", t.evaluate("F.phase") == "waiting")
+    t.evaluate("() => { stopFishing(); for (const k in SCENES) if (SCENES[k].paint) SCENES[k].img = SCENES[k].saved; }")
     shapes = t.evaluate("[...new Set(FISH.map(fishShape))].sort()")
     check("fish come in several body shapes", all(s in shapes for s in ["eel", "flat", "long", "round", "slim"]), str(shapes))
     t.evaluate("() => { F = { phase: 'idle', fish: fishById('forest_9') }; caught(); }"); t.wait_for_timeout(100)
@@ -744,6 +748,76 @@ with sync_playwright() as p:
           len({tuple(x) for x in still}) == 1 and still[0][0] == "idle" and len({tuple(x) for x in wait_still}) == 1 and wait_still[0][0] == "waiting",
           f"{still[0]} {wait_still[0]}")
     rmf.close()
+
+    # ---------- island pictures (tools/make_backgrounds.py) on the fishing screen and the Town Map ----------
+    PICS = ["frost", "desert", "forest", "secret"]
+    MASKS = {i: "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "tools" / "water_masks" / f"{i}.png").read_bytes()).decode() for i in PICS}
+    ON_WATER = """async ([src, x, y]) => { const im = new Image(); im.src = src; await im.decode();     // water mask: 1 art pixel = 4 image pixels
+        const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = im.width; c.height = im.height; g.drawImage(im, 0, 0);
+        const ax = Math.floor(x / 4), ay = Math.floor(y / 4), d = g.getImageData(ax - 3, ay - 2, 7, 5).data;
+        for (let i = 0; i < d.length; i += 4) if (d[i] < 128) return false; return true; }"""
+    UNLOCK = "() => { ['harbor','frost','desert','forest'].forEach(i => S.mastery[i] = true); save(); }"
+    ip = b.new_page(viewport={"width": 1366, "height": 768})
+    ip.on("pageerror", lambda e: errs.append(str(e))); ip.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    ip.goto(URL); ip.evaluate("localStorage.clear()"); ip.reload(); ip.wait_for_timeout(200); start_new(ip, "Islands")
+    ip.add_style_tag(content="#toast { display: none !important; }")
+    ip.wait_for_function("Object.values(SCENES).every(s => s.img || s.failed)", timeout=8000)
+    sizes = ip.evaluate("Object.fromEntries(Object.entries(SCENES).map(([k, s]) => [k, s.img ? [s.img.naturalWidth, s.img.naturalHeight] : null]))")
+    check("every island picture loads after the Title screen (naturalWidth > 0)",
+          all(sizes[k] and sizes[k][0] > 0 for k in sizes) and all(sizes[k] == [1920, 800] for k in PICS), str(sizes))
+    pngs = {i: (Path(__file__).parent / "assets" / f"{i}.png").stat().st_size for i in PICS}
+    check("island PNGs are under 400 KB", all(v < 400 * 1024 for v in pngs.values()), str(pngs))
+    ip.evaluate(UNLOCK); ip.evaluate(SPY)
+    for isl in ["harbor"] + PICS:
+        ip.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); ip.wait_for_timeout(300)
+        seen = {}
+        def at(label):
+            seen[label] = ip.evaluate(STATE)
+        at("idle"); ip.click("#actBtn"); at("casting")
+        ip.wait_for_function("F.phase === 'waiting'"); ip.wait_for_timeout(150); at("waiting")
+        bob = ip.evaluate("[CROP.sx + F.bobPos.x * CROP.sw, CROP.sy + F.bobPos.y * CROP.sh, SCENES[island].img === null || !!SCENES[island].img]")
+        ip.screenshot(path=str(SHOTS / f"43_island_{isl}.png"))
+        ip.wait_for_function("F.phase === 'bite'", timeout=8000); at("bite")
+        ip.click("#actBtn"); ip.wait_for_timeout(100); at("reeling")
+        while ip.evaluate("F.phase") == "reeling":
+            ip.wait_for_function("F.phase !== 'reeling' || (F.pos < F.zoneX - 0.05 || F.pos > F.zoneX + F.zoneW + 0.05)", timeout=8000, polling=5)
+            if ip.evaluate("F.phase") == "reeling": ip.click("#actBtn"); ip.wait_for_timeout(30)
+        at("escaped")
+        poses = {k: v["pose"] for k, v in seen.items()}
+        check(f"{isl}: fisherman pose follows the phase", all(poses[k] == k for k in poses), str(poses))
+        gaps = {k: v["gap"] for k, v in seen.items() if v["phase"] != "idle"}
+        check(f"{isl}: the line starts at the rod tip in every phase (<= 2px)", len(gaps) == 4 and all(g is not None and g <= 2 for g in gaps.values()),
+              str({k: None if g is None else round(g, 2) for k, g in gaps.items()}))
+        tops = [v["top"] for v in seen.values()]
+        check(f"{isl}: CAST button stays put in every phase", max(tops) - min(tops) <= 1, str([round(t, 1) for t in tops]))
+        if isl in PICS:
+            check(f"{isl}: the bobber lands on water", ip.evaluate(ON_WATER, [MASKS[isl], bob[0], bob[1]]), f"image px {bob[0]:.0f},{bob[1]:.0f}")
+        ip.wait_for_timeout(1500)
+    for vw, vh in [(1366, 768), (360, 640)]:
+        ip.set_viewport_size({"width": vw, "height": vh}); ip.evaluate("() => go('map')"); ip.wait_for_timeout(300)
+        cards = ip.evaluate("""() => Object.fromEntries(['frost','desert','forest','secret'].map(i => { const c = document.querySelector('.island.bg-' + i), r = c.getBoundingClientRect();
+            return [i, [getComputedStyle(c).backgroundImage.includes(`assets/${i}.png`), r.width > 0 && r.right <= innerWidth]]; }))""")
+        check(f"{vw}x{vh}: Town Map cards show the island pictures, no side scroll", all(all(v) for v in cards.values()) and no_side_scroll(ip, vw), str(cards))
+        ip.screenshot(path=str(SHOTS / f"44_map_{vw}x{vh}.png"), full_page=True)
+    ip.evaluate("() => { S.mastery = {}; save(); render(); }"); ip.wait_for_timeout(100)
+    locked = ip.evaluate("(() => { const c = document.querySelector('.island.bg-secret'); return [c.classList.contains('locked'), getComputedStyle(c).backgroundImage.includes('secret.png'), c.textContent]; })()")
+    check("locked secret card stays '???' without the picture", locked[0] and not locked[1] and "???" in locked[2], str(locked))
+    ip.close()
+
+    # a picture that can't load: the island keeps its painted scene and gradient card, with no JavaScript errors
+    bc = b.new_context(viewport={"width": 1366, "height": 768}); bp = bc.new_page(); page_errs = []
+    bp.on("pageerror", lambda e: page_errs.append(str(e)))
+    bp.route("**/assets/frost.png", lambda r: r.abort())
+    bp.goto(URL); bp.evaluate("localStorage.clear()"); bp.reload(); bp.wait_for_timeout(200); start_new(bp, "Offline")
+    bp.wait_for_function("SCENES.frost.failed", timeout=5000)
+    bp.evaluate("() => { island = 'frost'; go('fishing'); }"); bp.wait_for_timeout(400)
+    fb = bp.evaluate("[!SCENES.frost.img, !!sceneBg && sceneBg.key.startsWith('frost'), getComputedStyle(document.getElementById('actBtn')).display]")
+    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'"); bp.wait_for_timeout(200)
+    bp.screenshot(path=str(SHOTS / "45_frost_fallback.png")); bp.evaluate("() => stopFishing(); go('map')"); bp.wait_for_timeout(200)
+    grad = bp.evaluate("getComputedStyle(document.querySelector('.island.bg-frost')).backgroundImage.includes('linear-gradient(rgb(207, 233, 255)')")
+    check("a blocked picture falls back to the painted scene and the gradient card, no JavaScript errors",
+          fb[0] and fb[1] and grad and not page_errs, f"{fb} gradient {grad} errors {page_errs[:2]}")
+    bc.close()
 
     # ---------- full-screen Title art ----------
     TITLE = """(() => { const img = document.querySelector('#titleScreen .title-bg'), r = img.getBoundingClientRect(), cs = getComputedStyle(img);

@@ -85,10 +85,18 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
   font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; text-align: left; }
 .island small { font-size: 13px; }
 .bg-harbor { background: url("../assets/harbor.jpg") 20% 40% / cover, #2aa9d8; }
-.bg-frost  { background: linear-gradient(#cfe9ff 0 38%, #e9f6ff 38% 46%, #7fb8e0 46% 100%); }
-.bg-desert { background: linear-gradient(#ffcf7a 0 36%, #e8b45e 36% 52%, #2fb8a8 52% 100%); }
-.bg-forest { background: linear-gradient(#7cc6e8 0 30%, #2f7d3a 30% 52%, #2a8fb0 52% 100%); }
+/* island pictures (tools/make_backgrounds.py) over the old gradient, which still shows if a picture can't load;
+   the top layer is a soft shade so the name and "x / 10 found" stay readable */
+.bg-frost  { background: linear-gradient(rgba(0,0,0,0) 40%, rgba(0,0,0,.55)), url("../assets/frost.png") 55% 42% / cover no-repeat,
+  linear-gradient(#cfe9ff 0 38%, #e9f6ff 38% 46%, #7fb8e0 46% 100%); }
+.bg-desert { background: linear-gradient(rgba(0,0,0,0) 40%, rgba(0,0,0,.55)), url("../assets/desert.png") 90% 42% / cover no-repeat,
+  linear-gradient(#ffcf7a 0 36%, #e8b45e 36% 52%, #2fb8a8 52% 100%); }
+.bg-forest { background: linear-gradient(rgba(0,0,0,0) 40%, rgba(0,0,0,.55)), url("../assets/forest.png") 85% 42% / cover no-repeat,
+  linear-gradient(#7cc6e8 0 30%, #2f7d3a 30% 52%, #2a8fb0 52% 100%); }
 .bg-secret { background: radial-gradient(circle at 70% 25%, #fff6c2 0 6%, transparent 7%), linear-gradient(#1b1440 0 45%, #3b2a7a 45% 52%, #12325e 52% 100%); }
+.bg-secret:not(.locked) { background: linear-gradient(rgba(0,0,0,0) 40%, rgba(0,0,0,.5)), url("../assets/secret.png") 78% 35% / cover no-repeat,
+  radial-gradient(circle at 70% 25%, #fff6c2 0 6%, transparent 7%), linear-gradient(#1b1440 0 45%, #3b2a7a 45% 52%, #12325e 52% 100%); }
+.bg-frost, .bg-desert, .bg-forest, .bg-secret { image-rendering: pixelated; }
 .island.locked { filter: grayscale(1) brightness(.5); cursor: not-allowed; }
 
 /* fishing */
