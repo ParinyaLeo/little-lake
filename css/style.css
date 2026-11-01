@@ -89,7 +89,10 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
   align-items: flex-end; padding: 10px 12px; text-align: right; }
 .island small { font-size: 13px; }
 :root { --card-shade: radial-gradient(ellipse 75% 70% at 100% 100%, rgba(0,0,0,.72), rgba(0,0,0,.4) 55%, rgba(0,0,0,0)); }
-.bg-harbor { background: var(--card-shade), url("../assets/harbor.jpg") 20% 40% / cover, #2aa9d8; }
+/* harbor_clean.jpg = the photo with the baked-in fisherman patched out (tools/make_harbor_clean.py), so the card shows only
+   the place like the others; the original photo stays behind it as the fallback layer */
+.bg-harbor { background: var(--card-shade), url("../assets/harbor_clean.jpg") 20% 40% / cover no-repeat,
+  url("../assets/harbor.jpg") 20% 40% / cover, #2aa9d8; }
 /* island pictures (tools/make_backgrounds.py) over the old gradient, which still shows if a picture can't load */
 .bg-frost  { background: var(--card-shade), url("../assets/frost.png") 55% 42% / cover no-repeat,
   linear-gradient(#cfe9ff 0 38%, #e9f6ff 38% 46%, #7fb8e0 46% 100%); }

@@ -783,8 +783,10 @@ with sync_playwright() as p:
             ip.wait_for_function("F.phase !== 'reeling' || (F.pos < F.zoneX - 0.05 || F.pos > F.zoneX + F.zoneW + 0.05)", timeout=8000, polling=5)
             if ip.evaluate("F.phase") == "reeling": ip.click("#actBtn"); ip.wait_for_timeout(30)
         at("escaped")
+        ip.evaluate("fisherEvent('caught')"); at("caught")                         # the celebration pose, as after a catch
         poses = {k: v["pose"] for k, v in seen.items()}
-        check(f"{isl}: fisherman pose follows the phase", all(poses[k] == k for k in poses), str(poses))
+        check(f"{isl}: fisherman pose follows the phase (all 7 poses)", all(poses[k] == k for k in poses) and len(poses) == 7, str(poses))
+        check(f"{isl}: the fisherman wears the {isl} outfit (BUG-18)", ip.evaluate("[SCENES[island].fisher.outfit, fisherOutfit()]") == [isl, isl])
         gaps = {k: v["gap"] for k, v in seen.items() if v["phase"] != "idle"}
         check(f"{isl}: the line starts at the rod tip in every phase (<= 2px)", len(gaps) == 4 and all(g is not None and g <= 2 for g in gaps.values()),
               str({k: None if g is None else round(g, 2) for k, g in gaps.items()}))
@@ -795,14 +797,89 @@ with sync_playwright() as p:
         ip.wait_for_timeout(1500)
     for vw, vh in [(1366, 768), (360, 640)]:
         ip.set_viewport_size({"width": vw, "height": vh}); ip.evaluate("() => go('map')"); ip.wait_for_timeout(300)
-        cards = ip.evaluate("""() => Object.fromEntries(['frost','desert','forest','secret'].map(i => { const c = document.querySelector('.island.bg-' + i), r = c.getBoundingClientRect();
-            return [i, [getComputedStyle(c).backgroundImage.includes(`assets/${i}.png`), r.width > 0 && r.right <= innerWidth]]; }))""")
+        cards = ip.evaluate("""() => Object.fromEntries(['harbor','frost','desert','forest','secret'].map(i => { const c = document.querySelector('.island.bg-' + i), r = c.getBoundingClientRect();
+            return [i, [getComputedStyle(c).backgroundImage.includes(i === 'harbor' ? 'assets/harbor_clean.jpg' : `assets/${i}.png`), r.width > 0 && r.right <= innerWidth]]; }))""")
         check(f"{vw}x{vh}: Town Map cards show the island pictures, no side scroll", all(all(v) for v in cards.values()) and no_side_scroll(ip, vw), str(cards))
         ip.screenshot(path=str(SHOTS / f"44_map_{vw}x{vh}.png"), full_page=True)
     ip.evaluate("() => { S.mastery = {}; save(); render(); }"); ip.wait_for_timeout(100)
     locked = ip.evaluate("(() => { const c = document.querySelector('.island.bg-secret'); return [c.classList.contains('locked'), getComputedStyle(c).backgroundImage.includes('secret.png'), c.textContent]; })()")
     check("locked secret card stays '???' without the picture", locked[0] and not locked[1] and "???" in locked[2], str(locked))
     ip.close()
+
+    # ---------- Harbor card without the baked-in fisherman, island outfits (see docs/bug_log.md BUG-18) ----------
+    ASSET = lambda n: "data:image/jpeg;base64," + base64.b64encode((Path(__file__).parent / "assets" / n).read_bytes()).decode()
+    oc = b.new_page(viewport={"width": 1366, "height": 768})
+    oc.on("pageerror", lambda e: errs.append(str(e))); oc.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    oc.goto(URL); oc.evaluate("localStorage.clear()"); oc.reload(); oc.wait_for_timeout(200); start_new(oc, "Outfits")
+    oc.add_style_tag(content="#toast { display: none !important; }")
+    # the file vs the game's own clean plate, in the spot where the photo's fisherman sits (photo pixels 190..290 x 174..314)
+    cmp = oc.evaluate("""async ([photo, clean]) => {
+        const load = async s => { const im = new Image(); im.src = s; await im.decode(); return im; }, P = await load(photo), C = await load(clean);
+        const px = src => { const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = 100; c.height = 140;
+            g.drawImage(src, 190, 174, 100, 140, 0, 0, 100, 140); return g.getImageData(0, 0, 100, 140).data; };
+        const a = px(P), b = px(cleanPlate(P, SCENES.harbor.fisher)), c = px(C), diff = (x, y) => { let s = 0; for (let i = 0; i < x.length; i += 4)
+            s += Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]); return s / (x.length / 4) / 3; };
+        const figure = d => { let n = 0; for (let i = 0; i < 100 * 81 * 4; i += 4) {   /* his shirt and hat, over the water */ const r = d[i], gg = d[i + 1], bl = d[i + 2];
+            if ((bl > 140 && r < 100 && gg < 100) || (r > 200 && gg > 150 && bl < 120)) n++; } return n; };
+        return { size: [C.naturalWidth, C.naturalHeight], vsPlate: diff(c, b), vsPhoto: diff(c, a), photoFig: figure(a), cleanFig: figure(c) }; }""",
+        [ASSET("harbor.jpg"), ASSET("harbor_clean.jpg")])
+    check("harbor_clean.jpg = the clean plate (same size, matches cleanPlate, differs from the photo where the fisherman sat)",
+          cmp["size"] == [1373, 455] and cmp["vsPlate"] < 4 and cmp["vsPhoto"] > 15 and cmp["cleanFig"] < cmp["photoFig"] * .02 and cmp["photoFig"] > 800,
+          json.dumps({k: (round(v, 1) if isinstance(v, float) else v) for k, v in cmp.items()}))
+    # the card on screen: shirt-blue / straw-hat pixels in his spot (photo 190..290 x 174..255 mapped onto the card, like
+    # background 20% 40% / cover inside the 4px border) with the clean picture vs the same card showing the old photo
+    SPOT = """() => { const c = document.querySelector('.island.bg-harbor'), w = c.clientWidth, h = c.clientHeight, k = Math.max(w / 1373, h / 455);
+        const ox = 4 + (w - 1373 * k) * .2, oy = 4 + (h - 455 * k) * .4;
+        return [Math.round(ox + 190 * k), Math.round(oy + 174 * k), Math.round(100 * k), Math.round(81 * k)]; }"""
+    FIG = """async ([src, r]) => { const im = new Image(); im.src = src; await im.decode();
+        const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = im.width; c.height = im.height; g.drawImage(im, 0, 0);
+        const d = g.getImageData(r[0], r[1], r[2], r[3]).data; let n = 0;
+        for (let i = 0; i < d.length; i += 4) { const r = d[i], gg = d[i + 1], bl = d[i + 2]; if ((bl > 140 && r < 100 && gg < 100) || (r > 200 && gg > 150 && bl < 120)) n++; }
+        return n; }"""
+    for vw, vh in [(1366, 768), (360, 640)]:
+        oc.set_viewport_size({"width": vw, "height": vh}); oc.evaluate("() => go('map')"); oc.wait_for_timeout(300)
+        oc.wait_for_function("(() => { const im = new Image(); im.src = 'assets/harbor_clean.jpg'; return im.complete && im.naturalWidth > 0; })()")
+        card = oc.locator(".island.bg-harbor"); oc.add_style_tag(content=".island.bg-harbor > * { visibility: hidden; }")
+        clean = card.screenshot(path=str(SHOTS / f"51_harbor_card_{vw}.png"))
+        oc.evaluate("document.querySelector('.island.bg-harbor').style.background = 'url(assets/harbor.jpg) 20% 40% / cover'"); oc.wait_for_timeout(100)
+        old = card.screenshot(); oc.evaluate("document.querySelector('.island.bg-harbor').style.background = ''")
+        spot = oc.evaluate(SPOT)
+        n_clean, n_old = (oc.evaluate(FIG, ["data:image/png;base64," + base64.b64encode(x).decode(), spot]) for x in (clean, old))
+        bg = oc.evaluate("getComputedStyle(document.querySelector('.island.bg-harbor')).backgroundImage")
+        check(f"{vw}x{vh}: Harbor map card shows no fisherman (clean picture first, old photo behind it as fallback), no side scroll",
+              n_old > 40 and n_clean < n_old * .05 and bg.index("harbor_clean.jpg") < bg.index("harbor.jpg") and no_side_scroll(oc, vw), f"figure px in his spot {spot}: clean {n_clean} vs photo {n_old}")
+        oc.add_style_tag(content=".island.bg-harbor > * { visibility: visible; }")
+    oc.set_viewport_size({"width": 1366, "height": 768}); oc.evaluate("() => go('titleScreen')"); oc.wait_for_timeout(200)
+    check("Title screen keeps the original harbor.jpg cover art (with the fisherman)",
+          oc.evaluate("document.querySelector('#titleScreen .title-bg').getAttribute('src')") == "assets/harbor.jpg")
+    # every outfit: its own pixels, the same frame size, the same rod tip and hands in every pose
+    out = oc.evaluate("""() => { const names = Object.keys(OUTFITS), poses = ['idle', 'casting', 'waiting', 'bite', 'reeling', 'caught', 'escaped'], res = {};
+        const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = 300; c.height = 300;
+        const hash = d => { let h = 2166136261; for (let i = 0; i < d.length; i++) h = Math.imul(h ^ d[i], 16777619); return (h >>> 0).toString(16); };
+        for (const n of names) {
+            const f = fFrame(0, n); res[n] = { hash: hash(f.getContext('2d').getImageData(0, 0, f.width, f.height).data), size: [f.width, f.height], tips: [], ok: true };
+            for (const p of poses) for (const t of [0, 1000, 2600]) { g.clearRect(0, 0, 300, 300); FISHER.pose = '';
+                try { drawFisherman(g, { x: 60, y: 140, p: 3, outfit: n }, p, t, false); res[n].tips.push(Math.round(FISHER.tipX) + ',' + Math.round(FISHER.tipY)); }
+                catch (e) { res[n].ok = false; } }
+        } return res; }""")
+    check("each island draws a different outfit (5 different pixel hashes)", len({v["hash"] for v in out.values()}) == 5 and set(out) == {"harbor", "frost", "desert", "forest", "secret"},
+          str({k: v["hash"] for k, v in out.items()}))
+    check("every outfit keeps the sprite size and the exact rod tip in all 7 poses",
+          all(v["ok"] and v["size"] == out["harbor"]["size"] and v["tips"] == out["harbor"]["tips"] for v in out.values()), str({k: v["tips"][:3] for k, v in out.items()}))
+    # contact sheet: every outfit (rows) in every pose (columns) over its own island picture
+    oc.set_viewport_size({"width": 1600, "height": 900})
+    oc.wait_for_function("Object.values(SCENES).every(s => s.img || s.failed)", timeout=8000)
+    oc.evaluate("""() => { const sc = SCENES.harbor; if (!sc.plate) sc.plate = cleanPlate(sc.img, sc.fisher);
+        const isl = ['harbor', 'frost', 'desert', 'forest', 'secret'], poses = ['idle', 'casting', 'waiting', 'bite', 'reeling', 'caught', 'escaped'];
+        const p = 3, AW = 72, AH = 58, cw = AW * p, ch = AH * p, c = document.createElement('canvas'), g = c.getContext('2d');
+        c.id = 'outfitSheet'; c.width = cw * poses.length; c.height = ch * isl.length; c.style.cssText = 'position:fixed;left:0;top:0;z-index:9999'; g.imageSmoothingEnabled = false;
+        isl.forEach((k, r) => poses.forEach((ps, col) => { const s = SCENES[k], fc = s.fisher, k2 = fc.scale;
+            g.save(); g.beginPath(); g.rect(col * cw, r * ch, cw, ch); g.clip();
+            g.drawImage(s.plate || s.img, fc.x - 8 * k2, fc.y - 18 * k2, AW * k2, AH * k2, col * cw, r * ch, cw, ch);
+            FISHER.pose = ''; drawFisherman(g, { x: col * cw + 8 * p, y: r * ch + 18 * p, p, outfit: k }, ps, 1000, true); g.restore(); }));
+        document.body.appendChild(c); }""")
+    oc.locator("#outfitSheet").screenshot(path=str(SHOTS / "outfits_contact.png"))
+    oc.close()
 
     # a picture that can't load: the island keeps its painted scene and gradient card, with no JavaScript errors
     bc = b.new_context(viewport={"width": 1366, "height": 768}); bp = bc.new_page(); page_errs = []

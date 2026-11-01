@@ -22,19 +22,24 @@ js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fis
 js/state.js       Save/load (S, load, cleanSave, save), save codes (exportCode, readCode), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
                   rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
-js/fisherman.js   Animated Harbor fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, poses,
-                  drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip() for tests
+js/fisherman.js   Animated fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, OUTFITS (one per island), poses,
+                  drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip()/fisherOutfit() for tests
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
 js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens,
                   Export / Import Save popups;
                   calls render() last to start the game
-assets/harbor.jpg Harbor background image
+assets/harbor.jpg Harbor background image (Title cover art, fishing scene under cleanPlate())
+assets/harbor_clean.jpg
+                  harbor.jpg with the baked-in fisherman patched out (Town Map card), written by tools/make_harbor_clean.py
 assets/frost.png, desert.png, forest.png, secret.png
                   Island backgrounds painted by tools/make_backgrounds.py (1920x800 = 480x200 art pixels x4)
 tools/make_backgrounds.py
                   Pillow script (tool only, never loaded by the game) that paints the 4 island PNGs with fixed seeds,
                   writes tools/water_masks/<island>.png (white = open water, used by the tests) and shots/backgrounds_contact.png
+tools/make_harbor_clean.py
+                  Playwright script (tool only) that runs the game's cleanPlate() on harbor.jpg in headless Chromium and saves
+                  assets/harbor_clean.jpg; run it again if SCENES.harbor.fisher.patch / rodClear change
 assets/fonts/     Pixelify Sans (PixelifySans.woff2) + its licence OFL.txt (SIL Open Font License 1.1)
 play_test.py      Playwright end-to-end tests
 docs/bug_log.md   Playtest bugs: problem, cause, fix and the test that covers each one
@@ -188,11 +193,13 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   scenes (pixel art painted on a small canvas, 1 art pixel = 3 screen pixels, cached; only snow, heat shimmer,
   waterfall, stars and water glints are redrawn each frame). To use an artist's picture later, replace the PNG (same
   name) and adjust `anchor` and `fisher`; `CROP` holds the part of the picture currently shown.
-- **Town Map cards:** name and "x / 10 found" sit bottom-right (clear of the fisherman in the lower-left of the Harbor picture).
+- **Town Map cards:** every card shows only the place (no figure). Harbor uses `assets/harbor_clean.jpg` (the photo after
+  `cleanPlate()`, made by `tools/make_harbor_clean.py`) with `harbor.jpg` behind it as the fallback layer; the Title screen keeps
+  `harbor.jpg` with its fisherman as cover art. Name and "x / 10 found" sit bottom-right.
   `.bg-<island>` = `--card-shade` (dark radial shade in the bottom-right corner, so the name stays readable), the island picture
   (`cover`, positioned on its best part), then the old gradient as a fallback if the picture can't load. The secret
   card shows `secret.png` only when unlocked (`.bg-secret:not(.locked)`); the locked "???" card keeps its gradient.
-- **Harbor fisherman** (`js/fisherman.js`, `SCENES.harbor.fisher`): the man baked into `harbor.jpg` is hidden by
+- **Fisherman** (`js/fisherman.js`, `SCENES.<island>.fisher`; on Harbor): the man baked into `harbor.jpg` is hidden by
   `cleanPlate()`, which copies water, chest and dock pixels from beside him (`patch` rects and the `rodClear` band, in
   photo pixels) into an offscreen canvas built once. A new 28x36 pixel-art fisherman is drawn at `x, y` with `scale`
   photo pixels per art pixel. Body frames are cached canvases; the rod is a curve of art-pixel blocks drawn each frame,
@@ -200,6 +207,13 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   waiting (head tilt, tip dips with the bobber), bite (startled), reeling (rod bent; `fisherTug()` = tug on a hit,
   slack wobble on a miss), caught (700 ms) and escaped (1.4 s). With reduced motion each pose is one still frame.
   A scene without `fisher` draws no figure. Don't allocate objects per frame in this code.
+- **Fisherman outfits** (`OUTFITS` in `js/fisherman.js`, picked by `SCENES[island].fisher.outfit`, passed in `cfg.outfit`): each has its
+  own palette, head/body/legs maps and arm colours (`arm` = sleeve, sleeve highlight, forearm, hand, hand shade as palette letters;
+  optional `front` = a small map drawn over the arm, e.g. the Little Lake lantern). Maps must keep the grids (head 22x15, body
+  18x16, legs 28x11) so the size, hands and rod tip match in every pose; frames are cached per outfit. Harbor: straw hat, blue
+  shirt. Frost: red parka, fur hood, yellow scarf/mittens, white boots. Desert: wide sun hat, sleeveless shirt, khaki shorts,
+  sandals. Forest: green explorer cap with a feather, olive vest, cream shirt. Little Lake: purple cloak, cyan trim, lantern.
+  Check new outfits on `shots/outfits_contact.png` (written by the tests: 5 outfits x 7 poses).
 - **Fish drawings** (`drawFish` in `js/state.js`, 24x16 grid): `fishShape(f)` picks slim / regular / flat / round /
   long / eel / ray from the fish's `len` and `h` (named exceptions in `FISH_SHAPES`). Rare and better fish get glints;
   Legendary and Mythical get sparkles. Keep the 24x16 size: it scales to exactly 8x (Result), 4x (Collection), 3x (Bag).

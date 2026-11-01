@@ -74,6 +74,176 @@ const F_LEGS = [          // olive trousers and brown boots, seated on the chest
   ".......obbbbbbbo.obbbbbbbo..",
   ".......onnnnnnno.onnnnnnnno.",
 ];
+/* ---------- outfits ----------
+   Each island dresses him for its weather (SCENES[island].fisher.outfit). An outfit swaps the palette and the head,
+   body or legs maps; every map keeps the harbor grid (head 22x15, body 18x16, legs 28x11), so the size, the poses,
+   the hands and the rod tip stay exactly where they are. arm = [sleeve, sleeve highlight, forearm, hand, hand shade]
+   as palette letters; front = [map, col, row], a small map drawn over the arm that moves with the upper body.
+   Frames are cached per outfit. */
+const F_LANTERN = ["ZZoZZ", "ZoooZ", "oYYYo", "oYyYo", "ZoooZ"];
+const OUTFITS = {
+  harbor: { pal: FPAL, head: F_HEAD, body: F_BODY, legs: F_LEGS, arm: "Slssk" },   // straw hat, blue shirt, olive trousers
+  frost: {                                                          // red parka, fur-trimmed hood, yellow scarf, white boots
+    pal: { o: "#2b1a10", S: "#cf3a2f", d: "#8a1f1c", l: "#f06a50", W: "#f4f1ea", w: "#c4bdb1", s: "#f0bf94", k: "#c98a62",
+      Y: "#f2b630", y: "#b77f16", P: "#2e3447", p: "#1c2030", b: "#f1f5f8", n: "#8e9cad" },
+    head: [
+      "......................",
+      "........oooooo........",
+      "......ooSSSSSloo......",
+      ".....oSSSSSSSSllo.....",
+      "....odSSSSSSSSSSlo....",
+      "...odSSSSSSSSSSSSWo...",
+      "...odSSSSSSSSSSSWWWo..",
+      "..odSSSSSSSSSSSWWwsWo.",
+      "..odSSSSSSSSSSSWwsssWo",
+      "..oddSSSSSSSSSSWwsksWo",
+      "..oddSSSSSSSSSSWWsssWo",
+      "...oddSSSSSSSSSSWWWWo.",
+      "....oddSSSSSSSSSSSo...",
+      ".....ooddSSSSSSSoo....",
+      ".......oooooooo.......",
+    ],
+    body: [
+      "......oooooooo....",
+      ".....oYYYYYYYYYo..",
+      "....oyYYYYYYYYYyo.",
+      "...oyYYYYYYYYYYYyo",
+      "...oyyyyyyyyyyyyyo",
+      "..oddYYSSSSSSSSSSo",
+      "..oddYYSSSSSSSSSSo",
+      "..oddYySSSSSSSSSSo",
+      "..oddyYSSSSSSSSSSo",
+      "..oddYySSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSo..",
+      "...oddSSSSSSSSSo..",
+      "...owWWWWWWWWWWo..",
+      "....ooooooooo.....",
+    ],
+    legs: F_LEGS, arm: "SlSYy" },
+  desert: {                                                         // wide sun hat, sleeveless shirt, tan shorts, sandals
+    pal: { o: "#2b1a10", H: "#ead7a8", h: "#bf9f68", L: "#fbf0d4", B: "#8c5a34", r: "#3b2414", s: "#dc9c6c", k: "#a86a42",
+      q: "#f0bb8c", S: "#f4f1e4", d: "#c9c1a6", l: "#ffffff", P: "#e6cc94", p: "#b8975e", b: "#8a5426", n: "#5b3517" },
+    head: [
+      "......................",
+      "......................",
+      "........oooooo........",
+      "......ooLLLLLHoo......",
+      ".....oLLHHHHHHHho.....",
+      ".....oBBBBBBBBBBo.....",
+      "..oooohhhhhhhhhhoooo..",
+      "ooLLLLHHHHHHHHHHHHHHoo",
+      "oLHHHHHHHHHHHHHHHHHHHo",
+      "ohHHHHHHHHHHHHHHHHHHho",
+      ".oohhhhhhhhhhhhhhhhoo.",
+      "....oooorrrrrsssoo....",
+      "......orrrrrrsskso....",
+      "......orrrrrssssso....",
+      ".......oorrrrsoo......",
+    ],
+    body: [
+      "......oooooooo....",
+      ".....oddSSSSSSlo..",
+      "....okdSSSSSSSllo.",
+      "...oskdSSSSSSSSllo",
+      "...oskdSSSSSSSSSlo",
+      "..oddddSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSo..",
+      "...oddSSSSSSSSSo..",
+      "...odddddSSSSSo...",
+      "....ooooooooo.....",
+    ],
+    // shorts (hem on row 4), bare shins, sandals: skin toes over a brown strap and sole
+    legs: F_LEGS.map((r, i) => i < 4 ? r : i === 4 ? r.replace(/P/g, "p") : i < 9 ? r.replace(/[Pb]/g, "s").replace(/p/g, "k") : r),
+    arm: "sqssk" },
+  forest: {                                                         // green explorer cap with a feather, olive vest, cream shirt
+    pal: { o: "#2b1a10", H: "#5f8a3c", h: "#3e6228", L: "#8ab65c", B: "#4a3018", F: "#e04a32", f: "#ffe0a8", r: "#7a3e1a",
+      s: "#f0bf94", k: "#c98a62", S: "#6e7d34", d: "#4a5622", l: "#93a54c", c: "#efe4c4", C: "#c4b48a", e: "#fff8e2",
+      P: "#6b4428", p: "#4a2e1a", b: "#3b2a1c", n: "#22170e" },
+    head: [
+      "........oooooo........",
+      "......ooLLLLLHoo......",
+      ".....oLLLHHHHHHho.....",
+      ".oo..oLHHHHHHHHho.....",
+      "oFFo.oHHHHHHHHHho.....",
+      ".oFFooBBBBBBBBBBo.....",
+      "..ofFoBBBBBBBBBBhooo..",
+      "...ooohhhhhhhhhhHHHHo.",
+      "....orrrrrrrrrrohhhhho",
+      "....orrrrrrrrrrsoooo..",
+      "....orrrrrrrrrssso....",
+      "....oorrrrrrrsssso....",
+      "......orrrrrrsskso....",
+      "......orrrrrssssso....",
+      ".......oorrrrsoo......",
+    ],
+    body: [
+      "......oooooooo....",
+      ".....oCccccccco...",
+      "....oddSSSSSSScco.",
+      "...oddSSSSSSSSScco",
+      "...odSSSSSSSSSSSco",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSo..",
+      "...oCccccccccco...",
+      "...oCCCCCccccco...",
+      "....ooooooooo.....",
+    ],
+    legs: F_LEGS, arm: "cessk" },
+  secret: {                                                         // dark purple hooded cloak, glowing cyan trim, lantern
+    pal: { o: "#140c1e", S: "#5c369a", d: "#36205f", l: "#8a64cf", C: "#5ff3ff", c: "#29b6cc", s: "#e0b08c", k: "#a8765a",
+      G: "#1d1233", P: "#2a2440", p: "#1a1530", b: "#3c2c56", n: "#1a1228", Y: "#ffe37a", y: "#f3a330",
+      Z: "rgba(255, 220, 120, .35)" },
+    head: [
+      "......................",
+      "........oooooo........",
+      "......ooSSSSSloo......",
+      ".....oSSSSSSSSllo.....",
+      "....odSSSSSSSSSSlo....",
+      "...odSSSSSSSSSSSSCo...",
+      "...odSSSSSSSSSSSCddo..",
+      "..odSSSSSSSSSSSCddsCo.",
+      "..odSSSSSSSSSSSCdsssCo",
+      "..oddSSSSSSSSSSCdsksCo",
+      "..oddSSSSSSSSSSCddssCo",
+      "...oddSSSSSSSSSSCCCCo.",
+      "....oddSSSSSSSSSSSo...",
+      ".....ooddSSSSSSSoo....",
+      ".......oooooooo.......",
+    ],
+    body: [
+      "......oooooooo....",
+      ".....oddSSSSSSlo..",
+      "....oddSSSSSSSllo.",
+      "...oddSSSSSSSSSllo",
+      "...odSSSSSSSSSSSlo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSSo",
+      "..oddSSSSSSSSSSSo.",
+      "..oddSSSSSSSSSSSo.",
+      "..oGGGGGGGGGGGGGo.",
+      "..oddSSSSSSSSSSo..",
+      "...oddSSSSSSSSSo..",
+      "...oCCCCCCCCCCCo..",
+      "....ooooooooo.....",
+    ],
+    legs: F_LEGS, arm: "SlSsk", front: [F_LANTERN, 13, 22] },
+};
 // Body frames: ux/uy = upper body offset, hx/hy = extra head offset, hand = [col, row] of the hands on the rod.
 const F_FRAMES = [
   { ux: 0, uy: 0, hx: 0, hy: 0, hand: [20, 20] },    // 0 idle
@@ -92,30 +262,32 @@ const F_FRAMES = [
   { ux: 1, uy: 2, hx: 1, hy: 2, hand: [21, 23] },    // 13 escaped: shoulders and head drop
 ];
 const FM = 4;   // empty margin around each frame canvas, so leaning never clips
-const fFrames = [];
-function fMap(g, rows, x0, y0) {
+const fFrames = {};   // outfit name -> frame canvases
+function fMap(g, rows, x0, y0, pal) {
   for (let y = 0; y < rows.length; y++) for (let x = 0; x < rows[y].length; x++) {
     const ch = rows[y][x]; if (ch === ".") continue;
-    g.fillStyle = FPAL[ch]; g.fillRect(x0 + x, y0 + y, 1, 1);
+    g.fillStyle = pal[ch]; g.fillRect(x0 + x, y0 + y, 1, 1);
   }
 }
 function fLine(g, x0, y0, x1, y1, w, col) {   // thick blocky line for the arm
   const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1; g.fillStyle = col;
   for (let i = 0; i <= n; i++) g.fillRect(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n), w, w);
 }
-function fFrame(i) {
-  if (fFrames[i]) return fFrames[i];
-  const f = F_FRAMES[i], c = document.createElement("canvas"); c.width = 28 + FM * 2; c.height = 36 + FM * 2;
+function fFrame(i, name) {
+  const cache = fFrames[name] || (fFrames[name] = []);
+  if (cache[i]) return cache[i];
+  const o = OUTFITS[name], pal = o.pal, A = o.arm, f = F_FRAMES[i], c = document.createElement("canvas"); c.width = 28 + FM * 2; c.height = 36 + FM * 2;
   const g = c.getContext("2d"), ux = FM + f.ux, uy = FM + f.uy;
-  fMap(g, F_LEGS, FM, FM + 25);
-  fMap(g, F_BODY, ux + 2, uy + 12);
-  fMap(g, F_HEAD, ux + f.hx, uy + f.hy);
-  // near arm: blue sleeve from the shoulder to the elbow, bare forearm to the hands (drawn outline first)
+  fMap(g, o.legs, FM, FM + 25, pal);
+  fMap(g, o.body, ux + 2, uy + 12, pal);
+  fMap(g, o.head, ux + f.hx, uy + f.hy, pal);
+  // near arm: sleeve from the shoulder to the elbow, forearm to the hands (drawn outline first)
   const sx = ux + 15, sy = uy + 15, hx = FM + f.hand[0], hy = FM + f.hand[1];
   const ex = Math.round((sx + hx) / 2), ey = Math.round((sy + hy) / 2) + (hy < sy ? 0 : 3);
-  fLine(g, sx - 1, sy - 1, ex - 1, ey - 1, 5, FPAL.o); fLine(g, ex - 1, ey - 1, hx - 1, hy - 1, 4, FPAL.o);
-  fLine(g, sx, sy, ex, ey, 3, FPAL.S); fLine(g, sx + 1, sy, ex + 1, ey, 1, FPAL.l); fLine(g, ex, ey, hx, hy, 2, FPAL.s);
-  return (fFrames[i] = c);
+  fLine(g, sx - 1, sy - 1, ex - 1, ey - 1, 5, pal.o); fLine(g, ex - 1, ey - 1, hx - 1, hy - 1, 4, pal.o);
+  fLine(g, sx, sy, ex, ey, 3, pal[A[0]]); fLine(g, sx + 1, sy, ex + 1, ey, 1, pal[A[1]]); fLine(g, ex, ey, hx, hy, 2, pal[A[2]]);
+  if (o.front) fMap(g, o.front[0], ux + o.front[1], uy + o.front[2], pal);
+  return (cache[i] = c);
 }
 
 /* ---------- poses ----------
@@ -130,7 +302,7 @@ function fisherPoseFor(phase, t) {
   if (phase !== "idle") return phase;
   return FISH_EVT.name && t - FISH_EVT.at < FISHER_HOLD[FISH_EVT.name] ? FISH_EVT.name : "idle";
 }
-const P = { f: 0, a: 38, bend: 3 }, FISHER = { pose: "idle", since: 0, tipX: 0, tipY: 0 };
+const P = { f: 0, a: 38, bend: 3 }, FISHER = { pose: "idle", since: 0, tipX: 0, tipY: 0, outfit: "harbor" };
 const fEase = k => 1 - (1 - k) * (1 - k) * (1 - k);
 function poseParams(name, lt, t, still) {
   const sin = Math.sin;
@@ -160,15 +332,17 @@ function poseParams(name, lt, t, still) {
   return P;
 }
 
-// Draw the fisherman and his rod. cfg = { x, y, p } in canvas pixels (p = canvas pixels per art pixel).
+// Draw the fisherman and his rod. cfg = { x, y, p, outfit } in canvas pixels (p = canvas pixels per art pixel;
+// outfit = a key of OUTFITS, anything else draws the harbor look).
 // pose = idle | casting | waiting | bite | reeling | caught | escaped; t = animation time (ms).
 // Sets FISHER.tipX / tipY (canvas pixels) to the centre of the drawn rod tip, where the line starts.
 const ROD_LEN = 44;
 function drawFisherman(c, cfg, pose, t, still) {
   if (pose !== FISHER.pose) { FISHER.pose = pose; FISHER.since = t; }
   const q = poseParams(pose, t - FISHER.since, t, still), fr = F_FRAMES[q.f], p = cfg.p;
+  const name = OUTFITS[cfg.outfit] ? cfg.outfit : "harbor", o = OUTFITS[name], pal = o.pal; FISHER.outfit = name;
   c.imageSmoothingEnabled = false;
-  c.drawImage(fFrame(q.f), cfg.x - FM * p, cfg.y - FM * p, (28 + FM * 2) * p, (36 + FM * 2) * p);
+  c.drawImage(fFrame(q.f, name),cfg.x - FM * p, cfg.y - FM * p, (28 + FM * 2) * p, (36 + FM * 2) * p);
   // rod: a quadratic curve from the hands, straight at the butt and bending down toward the tip,
   // drawn as art-pixel blocks snapped to the same grid as the body
   const hx = fr.hand[0] + .5, hy = fr.hand[1] + .5, a = q.a * Math.PI / 180, b = (q.a - q.bend) * Math.PI / 180;
@@ -187,8 +361,9 @@ function drawFisherman(c, cfg, pose, t, still) {
   }
   // hands on top of the rod
   const gx = Math.round(cfg.x + (fr.hand[0] - 1) * p), gy = Math.round(cfg.y + (fr.hand[1] - 1) * p), gs = Math.round(3 * p);
-  c.fillStyle = FPAL.o; c.fillRect(gx - Math.round(p / 2), gy - Math.round(p / 2), gs + Math.round(p), gs + Math.round(p));
-  c.fillStyle = FPAL.s; c.fillRect(gx, gy, gs, gs); c.fillStyle = FPAL.k; c.fillRect(gx, gy + gs - Math.round(p), gs, Math.round(p));
+  c.fillStyle = pal.o; c.fillRect(gx - Math.round(p / 2), gy - Math.round(p / 2), gs + Math.round(p), gs + Math.round(p));
+  c.fillStyle = pal[o.arm[3]]; c.fillRect(gx, gy, gs, gs); c.fillStyle = pal[o.arm[4]]; c.fillRect(gx, gy + gs - Math.round(p), gs, Math.round(p));
 }
 function fisherPose() { return FISHER.pose; }
 function fisherTip() { return { x: FISHER.tipX, y: FISHER.tipY }; }   // for tests
+function fisherOutfit() { return FISHER.outfit; }                      // for tests: the outfit drawn last

@@ -18,16 +18,16 @@ let ROD_TIP = { x: .36, y: .25 }; const BOB = { x: .58, y: .66 };
 const PX = 3;
 const SCENES = {
   harbor: { image: "assets/harbor.jpg", rod: { x: .34, y: .31 },
-    fisher: { x: 194, y: 182, scale: 3.6,
+    fisher: { x: 194, y: 182, scale: 3.6, outfit: "harbor",
       rodClear: [386, 132, 262, 268, 24, 26, 120],   // old rod + line: from (x0,y0) to (x1,y1), band left/right width, copied from dx
       patch: [[192, 174, 98, 84, 100, 0], [227, 258, 63, 26, 115, 0],                                  // water behind him
         [200, 254, 6, 24, -10, 0], [206, 254, 6, 24, -16, 0], [212, 254, 6, 24, -22, 0], [218, 254, 6, 24, -28, 0], [224, 254, 4, 24, -34, 0],   // chest lid
         [228, 284, 61, 30, -112, -15]] } },                                                            // dock under his legs
   // painted by tools/make_backgrounds.py (1920x800, 4 image pixels per art pixel); the fisherman sits on the crate on the dock
-  frost:  { image: "assets/frost.png",  anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, picFx: fxSnow, paint: paintFrost,  fx: fxSnow },
-  desert: { image: "assets/desert.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, paint: paintDesert, fx: fxHeat },
-  forest: { image: "assets/forest.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, paint: paintForest, fx: fxWaterfall },
-  secret: { image: "assets/secret.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6 }, paint: paintSecret, fx: fxStars },
+  frost:  { image: "assets/frost.png",  anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "frost" }, picFx: fxSnow, paint: paintFrost,  fx: fxSnow },
+  desert: { image: "assets/desert.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "desert" }, paint: paintDesert, fx: fxHeat },
+  forest: { image: "assets/forest.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "forest" }, paint: paintForest, fx: fxWaterfall },
+  secret: { image: "assets/secret.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "secret" }, paint: paintSecret, fx: fxStars },
 };
 const DEFAULT_ROD = { x: .36, y: .25 }, NO_ANCHOR = [0, 0];
 // start loading every picture (once); sc.img is only set when the picture is ready, sc.failed if it can't load
@@ -42,7 +42,7 @@ function preloadScenes() {
 }
 const REDUCED = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)") : null;
 let sceneBg = null;   // cached painted background: { key, canvas, info }
-const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1 };   // reused every frame (no allocations)
+const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1, outfit: "harbor" };   // reused every frame (no allocations)
 const CROP = { sx: 0, sy: 0, sw: 1, sh: 1 };              // part of the picture shown on the canvas (image pixels)
 
 function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = SCENES[island].rod || DEFAULT_ROD; }
@@ -275,7 +275,7 @@ function drawScene(t) {
       ctx.drawImage(sc.plate || img, sx, sy, sw, sh, 0, 0, W, H);
       ROD_TIP = TIP;
       if (fc) {
-        FCFG.x = (fc.x - sx) * k; FCFG.y = (fc.y - sy) * k; FCFG.p = fc.scale * k;
+        FCFG.x = (fc.x - sx) * k; FCFG.y = (fc.y - sy) * k; FCFG.p = fc.scale * k; FCFG.outfit = fc.outfit;
         drawFisherman(ctx, FCFG, fisherPoseFor(F.phase, t), t, still);
         TIP.x = FISHER.tipX / W; TIP.y = FISHER.tipY / H;                           // the line starts at the drawn rod tip
       } else { TIP.x = (sc.rod.x * nw - sx) / sw; TIP.y = (sc.rod.y * nh - sy) / sh; }
