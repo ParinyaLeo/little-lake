@@ -71,12 +71,12 @@ $("howOk").onclick = () => closeModal("howBox");
 $("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); renderTitle(); sfx.coin(); };
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  ["confirmBox", "nameBox", "howBox", "pickBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
+  ["confirmBox", "nameBox", "howBox", "pickBox", "exportBox", "importBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
 });
 // keep Tab inside an open dialog (wraps from the last button to the first and back)
 document.addEventListener("keydown", e => {
   const m = e.key === "Tab" && document.querySelector(".banner.modal.show"); if (!m) return;
-  const f = [...m.querySelectorAll("button:not(:disabled), input")]; if (!f.length) return;
+  const f = [...m.querySelectorAll("button:not(:disabled), input:not([type=file]), textarea:not(:disabled)")].filter(x => x.offsetParent); if (!f.length) return;
   const i = f.indexOf(document.activeElement);
   if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
   else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
@@ -190,6 +190,73 @@ $("gearList").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
   if (b.dataset.equip) equipRod(b.dataset.equip); else if (b.dataset.bait) selectBait(b.dataset.bait);
 });
+
+/* ===================== EXPORT / IMPORT SAVE =====================
+   Saves live in one browser's localStorage. EXPORT shows the save as a text code (copy or download .txt);
+   IMPORT checks a pasted code or .txt file with the same rules as load(), asks before replacing a game,
+   and changes nothing if the code is broken. */
+function openExport() {
+  save(); $("exportCode").value = exportCode(); $("exportMsg").textContent = "";
+  openModal("exportBox", "exportCopy");
+}
+$("exportBtn").onclick = openExport;
+$("exportClose").onclick = () => closeModal("exportBox");
+$("exportCopy").onclick = async () => {
+  const box = $("exportCode"), msg = $("exportMsg");
+  try { await navigator.clipboard.writeText(box.value); msg.textContent = "Copied! Now paste it into IMPORT SAVE on the other device."; return; } catch (e) {}
+  box.focus(); box.select();                                   // older browsers / blocked clipboard: select and copy
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  msg.textContent = ok ? "Copied! Now paste it into IMPORT SAVE on the other device." : "The code is selected: press Copy (Ctrl+C or long-press) to copy it.";
+};
+$("exportDl").onclick = () => {
+  const a = document.createElement("a"), url = URL.createObjectURL(new Blob([$("exportCode").value], { type: "text/plain" }));
+  a.href = url; a.download = `little-lake-save-${S.name.replace(/[^\w-]+/g, "_")}.txt`;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  $("exportMsg").textContent = "Saved as a .txt file. Load it with IMPORT SAVE → LOAD FILE.";
+};
+
+let importing = null;                                           // the checked save waiting for REPLACE SAVE
+function importStep(confirm) {
+  $("importBtns").hidden = confirm; $("importConfirm").hidden = !confirm; $("importCode").hidden = confirm;
+  $("importTitle").textContent = confirm ? "Replace your save?" : "Import Save";
+}
+function openImport() {
+  importing = null; importStep(false); $("importCode").value = ""; $("importErr").textContent = "";
+  $("importSub").textContent = "Paste a save code from EXPORT SAVE, or load the .txt file.";
+  openModal("importBox", "importCode");
+}
+function tryImport(code) {
+  const r = readCode(code);
+  if (r.error) { importing = null; $("importErr").textContent = r.error; $("importCode").focus(); return; }
+  importing = r.save; $("importErr").textContent = "";
+  if (!hasSave()) return finishImport();                        // nothing to lose: load it straight away
+  const disc = FISH.filter(f => importing.discovered[f.id]).length;
+  $("importSub").textContent = `This will replace your current progress (${S.name}) with ${importing.name}: ${fmt(importing.coins)} coins, ${disc} fish found.`;
+  importStep(true); $("importNo").focus();
+}
+function finishImport() {
+  if (!importing) return;
+  S = importing; importing = null; save();
+  $("importBox").classList.remove("show"); modalReturn = null;
+  island = "harbor"; collTab = "harbor";
+  go("home"); sfx.coin(); toast(`Save loaded. Welcome back, ${S.name}!`);
+}
+$("importBtn").onclick = openImport;
+$("titleImport").onclick = openImport;
+$("importLoad").onclick = () => tryImport($("importCode").value);
+$("importFileBtn").onclick = () => { $("importFile").value = ""; $("importFile").click(); };
+$("importFile").onchange = () => {
+  const file = $("importFile").files[0]; if (!file) return;
+  if (file.size > 200000) { $("importErr").textContent = "That file is too big to be a save code."; return; }
+  const rd = new FileReader();
+  rd.onload = () => { $("importCode").value = String(rd.result).trim(); tryImport(rd.result); };
+  rd.onerror = () => { $("importErr").textContent = "That file could not be read."; };
+  rd.readAsText(file);
+};
+$("importYes").onclick = finishImport;
+$("importNo").onclick = () => { importing = null; importStep(false); $("importSub").textContent = "Nothing was changed."; $("importCode").focus(); };
+$("importClose").onclick = () => closeModal("importBox");
+["exportBox", "importBox"].forEach(id => $(id).addEventListener("click", e => { if (e.target === e.currentTarget) closeModal(id); }));   // tap outside
 
 /* ===================== COLLECTION ===================== */
 let collTab = "harbor";

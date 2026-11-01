@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body class="on-title">
 <div class="bgfx" aria-hidden="true"><div class="clouds"></div><div class="water"></div></div>
@@ -21,11 +21,14 @@
     <div class="title-shimmer" aria-hidden="true"></div>
     <div class="title-shade" aria-hidden="true"></div>
     <h1 class="logo wood">LITTLE LAKE<small>a pixel fishing adventure</small></h1>
-    <div class="btns">
-      <button class="btn green" id="newBtn">NEW GAME</button>
-      <button class="btn blue" id="contBtn">CONTINUE</button>
-      <button class="btn" id="howBtn">HOW TO PLAY</button>
-      <button class="btn" id="soundBtn" aria-pressed="true">🔊 SOUND: ON</button>
+    <div class="title-foot">
+      <div class="btns">
+        <button class="btn green" id="newBtn">NEW GAME</button>
+        <button class="btn blue" id="contBtn">CONTINUE</button>
+        <button class="btn" id="howBtn">HOW TO PLAY</button>
+        <button class="btn" id="soundBtn" aria-pressed="true">🔊 SOUND: ON</button>
+      </div>
+      <button class="linkbtn" id="titleImport">💾 <span class="long">Saves stay in this browser · </span><u>IMPORT SAVE</u></button>
     </div>
   </section>
 
@@ -87,8 +90,12 @@
         <button class="btn small chip-btn" id="baitChip"></button>
         <div class="bonuses" id="bonuses" aria-label="Active island rewards"></div>
       </div>
-      <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div></div>
-      <div class="reelinfo"><div class="dots" id="dots"></div><div class="hearts" id="hearts" role="status"></div></div>
+      <!-- the island progress fills the meter's space when not reeling; both keep a fixed size so CAST never moves -->
+      <div class="reelarea">
+        <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div></div>
+        <div class="reelinfo"><div class="dots" id="dots"></div><div class="hearts" id="hearts" role="status"></div></div>
+        <div class="isle-prog" id="isleProg"></div>
+      </div>
       <div class="actions">
         <button class="btn green" id="actBtn">CAST</button>
         <button class="btn blue" id="fBagBtn" data-go="bag"><span class="ico i-bag"></span>OPEN BAG</button>
@@ -164,6 +171,11 @@
       <h2><span class="ico i-box"></span>Tackle Box</h2>
       <p class="small">Choose your rod and bait here. Every item says what it does.</p>
       <div class="gearlist" id="gearList"></div>
+      <h3 class="shop-h save-h">Save <small>saves stay in this browser – move them with a save code</small></h3>
+      <div class="savebtns">
+        <button class="btn blue small" id="exportBtn">EXPORT SAVE</button>
+        <button class="btn small" id="importBtn">IMPORT SAVE</button>
+      </div>
     </div>
     <div class="btns">
       <button class="btn" data-go="shop"><span class="ico i-shop"></span>SHOP</button>
@@ -216,7 +228,9 @@
       <dt>🛒 Shop</dt><dd>Spend coins on rods, bait and a bigger bag. Each item shows its exact effect and the odds before you buy.</dd>
       <dt>⭐ Island Mastery</dt><dd>Find all 10 fish on an island to unlock its reward: Golden Hook, Steady Hands, Lucky Lure or Master's Charm. Rewards work automatically. Master all four islands to discover a secret lake.</dd>
       <dt>🧰 Tackle Box</dt><dd>Open it from Home to equip a rod, choose bait, and see your bag and every island reward. Rewards add to your rod (e.g. Master's Charm gives +1 miss).</dd>
-      <dt>💾 Saving</dt><dd>Progress saves automatically in this browser. The downloaded game file and the website link keep separate saves.</dd>
+      <dt>💾 Saving</dt><dd>Progress saves automatically in this browser. The downloaded game file and the website link keep separate saves.
+        Saves stay in this browser. Use Export / Import to move progress. In the Tackle Box, EXPORT SAVE gives you a code (copy it or download it
+        as a .txt file) and IMPORT SAVE on the other phone, browser or home-screen app loads it.</dd>
     </dl>
     <button class="btn green" id="howOk">GOT IT!</button>
   </div>
@@ -231,10 +245,32 @@
   </div>
 </div>
 
-<script src="js/data.js?v=14"></script>
-<script src="js/state.js?v=14"></script>
-<script src="js/fisherman.js?v=14"></script>
-<script src="js/fishing.js?v=14"></script>
-<script src="js/screens.js?v=14"></script>
+<!-- EXPORT / IMPORT SAVE (Tackle Box) -->
+<div class="banner modal" id="exportBox" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+  <div class="panel wood savebox">
+    <h2 id="exportTitle">Export Save</h2>
+    <p class="small">Copy this code (or download it) and paste it into IMPORT SAVE on another phone, browser or the home-screen app.</p>
+    <textarea class="field code" id="exportCode" readonly rows="4" aria-label="Your save code" spellcheck="false"></textarea>
+    <div class="err ok" id="exportMsg" role="status"></div>
+    <div class="btns three"><button class="btn green" id="exportCopy">COPY</button><button class="btn blue" id="exportDl">DOWNLOAD .TXT</button><button class="btn" id="exportClose">CLOSE</button></div>
+  </div>
+</div>
+<div class="banner modal" id="importBox" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+  <div class="panel wood savebox">
+    <h2 id="importTitle">Import Save</h2>
+    <p class="small" id="importSub">Paste a save code from EXPORT SAVE, or load the .txt file.</p>
+    <textarea class="field code" id="importCode" rows="4" aria-label="Save code to import" spellcheck="false" placeholder="Paste your save code here"></textarea>
+    <input type="file" id="importFile" accept=".txt,text/plain" hidden>
+    <div class="err" id="importErr" role="alert"></div>
+    <div class="btns three" id="importBtns"><button class="btn green" id="importLoad">LOAD CODE</button><button class="btn blue" id="importFileBtn">LOAD FILE</button><button class="btn" id="importClose">CANCEL</button></div>
+    <div class="btns" id="importConfirm" hidden><button class="btn" id="importNo">CANCEL</button><button class="btn red" id="importYes">REPLACE SAVE</button></div>
+  </div>
+</div>
+
+<script src="js/data.js?v=15"></script>
+<script src="js/state.js?v=15"></script>
+<script src="js/fisherman.js?v=15"></script>
+<script src="js/fishing.js?v=15"></script>
+<script src="js/screens.js?v=15"></script>
 </body>
 </html>

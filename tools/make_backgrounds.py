@@ -408,10 +408,33 @@ def desert():
     return a
 
 
+def splash_pool(a, cx):
+    """Foam, mist and spreading ripples where a waterfall (centred on x = cx) meets the lake.
+    Drawn after the water, so the foam sits on the water line instead of floating above it."""
+    for y in range(HZ - 10, HZ):                          # mist: dense beside the fall, thinning upward and outward
+        for x in range(cx - 18, cx + 18):
+            d = ((x + .5 - cx) / 16) ** 2 + ((y + .5 - HZ) / 10) ** 2
+            if d < 1 and BAYER[y % 4][x % 4] < 17 * (1 - d) ** 1.4 - 1:
+                a.put(x, y, "white" if d < .3 or (x + y) % 3 else "s4", SHORE)
+    for row, half in enumerate((15, 12, 8, 4)):           # foam: a low mound on the water, solid in the middle
+        y = HZ + row
+        for x in range(cx - half - 1, cx + half + 1):
+            edge = abs(x + .5 - cx) > half - 2
+            if edge and (x + row) % 2:
+                continue                                  # broken, bubbly edge
+            a.put(x, y, "fall" if edge or (x * 5 + row * 3) % 7 == 0 else "white", SHORE)
+    for row, (x0, x1) in enumerate(((19, 25), (15, 22), (11, 18))):   # ripples spreading out from the foam
+        y = HZ + 2 + row * 2
+        for side in (-1, 1):
+            for k in range(x0, x1):
+                if k % 4 != 3:
+                    a.put(cx + side * k - (side < 0), y, "rip", WATER)
+
+
 def forest():
     a = Art({
         "s0": "#3fa7e6", "s1": "#5ab8ec", "s2": "#7ccaf0", "s3": "#a4dcf5", "s4": "#cdeefa",
-        "white": "#ffffff", "beam": "#e9f8ff",
+        "white": "#ffffff",
         "hill": "#5f9f8e", "hill2": "#4a8a7a",
         "t0": "#16492b", "t1": "#256b38", "t2": "#3b8a42", "t3": "#62b04c",
         "rock": "#7a8a86", "rock2": "#535f5e", "moss": "#79b84a",
@@ -419,12 +442,7 @@ def forest():
         "rip": "#9be6d6",
         "plank": "#8c6a46", "plank2": "#74563a", "seam": "#3c2a1b", "fall": "#bfe9f6",
     }, seed=31)
-    sky(a, ["s0", "s1", "s2", "s3", "s4"])
-    for x0, bw in ((20, 16), (110, 10)):                  # soft sunbeams from the top-left, fading out
-        for y in range(0, 64):
-            for x in range(x0 + y // 2, x0 + y // 2 + bw):
-                if 0 <= x < W and BAYER[y % 4][x % 4] < 3.5 * (1 - y / 64) ** 2 + .2:
-                    a.put(x, y, "beam", SKY)
+    sky(a, ["s0", "s1", "s2", "s3", "s4"])                # (the old dithered sunbeams read as stray white dots: removed)
     for cx, cy, s in ((300, 18, 8), (440, 30, 6)):
         cloud(a, cx, cy, s, "white", "s4", "s3")
     hl = waves(7, [(8, .02), (4, .06)])
@@ -434,24 +452,24 @@ def forest():
         for y in range(int(t), HZ):
             a.put(x, y, "rock2" if x > 404 or (y + x // 2) % 9 == 0 else "rock", SHORE)
         a.rect(x, t, 1, 2 + (x % 3 == 0), "moss", SHORE)
-    for y in range(36, HZ - 2):
+    for y in range(36, HZ):                               # the fall runs all the way down to the water
         for x in range(396, 404):
             a.put(x, y, "white" if (x * 3 + y) % 5 == 0 or x in (396, 403) else "fall", SHORE)
     r = random.Random(8)
     for layer, (base, size, cols) in enumerate(((HZ - 18, 9, ("t1", "t2", "t3")), (HZ - 8, 11, ("t0", "t1", "t2")), (HZ - 1, 8, ("t0", "t1", "t3")))):
         x = r.randint(-6, 4)
         while x < W:
-            if not (380 < x < 420 and layer < 2):
+            if not (380 < x < 420 if layer < 2 else 386 < x < 414):   # no tree in front of the fall
                 if r.random() < .5:
                     pine(a, x, base + r.randint(-2, 2), size * 2.6 + r.randint(-3, 4), cols[0], cols[1])
                 else:
                     round_tree(a, x, base + r.randint(-2, 2), size + r.randint(-2, 2), cols[0], cols[1], cols[2], "seam")
             x += r.randint(6, 12)
-    a.rect(388, HZ - 3, 26, 3, "white", SHORE)            # foam at the bottom of the fall
     water(a, ["w0", "w1", "w2", "w3", "w4"], "rip", "white")
     reflect(a, ["w0", "t1", "w4"])
     underwater_rocks(a, "w1", [(240, 188, 28, 6), (430, 178, 24, 7)])
     ripples(a, "rip", "white")
+    splash_pool(a, 400)
     for cx, cy, rx, ry in ((452, 150, 16, 10), (474, 158, 10, 8), (345, 106, 8, 4)):
         rock(a, cx, cy, rx, ry, "rock", "rock2", "seam", waterline="rip")
         a.rect(cx - rx * .6, cy - ry + 1, rx * 1.1, 2, "moss")

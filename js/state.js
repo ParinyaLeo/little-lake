@@ -7,7 +7,11 @@ const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v
 function load() {
   let raw;
   try { raw = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { raw = null; }
-  const d = DEFAULT(); if (!raw || typeof raw !== "object") return d;
+  return cleanSave(raw);
+}
+// Turns any stored object (old, broken or imported) into a safe save; used by load() and by IMPORT SAVE.
+function cleanSave(raw) {
+  const d = DEFAULT(); if (!raw || typeof raw !== "object" || Array.isArray(raw)) return d;
   // Saves from before the gear update have rod (level 1+), bait (count) and useBait instead of rods/baits:
   // level 1 = Bamboo; level 2+ also owns and equips the Sturdy Rod (levels above 2 are refunded, 200 coins each);
   // the old bait count becomes Shrimp.
@@ -41,6 +45,27 @@ function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } cat
 function hasSave() {
   try { const raw = JSON.parse(localStorage.getItem(SAVE_KEY)); return !!raw && typeof raw === "object" && Object.keys(raw).some(k => k !== "sound"); }
   catch (e) { return false; }
+}
+// ---- EXPORT / IMPORT SAVE: the save as a text code (base64 of the JSON, UTF-8 so any name survives) ----
+function exportCode() {
+  const bytes = new TextEncoder().encode(JSON.stringify(S)); let bin = "";
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin);
+}
+// Returns { save } for a valid code, or { error } with a message for the player. Changes nothing.
+const SAVE_KEYS = ["name", "coins", "rods", "rodEq", "baits", "baitSel", "bagMax", "bag", "discovered", "records", "mastery", "totalCaught", "mythical", "pending", "rod", "bait", "useBait"];
+function readCode(code) {
+  const text = String(code || "").replace(/\s+/g, "");
+  if (!text) return { error: "Paste a save code first." };
+  let raw;
+  try {
+    const bin = atob(text);
+    raw = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+  } catch (e) { return { error: "That code is broken or incomplete. Copy the whole code from EXPORT SAVE and try again." }; }
+  // same checks as load(), plus: it must be a Little Lake game (not just { sound } or some other data)
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || !SAVE_KEYS.some(k => k in raw))
+    return { error: "That code is not a Little Lake save." };
+  return { save: cleanSave(raw) };
 }
 function saveSound() {
   if (hasSave()) return save();

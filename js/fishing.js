@@ -332,7 +332,21 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { clearTimers(); F = { phase: "idle" }; $("meter").style.visibility = "hidden"; $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+// the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
+// (both use visibility, never display, so nothing below them moves)
+function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
+// "<Island>: X / 10 found" with a bar, and the island's Mastery reward (or "Mastered!"); Little Lake has its own text
+function renderIsleProgress() {
+  const I = ISLANDS[island], secret = island === "secret", total = secret ? 1 : 10, n = discCount(island), done = secret ? n >= 1 : !!S.mastery[island];
+  const line2 = secret ? (n ? `<span class="ico i-star"></span><b>Lake Legend!</b> You caught the Lake Guardian.` : `Mythical fish: the <b>Lake Guardian</b> lives here. Good luck!`)
+    : done ? `<span class="ico i-${I.icon}"></span><b class="done">★ Mastered!</b> ${I.reward} is active: ${I.effect.toLowerCase()}.`
+    : `<span class="ico i-lock"></span>Mastery reward: <b>${I.reward}</b> – ${I.effect.toLowerCase()}.`;
+  $("isleProg").classList.toggle("mastered", done);
+  $("isleProg").innerHTML = `<div class="ip-top"><span class="ip-n">${I.name}: ${n} / ${total} found</span>` +
+    `<span class="ip-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${n}" aria-label="${I.name} fish found"><span style="width:${n / total * 100}%"></span></span></div>` +
+    `<div class="ip-reward">${line2}</div>`;
+}
 
 function renderFishingHud() {
   $("fBag").textContent = `${S.bag.length} / ${S.bagMax}`;
@@ -354,6 +368,7 @@ function renderFishingHud() {
     $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag." : `${ISLANDS[island].name}: Ready? Cast your line!`;
     $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
+  renderIsleProgress(); if (F.phase !== "reeling") showMeter(false);
   preloadScenes(); fitCanvas(); startLoop();
 }
 
@@ -452,7 +467,7 @@ function hook() {
   const d = DIFF[F.fish.rarity];
   Object.assign(F, { phase: "reeling", pos: 0, dir: 1, hits: 0, misses: 0, lastT: 0,
     speed: d.speed * (S.mastery.frost ? .8 : 1) * rod().speed, zoneW: d.zone * rod().zone });   // rod + Steady Hands
-  newZone(); $("meter").style.visibility = "visible";
+  newZone(); showMeter(true);
   const a = $("actBtn"); a.textContent = "REEL"; a.className = "btn green";
   $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit();
 }
@@ -476,12 +491,12 @@ function reel() {
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
-  sfx.fail(); vibrate(300); $("meter").style.visibility = "hidden"; $("bang").style.display = "none";
+  sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; fisherEvent("escaped"); renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
 // reeled = caught on the fishing screen: the fisherman lifts the rod for a moment before the Result screen
 function caught(reeled) {
-  const f = F.fish; clearTimers(); F = { phase: "idle" }; $("meter").style.visibility = "hidden";
+  const f = F.fish; clearTimers(); F = { phase: "idle" }; showMeter(false);
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);
   const mid = (f.min + f.max) / 2;
@@ -491,7 +506,7 @@ function caught(reeled) {
   S.pending = { fishId: f.id, weight, price, isNew, rec };   // saved, so the catch survives a reload
   S.discovered[f.id] = true; S.totalCaught++; if (rec) S.records[f.id] = weight;
   if (f.rarity === "Mythical") S.mythical = true;
-  save();
+  save(); renderIsleProgress();                              // a new fish shows in the progress line straight away
   sfx.catch(); vibrate([60, 40, 120]); confetti();
   const wait = reeled && current === "fishing" ? FISHER_HOLD.caught : 0;
   if (wait) {

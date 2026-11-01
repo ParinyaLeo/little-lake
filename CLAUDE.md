@@ -19,14 +19,15 @@ A pixel-art fishing game (version 0.1). Final project for **1305311 Low-Code App
 index.html        Page markup (all screens) + <link>/<script> tags
 css/style.css     All styles
 js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fishById, DIFF, RODS, BAITS, odds constants
-js/state.js       Save/load (S, load, save), helpers ($, fmt, toast, sfx, confetti, banner),
+js/state.js       Save/load (S, load, cleanSave, save), save codes (exportCode, readCode), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
                   rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
 js/fisherman.js   Animated Harbor fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, poses,
                   drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip() for tests
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
-js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens;
+js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens,
+                  Export / Import Save popups;
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image
 assets/frost.png, desert.png, forest.png, secret.png
@@ -56,6 +57,7 @@ them with `go(id)` or with any element that has `data-go="<screen id>"`.
   ("This will delete your current progress"). Nothing is reset until START is pressed with a valid name.
 - **CONTINUE** loads the save and goes to Home. It is disabled when `hasSave()` is false.
 - **HOW TO PLAY** opens a short help panel. **SOUND** toggles `S.sound`.
+- A small **IMPORT SAVE** link under the 4 buttons (`#titleImport`) opens the Import popup, so a new device can load a code first.
 - The **☰ MENU** button on Home returns to the Title screen.
 
 **Sound:** `S.sound` (default `true`; old saves without it load as on). Every sound effect goes through
@@ -68,6 +70,14 @@ any game was started) does not count as a game, so CONTINUE stays disabled.
 level 1 → Bamboo; level 2+ → also owns and equips the Sturdy Rod, and each level above 2 is refunded 200 coins; the old
 bait count becomes Shrimp, selected unless `useBait` was false. A selected bait with 0 left loads as `"none"`.
 If another tab saves, the `storage` listener reloads `S` so tabs don't overwrite each other.
+`load()` = parse localStorage + `cleanSave(raw)`; IMPORT SAVE uses the same `cleanSave()`.
+
+**Export / Import Save** (Tackle Box `#exportBtn` / `#importBtn`; popups `#exportBox` / `#importBox`, `.banner.modal`): saves live in one
+browser, so a player moves them with a text code. `exportCode()` = base64 of the UTF-8 save JSON; EXPORT shows it read-only with
+COPY and DOWNLOAD .TXT. IMPORT takes a pasted code or a .txt (LOAD FILE). `readCode(code)` returns `{ save }` or `{ error }`:
+whitespace is ignored; broken base64/JSON, arrays, `{ sound }`-only or unknown objects are rejected with a message and nothing
+changes. With an existing game it asks "This will replace your current progress" (REPLACE SAVE / CANCEL; the code box is hidden
+in that step so it fits at 360x640); with no game it loads straight away. Then `go("home")`. Esc / tap outside close both popups.
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all
@@ -102,6 +112,11 @@ screen must fit 1366x768, 1280x720 and phones without page scroll. While fishing
 tall and the scene takes the leftover height. The meter is hidden with `visibility` (never `display: none`), and the
 message line, rod/bait/reward row and dots/hearts row have fixed heights. Anything new on this screen needs a fixed
 size too; the `stays put in every phase` tests in `play_test.py` check it.
+
+**Island progress** (`#isleProg`, `renderIsleProgress()`): lies over the meter + dots/hearts space (fixed 90px) and shows
+"<Island>: X / 10 found" with a bar and the Mastery reward line ("★ Mastered!" when done; Little Lake: "X / 1" + Lake Guardian).
+`showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
+It re-renders with the HUD and right after a catch.
 
 **Bag:** sell fish one at a time or **SELL ALL** for coins.
 
@@ -166,13 +181,15 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   (0-1) picks which part stays in view (new islands use `[0, .8]` so the dock in the lower-left is never cut off on wide
   screens; Harbor has none = top-left). `fisher: { x, y, scale }` (image pixels) places the drawn fisherman on the crate:
   every PNG has its dock and crate in the same spot, so all four use `{ x: 232, y: 400, scale: 6 }`. The bobber lands at
-  `BOB` (canvas fractions), which is open water in every picture at every screen size. Frost also gets falling snow (`picFx`).
+  `BOB` (canvas fractions), which is open water in every picture at every screen size. Frost also gets falling snow (`picFx`). Forest's waterfall ends in `splash_pool()` (mist + foam drawn after
+  the water so it sits on the water line); the sky has no sunbeam dither.
   `preloadScenes()` starts loading the pictures after the Title screen appears; `sc.img` is set only when a picture is
   ready. Until then, or if it fails (`sc.failed`), Frost, Desert, Forest and Little Lake fall back to their painted
   scenes (pixel art painted on a small canvas, 1 art pixel = 3 screen pixels, cached; only snow, heat shimmer,
   waterfall, stars and water glints are redrawn each frame). To use an artist's picture later, replace the PNG (same
   name) and adjust `anchor` and `fisher`; `CROP` holds the part of the picture currently shown.
-- **Town Map cards:** `.bg-<island>` = a soft dark shade (so the name stays readable), the island picture
+- **Town Map cards:** name and "x / 10 found" sit bottom-right (clear of the fisherman in the lower-left of the Harbor picture).
+  `.bg-<island>` = `--card-shade` (dark radial shade in the bottom-right corner, so the name stays readable), the island picture
   (`cover`, positioned on its best part), then the old gradient as a fallback if the picture can't load. The secret
   card shows `secret.png` only when unlocked (`.bg-secret:not(.locked)`); the locked "???" card keeps its gradient.
 - **Harbor fisherman** (`js/fisherman.js`, `SCENES.harbor.fisher`): the man baked into `harbor.jpg` is hidden by

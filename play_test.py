@@ -851,6 +851,155 @@ with sync_playwright() as p:
               tp.is_visible("#title") and not tp.is_visible(".title-bg") and tp.is_visible(".bgfx"))
         tp.close()
 
+    # ---------- polish: Forest picture, island progress line, Town Map text (see docs/bug_log.md BUG-14..16) ----------
+    fp = b.new_page(viewport={"width": 1280, "height": 720})
+    fp.on("pageerror", lambda e: errs.append(str(e))); fp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    fp.goto(URL)
+    FOREST = "data:image/png;base64," + base64.b64encode((Path(__file__).parent / "assets" / "forest.png").read_bytes()).decode()
+    fr = fp.evaluate("""async src => { const im = new Image(); im.src = src; await im.decode();     // art pixels: image / 4, horizon at art row 88
+        const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = 480; c.height = 200; g.imageSmoothingEnabled = false;
+        g.drawImage(im, 0, 0, 480, 200); const d = g.getImageData(0, 0, 480, 200).data, white = (x, y) => d[(y * 480 + x) * 4] > 245 && d[(y * 480 + x) * 4 + 1] > 245 && d[(y * 480 + x) * 4 + 2] > 245;
+        let sky = 0, foam = 0;
+        for (let y = 0; y < 70; y++) for (let x = 0; x < 260; x++) sky += white(x, y);                 // top-left sky (old sunbeam dots)
+        for (let y = 88; y < 92; y++) for (let x = 384; x < 416; x++) foam += white(x, y);              // foam on the water line under the fall
+        // the old block: a solid white bar 26 px wide just above the water with trees (not the fall) right under it
+        let bar = 0; for (let x = 386; x < 416; x++) bar += white(x, 85) && white(x, 86) && white(x, 87);
+        return { sky, foam, bar }; }""", FOREST)
+    check("Forest picture: no white dots in the top-left sky, foam sits on the water line (no floating white bar)",
+          fr["sky"] == 0 and fr["foam"] >= 40 and fr["bar"] < 20, str(fr))
+
+    fp.evaluate("localStorage.clear()"); fp.reload(); fp.wait_for_timeout(200); start_new(fp, "Prog")
+    fp.add_style_tag(content="#toast { display: none !important; }")
+    PROG = """(() => { const p = document.getElementById('isleProg'), a = document.getElementById('actBtn').getBoundingClientRect(), r = p.getBoundingClientRect(),
+        g = document.querySelector('#fishing .gearbar').getBoundingClientRect();
+        return { text: p.innerText.replace(/\\s+/g, ' '), vis: getComputedStyle(p).visibility, meter: getComputedStyle(document.getElementById('meter')).visibility,
+                 bar: parseFloat(p.querySelector('.ip-bar > span').style.width), top: a.top + scrollY, fits: r.top >= g.bottom - 1 && r.bottom <= a.top + 1,
+                 clip: [...p.children].every(c => c.scrollWidth <= c.clientWidth + 1) }; })()"""
+    fp.evaluate("() => { S.discovered = { harbor_0: true, harbor_1: true, harbor_2: true, frost_0: true }; S.mastery = { desert: true };"
+                " FISH.filter(f => f.island === 'desert').forEach(f => S.discovered[f.id] = true); save(); }")
+    expect = {"harbor": ("Harbor: 3 / 10 found", "Mastery reward: Golden Hook", 30), "frost": ("Frost: 1 / 10 found", "Steady Hands", 10),
+              "desert": ("Desert: 10 / 10 found", "Mastered! Lucky Lure is active", 100), "forest": ("Forest: 0 / 10 found", "Master's Charm", 0),
+              "secret": ("Little Lake: 0 / 1 found", "Lake Guardian", 0)}
+    for vw, vh in [(1280, 720), (360, 640)]:
+        fp.set_viewport_size({"width": vw, "height": vh})
+        for isl, (t1, t2, pc) in expect.items():
+            fp.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); fp.wait_for_timeout(150)
+            pr = fp.evaluate(PROG)
+            check(f"{vw}x{vh} {isl}: progress line '{t1}' with bar and reward text, fits between the chips and CAST",
+                  t1 in pr["text"] and t2 in pr["text"] and pr["vis"] == "visible" and pr["meter"] == "hidden" and pr["bar"] == pc and pr["fits"] and pr["clip"], str(pr))
+        if vw == 360: fp.screenshot(path=str(SHOTS / "46_mobile_progress.png"))
+    fp.set_viewport_size({"width": 1280, "height": 720})
+    fp.evaluate("() => { island = 'harbor'; go('fishing'); }"); fp.wait_for_timeout(200)
+    fp.screenshot(path=str(SHOTS / "47_progress.png"))
+    before = fp.evaluate(PROG)
+    fp.evaluate("() => { const r = Math.random; Math.random = () => .01; F = { phase: 'idle', fish: fishById('harbor_9') }; caught(true); Math.random = r; }")
+    during = fp.evaluate(PROG)
+    fp.wait_for_timeout(900); fp.click("#keepBtn"); fp.wait_for_timeout(500)          # after the 280 ms screen fade-in
+    after = fp.evaluate(PROG)
+    check("progress line updates right after a catch (and after KEEP)",
+          "Harbor: 3 / 10" in before["text"] and "Harbor: 4 / 10" in during["text"] and "Harbor: 4 / 10" in after["text"] and after["bar"] == 40,
+          f"{before['text'][:22]} | {during['text'][:22]} | {after['text'][:22]}")
+    fp.click("#actBtn"); fp.wait_for_function("F.phase === 'bite'", timeout=8000); fp.click("#actBtn"); fp.wait_for_timeout(100)
+    reel = fp.evaluate(PROG)
+    check("while reeling the meter replaces the progress line, CAST/REEL doesn't move",
+          reel["vis"] == "hidden" and reel["meter"] == "visible" and abs(reel["top"] - after["top"]) <= 1, f"{reel['vis']} {reel['meter']} {reel['top']} {after['top']}")
+    fp.evaluate("() => stopFishing()")
+    for vw, vh in [(1280, 720), (360, 640)]:
+        fp.set_viewport_size({"width": vw, "height": vh}); fp.evaluate("() => go('map')"); fp.wait_for_timeout(200)
+        mp = fp.evaluate("""(() => { const c = document.querySelector('.island.bg-harbor'), r = c.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(c);
+            const t = rg.getBoundingClientRect(); return [Math.round((t.left - r.left) / r.width * 100), Math.round((t.top - r.top) / r.height * 100), getComputedStyle(c).textAlign]; })()""")
+        check(f"{vw}x{vh}: Harbor card text sits bottom-right, clear of the fisherman (left part of the card)", mp[0] >= 40 and mp[1] >= 50 and mp[2] == "right", str(mp))
+        fp.screenshot(path=str(SHOTS / f"48_map_text_{vw}.png"))
+    fp.close()
+
+    # ---------- EXPORT / IMPORT SAVE (BUG-17) ----------
+    xc = b.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True); x = xc.new_page()
+    x.on("pageerror", lambda e: errs.append(str(e))); x.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    x.goto(URL); x.evaluate("localStorage.clear()"); x.reload(); x.wait_for_timeout(200); start_new(x, "Señor 🎣")
+    x.evaluate("""() => { S.coins = 1234; S.rods.push('sturdy'); S.rodEq = 'sturdy'; S.baits.worm = 4; S.baitSel = 'worm'; S.bagMax = 10; S.totalCaught = 9;
+        S.bag = [{ fishId: 'frost_3', weight: 1.25, price: 88, time: 5 }]; S.discovered = { harbor_0: true, frost_3: true }; S.records = { frost_3: 1.25 };
+        S.mastery = { harbor: true }; save(); go('tackle'); }""")
+    orig = x.evaluate("localStorage.getItem('littleLakeSave')")
+    x.click("#exportBtn"); x.wait_for_timeout(150)
+    code = x.input_value("#exportCode")
+    check("EXPORT SAVE (Tackle Box) shows the save as a base64 code in a read-only box",
+          x.is_visible("#exportBox") and x.evaluate("document.getElementById('exportCode').readOnly")
+          and json.loads(base64.b64decode(code).decode("utf-8")) == json.loads(orig), code[:40])
+    with x.expect_download() as dl: x.click("#exportDl")
+    dl_path = SHOTS / "export_save.txt"; dl.value.save_as(str(dl_path))
+    check("download .txt holds the same code", dl_path.read_text(encoding="utf-8") == code and dl.value.suggested_filename.endswith(".txt"), dl.value.suggested_filename)
+    x.click("#exportCopy"); x.wait_for_timeout(150)
+    check("COPY confirms (or selects the code)", x.inner_text("#exportMsg") != "", x.inner_text("#exportMsg"))
+    x.keyboard.press("Escape"); x.wait_for_timeout(100)
+    check("Esc closes the Export popup", not x.is_visible("#exportBox"))
+
+    x.evaluate("() => { S.coins = 1; S.bag = []; S.discovered = {}; S.name = 'Other'; save(); render(); }")
+    changed = x.evaluate("localStorage.getItem('littleLakeSave')")
+    x.click("#importBtn"); x.wait_for_timeout(150)
+    b64 = lambda s: base64.b64encode(s.encode()).decode()
+    bad = {"garbage": "%%% not a code %%%", "cut off": code[: len(code) // 2], "not a save": b64('{"foo": 1}'), "array": b64("[1,2,3]"),
+           "sound only": b64('{"sound": false}'), "empty": "   "}
+    rej = {}
+    for k, v in bad.items():
+        x.fill("#importCode", v); x.click("#importLoad"); x.wait_for_timeout(80)
+        rej[k] = [x.inner_text("#importErr") != "", x.is_visible("#importBox"), not x.is_visible("#importYes"), x.evaluate("localStorage.getItem('littleLakeSave')") == changed]
+    check("broken or wrong codes show a clear message and change nothing", all(all(v) for v in rej.values()), str({k: v for k, v in rej.items() if not all(v)}))
+    x.fill("#importCode", code); x.click("#importLoad"); x.wait_for_timeout(100)
+    check("a valid code asks first: 'This will replace your current progress'",
+          x.is_visible("#importYes") and "This will replace your current progress" in x.inner_text("#importBox")
+          and x.evaluate("localStorage.getItem('littleLakeSave')") == changed)
+    x.click("#importNo"); x.wait_for_timeout(100)
+    check("CANCEL on the confirm keeps the current save", x.evaluate("localStorage.getItem('littleLakeSave')") == changed and x.evaluate("S.name") == "Other"
+          and x.is_visible("#importLoad"))
+    x.keyboard.press("Escape"); x.wait_for_timeout(100)
+    check("Esc closes the Import popup", not x.is_visible("#importBox") and x.evaluate("S.name") == "Other")
+    x.click("#importBtn"); x.fill("#importCode", "\n" + code[:30] + "\n" + code[30:] + "  "); x.click("#importLoad"); x.click("#importYes"); x.wait_for_timeout(200)
+    check("export then import gives an identical save (line breaks in the pasted code are ignored)",
+          x.evaluate("localStorage.getItem('littleLakeSave')") == orig and x.evaluate("S.name") == "Señor 🎣" and x.is_visible("#home")
+          and x.inner_text("#hCoins") == "1,234" and not x.is_visible("#importBox"))
+    x.evaluate("() => { S.coins = 5; save(); go('tackle'); }"); x.click("#importBtn")
+    x.set_input_files("#importFile", str(dl_path)); x.wait_for_timeout(200)
+    check("LOAD FILE reads the .txt and asks before replacing", x.is_visible("#importYes") and x.evaluate("S.coins") == 5)
+    x.click("#importYes"); x.wait_for_timeout(200)
+    check("the loaded file restores the save", x.evaluate("localStorage.getItem('littleLakeSave')") == orig)
+    old = b64(json.dumps({"name": "Legacy", "coins": 50, "rod": 3, "bait": 2, "bag": [None, {"fishId": "x"}]}))
+    x.evaluate("() => go('tackle')"); x.click("#importBtn"); x.fill("#importCode", old); x.click("#importLoad"); x.click("#importYes"); x.wait_for_timeout(200)
+    check("an old or partly broken save code goes through the same checks as load()",
+          x.evaluate("[S.name, S.coins, S.rodEq, S.baits.shrimp, S.bag.length]") == ["Legacy", 250, "sturdy", 2, 0], str(x.evaluate("[S.name, S.coins, S.rodEq, S.baits.shrimp, S.bag.length]")))
+    xc.close()
+
+    # a new device (no save yet): IMPORT SAVE on the Title screen loads the code without a confirm
+    nc = b.new_context(viewport={"width": 360, "height": 640}); nd = nc.new_page()
+    nd.on("pageerror", lambda e: errs.append(str(e)))
+    nd.goto(URL); nd.wait_for_timeout(300)
+    check("360x640: Title shows IMPORT SAVE with no page scroll", nd.is_visible("#titleImport") and no_side_scroll(nd)
+          and nd.evaluate("document.documentElement.scrollHeight") <= 640)
+    nd.click("#titleImport"); nd.fill("#importCode", code); nd.click("#importLoad"); nd.wait_for_timeout(200)
+    check("on a new device the code loads straight from the Title screen (2 taps after pasting)",
+          nd.is_visible("#home") and nd.evaluate("localStorage.getItem('littleLakeSave')") == orig and nd.inner_text("#homeName") == "Señor 🎣")
+    POP = """id => { const p = document.querySelector('#' + id + ' .panel').getBoundingClientRect(), vh = innerHeight,
+        btns = [...document.querySelectorAll('#' + id + ' .btn')].filter(b => b.offsetParent).map(b => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= vh && r.right <= innerWidth; });
+        return [p.top >= 0 && p.bottom <= vh && p.left >= 0 && p.right <= innerWidth, btns.length >= 2 && btns.every(Boolean)]; }"""
+    nd.evaluate("() => go('tackle')"); nd.wait_for_timeout(200)
+    check("360px: Tackle Box with EXPORT / IMPORT SAVE has no side scroll", nd.is_visible("#exportBtn") and nd.is_visible("#importBtn") and no_side_scroll(nd))
+    nd.click("#exportBtn"); nd.wait_for_timeout(300)
+    fe = nd.evaluate(POP, "exportBox"); nd.screenshot(path=str(SHOTS / "49_mobile_export.png"))
+    check("360x640: Export popup fits with COPY / DOWNLOAD / CLOSE visible, no side scroll", all(fe) and no_side_scroll(nd), str(fe))
+    nd.click("#exportClose"); nd.click("#importBtn"); nd.wait_for_timeout(300)
+    fi = nd.evaluate(POP, "importBox")
+    nd.fill("#importCode", code); nd.click("#importLoad"); nd.wait_for_timeout(200)
+    fc = nd.evaluate(POP, "importBox"); nd.screenshot(path=str(SHOTS / "50_mobile_import_confirm.png"))
+    check("360x640: Import popup and its confirm step fit with every button visible, no side scroll", all(fi) and all(fc) and no_side_scroll(nd), f"{fi} {fc}")
+    for _ in range(6): nd.keyboard.press("Tab")
+    check("Tab stays inside the Import popup", nd.evaluate("!!document.activeElement.closest('#importBox')"))
+    nd.mouse.click(5, 5); nd.wait_for_timeout(100)
+    check("tapping outside closes the Import popup without importing", not nd.is_visible("#importBox"))
+    nd.evaluate("() => go('titleScreen')")
+    nd.click("#howBtn"); nd.wait_for_timeout(150)
+    check("HOW TO PLAY: 'Saves stay in this browser. Use Export / Import to move progress.'",
+          "Saves stay in this browser. Use Export / Import to move progress." in nd.inner_text("#howBox"))
+    nc.close()
+
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
 
