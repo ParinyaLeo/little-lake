@@ -92,7 +92,14 @@ visible while a phone page scrolls; it is in the normal flow, so it never covers
 the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback. **Esc** also uses
 `goBack()` (the Bag has no separate BACK button any more: the bar's BACK does the same, including Result > OPEN BAG > BACK to the
 waiting catch); Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
-Fishing on the same island; Fishing > OPEN BAG > BACK too. On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
+Fishing on the same island; Fishing > SELL FISH > BACK and Fishing > SHOP > BACK too.
+
+**Fishing screen buttons** (`.actions`, Playtest 1 / BUG-32): **CAST | SELL FISH | SHOP | TOWN MAP**. SELL FISH (`#fBagBtn`, bag icon,
+glows when the bag is full) opens the Bag, where fish are sold; SHOP (`#fShopBtn`, shop icon) opens the Shop; both are plain
+`data-go` buttons, so BACK returns to Fishing through `navStack`. On windows 701px and wider all four sit on one row with the same
+height (CAST a bit wider). On phones CAST is full width on top and the other three are equal smaller buttons in one row below
+(icon above a one-line label, no corner rivets so the label has the full width). The Choose Rod / Bait popup keeps its GO TO SHOP.
+The Home and Result screens keep their own OPEN BAG buttons.
 
 **Laptop / desktop fit (don't break this):** on windows 900px and wider, every screen fits the window without page scrolling, down to
 1280x600 (e.g. 1536x730 = a 1920x1080 laptop at 125%). Sizes inside `@media (min-width: 900px)` follow the window height with
@@ -151,7 +158,7 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
-**Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL; the way out is the top bar's BACK.
+**Bag:** sell fish one at a time or **SELL ALL** for coins (from Fishing: the SELL FISH button). Its only bottom button is SELL ALL; the way out is the top bar's BACK.
 
 **Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a clear step up in forgiveness, 1 / 2 / 3 / 5 misses, and
 Master's Charm adds 1, so up to 6 hearts with the Lucky Rod):

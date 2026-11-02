@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=25">
+<link rel="stylesheet" href="css/style.css?v=26">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -113,9 +113,11 @@
         <div class="reelinfo"><div class="dots" id="dots"></div><div class="hearts" id="hearts" role="status"></div></div>
         <div class="isle-prog" id="isleProg"></div>
       </div>
+      <!-- CAST | SELL FISH (opens the Bag) | SHOP | TOWN MAP: one row on wide screens; on phones CAST is full width above the other three -->
       <div class="actions">
         <button class="btn green" id="actBtn">CAST</button>
-        <button class="btn blue" id="fBagBtn" data-go="bag"><span class="ico i-bag"></span>OPEN BAG</button>
+        <button class="btn blue" id="fBagBtn" data-go="bag" title="Open your bag and sell fish for coins"><span class="ico i-bag"></span>SELL FISH</button>
+        <button class="btn" id="fShopBtn" data-go="shop" title="Buy rods, bait and a bigger bag"><span class="ico i-shop"></span>SHOP</button>
         <button class="btn" data-go="map"><span class="ico i-map"></span>TOWN MAP</button>
       </div>
     </div>
@@ -234,9 +236,9 @@
       <dt>❗ Bite</dt><dd>When a big "!" pops up over the bobber, press HOOK! within 1 second or the fish swims away.</dd>
       <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Each miss costs a ❤ heart; miss with no hearts left and the fish escapes.</dd>
       <dt>🎣 Rods</dt><dd>Buy rods once in the Shop. Equip one in the Tackle Box, or tap ROD on the fishing screen to pick from a list: Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster marker).</dd>
-      <dt>🎒 Bag</dt><dd>KEEP puts your catch in the bag; sell it there for coins. If the bag is full you can sell a fish, open the bag or release the new one. You can't cast while the bag is full.</dd>
+      <dt>🎒 Bag</dt><dd>KEEP puts your catch in the bag; sell it there for coins. If the bag is full you can sell a fish, open the bag or release the new one. You can't cast while the bag is full. While fishing, SELL FISH opens the bag.</dd>
       <dt>🪱 Bait</dt><dd>Choose Worm, Shrimp, Golden Lure or no bait in the Tackle Box, or tap BAIT on the fishing screen to see every bait with its odds and pick one. Each cast uses one of the chosen bait for better odds of rarer fish.</dd>
-      <dt>🛒 Shop</dt><dd>Spend coins on rods, bait and a bigger bag. Each item shows its exact effect and the odds before you buy.</dd>
+      <dt>🛒 Shop</dt><dd>Spend coins on rods, bait and a bigger bag. Each item shows its exact effect and the odds before you buy. Open it from Home or with SHOP on the fishing screen.</dd>
       <dt>⭐ Island Mastery</dt><dd>Find all 10 fish on an island to unlock its reward: Golden Hook, Steady Hands, Lucky Lure or Master's Charm. Rewards work automatically. Master all four islands to discover a secret lake.</dd>
       <dt>🧰 Tackle Box</dt><dd>Open it from Home to equip a rod, choose bait, and see your bag and every island reward. Rewards add to your rod (e.g. Master's Charm gives +1 miss).</dd>
       <dt>💾 Saving</dt><dd>Your progress is saved automatically in this browser on this device. A different browser, device or home-screen app has its own separate save.</dd>
@@ -255,10 +257,10 @@
 </div>
 
 
-<script src="js/data.js?v=25"></script>
-<script src="js/state.js?v=25"></script>
-<script src="js/fisherman.js?v=25"></script>
-<script src="js/fishing.js?v=25"></script>
-<script src="js/screens.js?v=25"></script>
+<script src="js/data.js?v=26"></script>
+<script src="js/state.js?v=26"></script>
+<script src="js/fisherman.js?v=26"></script>
+<script src="js/fishing.js?v=26"></script>
+<script src="js/screens.js?v=26"></script>
 </body>
 </html>
