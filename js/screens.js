@@ -4,7 +4,8 @@
    where the player came from, like a browser's back button. Home and Title start a fresh history. A Result screen
    is only remembered on the way to the Bag (to make room for the waiting fish), and the same screen is never stored
    twice in a row, so catching fish over and over doesn't grow the history. */
-const NAV_SCREENS = { home: "HOME", map: "TOWN MAP", bag: "BAG", shop: "SHOP", collection: "COLLECTION", tackle: "TACKLE BOX" };
+// screens with the BACK bar (Home is the root screen: no BACK bar, it has its MENU button)
+const NAV_SCREENS = { map: "TOWN MAP", bag: "BAG", shop: "SHOP", collection: "COLLECTION", tackle: "TACKLE BOX" };
 let current = "titleScreen", navStack = [];
 function go(id, back = false) {
   // a caught fish is waiting for KEEP / RELEASE: only the Result screen (and the Bag, to make room) can be opened
@@ -22,11 +23,14 @@ function go(id, back = false) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   current = id; document.body.classList.toggle("plain", id === "fishing"); document.body.classList.toggle("on-title", id === "titleScreen");
   document.body.classList.toggle("has-nav", !!NAV_SCREENS[id]); $("navName").textContent = NAV_SCREENS[id] || "";
+  document.body.classList.toggle("fit", FIT_SCREENS.includes(id));
   setBackdrop();
   render(); window.scrollTo(0, 0);
 }
 // BACK: the previous screen (skipping a Result screen whose fish was already kept or released), else Home;
 // on Home it goes back to the Title screen, where the player came from
+// wide windows: these screens are exactly one window tall and their list scrolls inside the panel (css: body.fit)
+const FIT_SCREENS = ["bag", "shop", "tackle"];
 function goBack() {
   if (current === "home") return go("titleScreen");
   let id; do { id = navStack.pop(); } while (id && (id === current || (id === "result" && !S.pending)));
@@ -105,14 +109,14 @@ $("howBtn").onclick = () => openModal("howBox", "howPanel");
 $("howOk").onclick = () => closeModal("howBox");
 $("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); renderTitle(); sfx.coin(); };
 // Esc closes an open popup and does nothing else; with no popup open it works as BACK on the screens with the
-// sticky bar (not on Home, where BACK would leave the game for the Title screen)
+// BACK bar (so never on Home, where BACK would leave the game for the Title screen)
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (document.querySelector(".banner.show")) {
     ["confirmBox", "nameBox", "howBox", "pickBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
     return;
   }
-  if (NAV_SCREENS[current] && current !== "home") goBack();
+  if (NAV_SCREENS[current]) goBack();
 });
 // keep Tab inside an open dialog (wraps from the last button to the first and back)
 document.addEventListener("keydown", e => {

@@ -410,7 +410,7 @@ with sync_playwright() as p:
     # ---------- BUG-9: the main fishing button must not move between phases (see docs/bug_log.md) ----------
     ACT_POS = """(() => { const r = document.getElementById('actBtn').getBoundingClientRect();
         return { top: r.top + scrollY, bottom: r.bottom, vh: innerHeight, page: document.documentElement.scrollHeight }; })()"""
-    for vw, vh in [(1366, 768), (1280, 720), (390, 844)]:
+    for vw, vh in [(1366, 768), (1280, 720), (1366, 625), (1280, 600), (390, 844)]:
         s = b.new_page(viewport={"width": vw, "height": vh})
         s.on("pageerror", lambda e: errs.append(str(e)))
         s.goto(URL); s.evaluate("localStorage.clear()"); s.reload(); s.wait_for_timeout(200); start_new(s, "Steady")
@@ -923,8 +923,8 @@ with sync_playwright() as p:
         tp.click("#soundBtn"); ok_sound = "OFF" in tp.inner_text("#soundBtn"); tp.click("#soundBtn")
         tp.click("#contBtn"); tp.wait_for_timeout(300)
         check(f"{vw}x{vh}: Title buttons still work (HOW TO PLAY, SOUND, CONTINUE)", ok_how and ok_sound and tp.is_visible("#home"))
-        check(f"{vw}x{vh}: Home keeps its framed layout (top bar, no full-screen picture)",
-              tp.is_visible("#title") and not tp.is_visible(".title-bg") and tp.is_visible("#navBack"))
+        check(f"{vw}x{vh}: Home keeps its framed layout (top bar, no full-screen picture, no BACK bar)",
+              tp.is_visible("#title") and not tp.is_visible(".title-bg") and not tp.is_visible("#navBack"))
         tp.close()
 
     # ---------- polish: Forest picture, island progress line, Town Map text (see docs/bug_log.md BUG-14..16) ----------
@@ -1047,14 +1047,15 @@ with sync_playwright() as p:
         webkit.close()
 
     # BUG-21: sticky BACK bar on Home, Map, Bag, Shop, Collection, Tackle Box
-    NAV = {"home": "HOME", "map": "TOWN MAP", "bag": "BAG", "shop": "SHOP", "collection": "COLLECTION", "tackle": "TACKLE BOX"}
+    NAV = {"map": "TOWN MAP", "bag": "BAG", "shop": "SHOP", "collection": "COLLECTION", "tackle": "TACKLE BOX"}
     BAR = """(() => { const b = document.getElementById('navBack').getBoundingClientRect(), bar = document.getElementById('navbar').getBoundingClientRect(),
         hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2), first = document.querySelector('.screen.active').firstElementChild;
         const nb = document.getElementById('navbar'), f = first && first.getBoundingClientRect();
         return { vis: b.width > 0 && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth, hit: !!hit && hit.closest('button') === document.getElementById('navBack'),
-                 name: document.getElementById('navName').textContent, y: scrollY, sticky: getComputedStyle(nb).position, barBottom: bar.bottom, firstTop: f ? f.top : 9999,
+                 name: document.getElementById('navName').textContent, y: scrollY, sticky: getComputedStyle(nb.parentElement).position, barBottom: bar.bottom, firstTop: f ? f.top : 9999,
                  sw: document.documentElement.scrollWidth, vw: innerWidth, max: document.documentElement.scrollHeight - innerHeight }; })()"""
-    for vw, vh in [(360, 640), (1366, 768)]:
+    for vw, vh in [(360, 640), (390, 844), (1366, 768)]:
+        phone = vw < 900
         nc = b.new_context(viewport={"width": vw, "height": vh}); nv = nc.new_page()
         nv.on("pageerror", lambda e: errs.append(str(e))); nv.on("console", lambda m: m.type == "error" and errs.append(m.text))
         nv.goto(URL); nv.evaluate("localStorage.clear()"); nv.reload(); nv.wait_for_timeout(200); start_new(nv, "Nav")
@@ -1067,13 +1068,16 @@ with sync_playwright() as p:
             nv.evaluate("window.scrollTo(0, 1500)"); nv.wait_for_timeout(150)
             down = nv.evaluate(BAR); res[sc] = (top, down)
             check(f"{vw}x{vh} {sc}: BACK + '{name}' visible at the top, still visible and clickable after scrolling 1500px down (scrolled {down['y']:.0f}px)",
-                  top["vis"] and down["vis"] and down["hit"] and top["name"] == name and down["sticky"] == "sticky", f"{top['vis']} {down['vis']} {down['hit']} {top['name']}")
+                  top["vis"] and down["vis"] and down["hit"] and top["name"] == name and (down["sticky"] == "sticky" or not phone), f"{top['vis']} {down['vis']} {down['hit']} {top['name']}")
             check(f"{vw}x{vh} {sc}: the bar doesn't cover the screen's content, no side scroll",
                   top["barBottom"] <= top["firstTop"] and top["sw"] <= vw and down["sw"] <= vw, f"bar {top['barBottom']:.0f} content {top['firstTop']:.0f} sw {down['sw']}")
             if vw == 360 and sc in ("shop", "tackle"): nv.screenshot(path=str(SHOTS / f"54_back_scrolled_{sc}_{vw}.png"))
-        check(f"{vw}x{vh}: Shop and Tackle Box really scrolled (to the bottom, or 1500px) while BACK stayed in view",
-              all(res[k][1]["y"] > 300 and res[k][1]["y"] >= min(1500, res[k][1]["max"]) - 1 for k in ("shop", "tackle")),
-              f"shop {res['shop'][1]['y']} tackle {res['tackle'][1]['y']}")
+        if phone:
+            check(f"{vw}x{vh}: phone Shop and Tackle Box pages really scrolled (to the bottom, or 1500px) while BACK stayed in view",
+                  all(res[k][1]["y"] > 300 and res[k][1]["y"] >= min(1500, res[k][1]["max"]) - 1 for k in ("shop", "tackle")),
+                  f"shop {res['shop'][1]['y']} tackle {res['tackle'][1]['y']}")
+        nv.evaluate("() => go('home')"); nv.wait_for_timeout(150)
+        check(f"{vw}x{vh}: no BACK bar on Home (root screen; MENU button instead)", not nv.is_visible("#navbar") and nv.is_visible("#menuBtn"))
         if vw == 360:
             # BACK returns to the screen the player came from
             nv.evaluate("() => { S.bag = []; S.bagMax = 5; save(); go('home'); }"); nv.click("section.active >> text=OPEN BAG"); nv.wait_for_timeout(200)
@@ -1097,8 +1101,6 @@ with sync_playwright() as p:
             trail = []
             for _ in range(3): nv.click("#navBack"); nv.wait_for_timeout(150); trail.append(nv.evaluate("current"))
             check("Shop > Tackle Box > BACK = Shop; Shop > Tackle > Shop then BACK x3 = Tackle, Shop, Home", a == "shop" and trail == ["tackle", "shop", "home"], f"{a} {trail}")
-            check("BACK on Home returns to the Title screen", (nv.click("#navBack") or True) and nv.is_visible("#titleScreen") and not nv.is_visible("#navBack"))
-            nv.click("#contBtn"); nv.wait_for_timeout(200)
             nv.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_0') }; caught(); }"); nv.wait_for_timeout(200)
             on_result = [nv.is_visible("#result"), nv.is_visible("#navbar")]; nv.click("#releaseBtn"); nv.wait_for_timeout(200)
             check("no BACK bar on the Result screen", on_result == [True, False], str(on_result))
@@ -1141,7 +1143,7 @@ with sync_playwright() as p:
         d.wait_for_function("[...document.querySelectorAll('#backdrop .bd')].every(e => e.classList.contains('loaded') || e.classList.contains('failed'))", timeout=8000)
         loaded = d.evaluate("[...document.querySelectorAll('#backdrop .bd.loaded')].map(e => e.dataset.isle)")
         menu = {}
-        for sc in NAV:
+        for sc in ["home", *NAV]:
             d.evaluate(f"() => go('{sc}')"); d.wait_for_timeout(400)
             menu[sc] = d.evaluate(BD); unread = d.evaluate(READ)
             d.evaluate("window.scrollTo(0, 1500)"); d.wait_for_timeout(100); menu[sc + "_down"] = d.evaluate(BD); d.evaluate("window.scrollTo(0, 0)")
@@ -1151,7 +1153,7 @@ with sync_playwright() as p:
         check(f"{vw}x{vh}: menu screens show harbor_clean.jpg (no fisherman) full-viewport, fixed while scrolling, cover + pixelated, ~35% shade",
               all(v["cover"] and v["pos"] == "fixed" and v["top"] == 0 and v["behind"] and v["isle"] == "harbor" and "harbor_clean.jpg" in v["img"] and "/harbor.jpg" not in v["img"]
                   and v["size"] == "cover" and v["pix"] == "pixelated" and v["ons"] == 1 and v["shade"] == 0 for v in mv)
-              and any(v["y"] > 0 for v in mv) and all(v["att"] != "fixed" and "url(" not in v["body"] for v in mv), str({k: (v["isle"], v["cover"], v["top"], v["y"]) for k, v in menu.items() if not v["cover"] or v["top"]}))
+              and (any(v["y"] > 0 for v in mv) or vw >= 900) and all(v["att"] != "fixed" and "url(" not in v["body"] for v in mv), str({k: (v["isle"], v["cover"], v["top"], v["y"]) for k, v in menu.items() if not v["cover"] or v["top"]}))
         isl_bd = {}
         for isl in ["harbor", "frost", "desert", "forest", "secret"]:
             d.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); d.wait_for_timeout(450)
@@ -1184,6 +1186,85 @@ with sync_playwright() as p:
     bgd = fpg.evaluate("getComputedStyle(document.querySelector('.bd-desert')).backgroundImage")
     check("a backdrop that fails to load keeps its gradient colour, no JavaScript errors", "linear-gradient" in bgd and "url(" not in bgd and not f_errs, f"{bgd[:60]} {f_errs[:1]}")
     fc.close()
+
+    # ---------- BUG-23: every screen fits a laptop window without page scrolling ----------
+    FIT = """sc => { const vh = innerHeight, vw = innerWidth, inView = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.top >= -0.5 && r.bottom <= vh + 0.5 && r.left >= 0 && r.right <= vw + 0.5; };
+        const main = [...document.querySelectorAll('.screen.active .btn, .app > .top .btn, .app > .top .title, .app > .top .sign')]
+            .filter(b => b.offsetParent && !b.closest('.scroll-list, .islands, .coll, .tabs'));
+        return { page: document.documentElement.scrollHeight, vh, sw: document.documentElement.scrollWidth, vw,
+                 out: main.filter(b => !inView(b)).map(b => (b.id || b.textContent.trim()).slice(0, 14)), n: main.length,
+                 nav: !!document.getElementById('navbar').offsetParent }; }"""
+    LIST = """sc => { const l = document.querySelector('#' + sc + ' .scroll-list'), cs = getComputedStyle(l), fade = getComputedStyle(l, '::after');
+        const before = l.scrollTop; l.scrollTop = 1e6; const moved = l.scrollTop > before;
+        const btns = [...document.querySelectorAll('#' + sc + ' > .btns .btn')].every(b => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
+        const r = [cs.overflowY, l.scrollHeight > l.clientHeight + 4, moved, scrollY === 0 && document.documentElement.scrollHeight <= innerHeight + 1, btns,
+                   fade.content !== 'none' && fade.position === 'sticky', cs.scrollbarWidth];
+        l.scrollTop = 0; return r; }"""
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600)]:
+        lc = b.new_context(viewport={"width": vw, "height": vh}); lp = lc.new_page()
+        lp.on("pageerror", lambda e: errs.append(str(e))); lp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        lp.goto(URL); lp.evaluate("localStorage.clear()"); lp.reload(); lp.wait_for_timeout(200)
+        if vw in (1536, 1366): lp.screenshot(path=str(SHOTS / f"70_title_{vw}x{vh}.png"))
+        start_new(lp, "Laptop")
+        lp.evaluate("() => { S.coins = 3000; S.bagMax = 15; ['harbor','frost','desert','forest'].forEach(i => { S.mastery[i] = true; FISH.filter(f => f.island === i).forEach(f => S.discovered[f.id] = true); });"
+                    " S.records = {}; while (S.bag.length < 15) S.bag.push({ fishId: 'harbor_' + (S.bag.length % 10), weight: .5, price: 20, time: 1 }); save(); }")
+        lp.add_style_tag(content="#toast { display: none !important; } .confetti { display: none !important; }")
+        fits = {}
+        for sc in ["home", "map", "bag", "collection", "shop", "tackle", "fishing", "result_full", "result"]:
+            if sc == "fishing": lp.evaluate("() => { island = 'desert'; go('fishing'); }")
+            elif sc == "result_full": lp.evaluate("() => { stopFishing(); F = { phase: 'idle', fish: fishById('desert_9') }; caught(); }")
+            elif sc == "result":
+                lp.click("#fullRelease"); lp.wait_for_timeout(200)
+                lp.evaluate("() => { stopFishing(); S.bag = S.bag.slice(0, 3); save(); F = { phase: 'idle', fish: fishById('frost_8') }; caught(); }")
+            else: lp.evaluate(f"() => go('{sc}')")
+            lp.wait_for_timeout(450)
+            fits[sc] = lp.evaluate(FIT, sc)
+            if vw in (1536, 1366): lp.screenshot(path=str(SHOTS / f"70_{sc}_{vw}x{vh}.png"))
+        lp.click("#releaseBtn"); lp.wait_for_timeout(200)
+        for sc, r in fits.items():
+            check(f"{vw}x{vh} {sc}: no page scroll ({r['page']} <= {r['vh']}), every main button fully on screen, no side scroll",
+                  r["page"] <= r["vh"] + 1 and not r["out"] and r["n"] >= 2 and r["sw"] <= r["vw"], f"page {r['page']} out {r['out']}")
+        check(f"{vw}x{vh}: no BACK bar on Home; BACK bar in the header row on the other menu screens",
+              not fits["home"]["nav"] and all(fits[k]["nav"] for k in ("map", "bag", "collection", "shop", "tackle")))
+        hdr = lp.evaluate("""() => { go('shop'); const t = document.getElementById('title').getBoundingClientRect(), n = document.getElementById('navbar').getBoundingClientRect(),
+            c = document.querySelector('.app > .top .sign').getBoundingClientRect(); return [Math.abs(t.top - n.top) < 1 && Math.abs(n.top - c.top) < 1, t.right <= n.left, n.right <= c.left]; }""")
+        check(f"{vw}x{vh}: header is one row: LITTLE LAKE | < BACK + SHOP | coins", all(hdr), str(hdr))
+        lp.evaluate("() => { while (S.bag.length < 15) S.bag.push({ fishId: 'harbor_' + (S.bag.length % 10), weight: .5, price: 20, time: 1 }); save(); }")
+        for sc in ("shop", "tackle", "bag"):
+            lp.evaluate(f"() => go('{sc}')"); lp.wait_for_timeout(350)
+            r = lp.evaluate(LIST, sc)
+            check(f"{vw}x{vh} {sc}: the list scrolls inside the panel (thin scrollbar, fade at the bottom), the page doesn't, bottom buttons stay visible",
+                  r[0] == "auto" and r[1] and r[2] and r[3] and r[4] and r[5] and r[6] == "thin", str(r))
+        lp.evaluate("() => { collTab = 'harbor'; go('collection'); }"); lp.wait_for_timeout(350)
+        coll = lp.evaluate("""() => { const vh = innerHeight, ok = el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= vh; };
+            const cells = [...document.querySelectorAll('#collGrid .cell')], sizes = [...document.querySelectorAll('#collection .cell, #collection .tab, #collHead div')].map(e => parseFloat(getComputedStyle(e).fontSize));
+            return [cells.length, cells.every(ok), ok(document.querySelector('#collHead .bar')), ok(document.querySelector('#collHead .reward')), Math.min(...sizes)]; }""")
+        check(f"{vw}x{vh}: Collection shows all 10 cards, the island progress bar and the reward line, text >= 12px",
+              coll[0] == 10 and coll[1] and coll[2] and coll[3] and coll[4] >= 12, str(coll))
+        small = lp.evaluate("""() => { const out = []; for (const sc of ['home', 'map', 'bag', 'shop', 'tackle', 'collection']) { go(sc);
+            for (const el of document.querySelectorAll('.screen.active *, .app > .top *')) if (el.offsetParent && [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())
+                && parseFloat(getComputedStyle(el).fontSize) < 12) out.push(sc + ':' + (el.className || el.tagName)); } return [...new Set(out)]; }""")
+        check(f"{vw}x{vh}: no text smaller than 12px on the menu screens", not small, str(small[:5]))
+        if vw == 1280:
+            # popups fit at 1280x600
+            POPFIT = """id => { const m = document.getElementById(id), p = m.querySelector('.panel'), r = p.getBoundingClientRect(), vh = innerHeight;
+                const btns = [...p.querySelectorAll('.btns .btn, #howOk, #banOk')].filter(b => b.offsetParent);
+                return [r.top >= 0 && r.bottom <= vh && r.left >= 0 && r.right <= innerWidth, btns.length >= 1 && btns.every(b => { const q = b.getBoundingClientRect(); return q.top >= 0 && q.bottom <= vh; })]; }"""
+            pops = {}
+            lp.evaluate("() => { island = 'harbor'; go('fishing'); }"); lp.wait_for_timeout(300)
+            lp.evaluate("() => { S.bag = []; save(); render(); }")
+            for chip in ("rodChip", "baitChip"):
+                lp.click(f"#{chip}"); lp.wait_for_timeout(450); pops[chip] = lp.evaluate(POPFIT, "pickBox")
+                lp.screenshot(path=str(SHOTS / f"71_picker_{chip}_1280x600.png")); lp.click("#pickClose")
+            lp.evaluate("() => go('titleScreen')"); lp.wait_for_timeout(200)
+            for btn, box in (("howBtn", "howBox"), ("newBtn", "confirmBox")):
+                lp.click(f"#{btn}"); lp.wait_for_timeout(450); pops[box] = lp.evaluate(POPFIT, box); lp.keyboard.press("Escape")
+            lp.evaluate("() => openNameBox()"); lp.wait_for_timeout(450); pops["nameBox"] = lp.evaluate(POPFIT, "nameBox"); lp.keyboard.press("Escape")
+            lp.evaluate("() => { go('home'); banner('Harbor Mastered!', 'Golden Hook unlocked: fish sell for 20% more coins.'); }"); lp.wait_for_timeout(450)
+            pops["banner"] = lp.evaluate(POPFIT, "banner")
+            check("1280x600: rod / bait picker, HOW TO PLAY, confirm, name and mastery popups fit with their buttons on screen",
+                  all(all(v) for v in pops.values()), str({k: v for k, v in pops.items() if not all(v)}))
+        lc.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

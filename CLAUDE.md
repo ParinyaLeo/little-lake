@@ -80,13 +80,22 @@ If another tab saves, the `storage` listener reloads `S` so tabs don't overwrite
 A different browser, device or home-screen app has its own separate save."). **Export / Import Save was removed on purpose**
 (owner decision, see `docs/bug_log.md` BUG-17 / BUG-19): don't add save codes, copy/download or import UI back.
 
-**Navigation / BACK bar** (`#navbar`, hidden on Title, Fishing and Result): a sticky bar (`position: sticky`, in the normal flow so it
-never covers content) on Home, Map, Bag, Shop, Collection and Tackle Box with **< BACK** (`#navBack`) and the screen name (`NAV_SCREENS`).
+**Navigation / BACK bar** (`#navbar`, inside the header row `.app > .top`): shown on Map, Bag, Shop, Collection and Tackle Box
+(`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) and the
+screen name. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
+wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
+visible while a phone page scrolls; it is in the normal flow, so it never covers content.
 `go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
-the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback, Title when on Home. The Bag's BACK
-button and **Esc** use `goBack()`; Esc first closes an open popup and then does nothing else, and never acts on Home. Fishing > GO TO
-SHOP > BACK returns to Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing screen TOWN MAP and OPEN BAG stay
-next to CAST (no bar there).
+the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback. The Bag's BACK button and **Esc** use
+`goBack()`; Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
+Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
+
+**Laptop / desktop fit (don't break this):** on windows 900px and wider, every screen fits the window without page scrolling, down to
+1280x600 (e.g. 1536x730 = a 1920x1080 laptop at 125%). Sizes inside `@media (min-width: 900px)` follow the window height with
+`clamp(…, vh, …)` (header, paddings, gaps, buttons, stat tiles, map cards, Collection cards and tabs); text stays at least 12px.
+Bag, Shop and Tackle Box (`FIT_SCREENS` → `body.fit`) are exactly one window tall and only their `.scroll-list` scrolls inside the panel
+(thin gold scrollbar, sticky fade at the bottom); the header and bottom buttons stay visible. Phones (below 900px) scroll the page.
+Anything new on these screens must keep fitting: the tests check 1920x915, 1536x730, 1366x625 and 1280x600.
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all

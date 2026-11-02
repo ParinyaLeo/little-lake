@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=17">
+<link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -20,14 +20,15 @@
 <div class="app">
   <div class="top">
     <div class="title wood" id="title">LITTLE LAKE</div>
+    <!-- BACK bar on Map, Bag, Shop, Collection and Tackle Box (not Home): BACK (screen history, Home as fallback) + screen name.
+         Wide screens: in the middle of this header row. Below 900px: its own row under the sign, sticky while scrolling. -->
+    <nav class="navbar" id="navbar" aria-label="Screen navigation">
+      <button class="btn small nav-back" id="navBack" title="Back to the previous screen (Esc)">&lt; BACK</button>
+      <div class="nav-name" id="navName" aria-live="polite"></div>
+      <span class="nav-end" aria-hidden="true"></span>
+    </nav>
     <div class="sign wood"><span class="coins" id="coinTop">0</span></div>
   </div>
-  <!-- sticky bar on Home, Map, Bag, Shop, Collection and Tackle Box: BACK (screen history, Home as fallback) + screen name -->
-  <nav class="navbar" id="navbar" aria-label="Screen navigation">
-    <button class="btn small nav-back" id="navBack" title="Back to the previous screen (Esc)">&lt; BACK</button>
-    <div class="nav-name" id="navName" aria-live="polite"></div>
-    <span class="nav-end" aria-hidden="true"></span>
-  </nav>
 
   <!-- TITLE -->
   <section class="screen active" id="titleScreen">
@@ -46,7 +47,6 @@
 
   <!-- HOME -->
   <section class="screen" id="home">
-    <div class="spacer"></div>
     <div class="panel wood">
       <div class="head">
         <h2 id="homeName">Angler</h2>
@@ -151,7 +151,7 @@
   <section class="screen" id="bag">
     <div class="panel wood">
       <h2>Bag <span id="bagCount"></span></h2>
-      <div class="list" id="bagList"></div>
+      <div class="list scroll-list" id="bagList"></div>
     </div>
     <div class="btns">
       <button class="btn green" id="sellAll"><span class="ico i-coin"></span>SELL ALL</button>
@@ -164,6 +164,7 @@
   <section class="screen" id="shop">
     <div class="panel wood">
       <h2>Shop</h2>
+      <div class="scroll-list" id="shopScroll">
       <h3 class="shop-h">Rods <small>buy once, then equip one in the Tackle Box</small></h3>
       <div class="shop" id="shopRods"></div>
       <h3 class="shop-h">Bait <small>one is used per cast from the bait you choose</small></h3>
@@ -172,6 +173,7 @@
       <h3 class="shop-h">Bag</h3>
       <div class="shop">
         <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span class="fx" id="sBagFx"></span><span>In your bag: <span id="sBag"></span></span><button class="btn green" id="buyBag">150 COINS</button></div>
+      </div>
       </div>
     </div>
     <div class="btns"><button class="btn" data-go="tackle"><span class="ico i-box"></span>TACKLE BOX</button><button class="btn" data-go="home">HOME</button></div>
@@ -182,7 +184,7 @@
     <div class="panel wood">
       <h2><span class="ico i-box"></span>Tackle Box</h2>
       <p class="small">Choose your rod and bait here. Every item says what it does.</p>
-      <div class="gearlist" id="gearList"></div>
+      <div class="gearlist scroll-list" id="gearList"></div>
     </div>
     <div class="btns">
       <button class="btn" data-go="shop"><span class="ico i-shop"></span>SHOP</button>
@@ -251,10 +253,10 @@
 </div>
 
 
-<script src="js/data.js?v=17"></script>
-<script src="js/state.js?v=17"></script>
-<script src="js/fisherman.js?v=17"></script>
-<script src="js/fishing.js?v=17"></script>
-<script src="js/screens.js?v=17"></script>
+<script src="js/data.js?v=18"></script>
+<script src="js/state.js?v=18"></script>
+<script src="js/fisherman.js?v=18"></script>
+<script src="js/fishing.js?v=18"></script>
+<script src="js/screens.js?v=18"></script>
 </body>
 </html>
