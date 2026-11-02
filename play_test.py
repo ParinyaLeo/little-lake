@@ -469,8 +469,8 @@ with sync_playwright() as p:
     bam, stu, pre, luc = (shop_item(f"rod:{r}") for r in ["bamboo", "sturdy", "precision", "lucky"])
     check("Shop lists 4 rods with exact effects",
           "1 miss allowed, normal zone and speed." in bam["text"] and "2 misses allowed, normal zone and speed." in stu["text"]
-          and "1 miss allowed, green zone 35% wider." in pre["text"]
-          and "1 miss allowed, better rarity odds (like Shrimp bait), marker 10% faster." in luc["text"]
+          and "3 misses allowed, green zone 35% wider." in pre["text"]
+          and "5 misses allowed, better rarity odds (like Shrimp bait), marker 10% faster." in luc["text"]
           and "Legendary 6%" in luc["text"], luc["text"][:160])
     check("Shop: equipped starter rod is marked and can't be bought", bam["disabled"] and bam["label"] == "EQUIPPED" and "EQUIPPED" in bam["text"])
     check("Shop: items you can't afford are disabled and say how much is missing (300 coins)",
@@ -594,11 +594,11 @@ with sync_playwright() as p:
         island = 'harbor'; go('fishing'); F = { phase: 'bite', fish: fishById('harbor_0') }; hook();
         const r = [allowedMiss(), Math.round(F.zoneW * 1000) / 1000, Math.round(F.speed * 1000) / 1000]; stopFishing(); return r; }"""
     effects = {r: g.evaluate(f"({eff})('{r}', {{}})") for r in ["bamboo", "sturdy", "precision", "lucky"]}
-    check("rod effects: Bamboo 1 miss, Sturdy 2, Precision zone x1.35, Lucky marker x1.1",
-          effects == {"bamboo": [1, .26, .55], "sturdy": [2, .26, .55], "precision": [1, .351, .55], "lucky": [1, .26, .605]}, str(effects))
+    check("rod effects: Bamboo 1 miss, Sturdy 2, Precision 3 + zone x1.35, Lucky 5 + marker x1.1",
+          effects == {"bamboo": [1, .26, .55], "sturdy": [2, .26, .55], "precision": [3, .351, .55], "lucky": [5, .26, .605]}, str(effects))
     with_rewards = g.evaluate(f"({eff})('lucky', {{ forest: true, frost: true }})"), g.evaluate(f"({eff})('sturdy', {{ forest: true }})")
     check("island rewards stack on the rod (Master's Charm +1 miss, Steady Hands 20% slower)",
-          with_rewards[0] == [2, .26, .484] and with_rewards[1] == [3, .26, .55], str(with_rewards))
+          with_rewards[0] == [6, .26, .484] and with_rewards[1] == [3, .26, .55], str(with_rewards))
 
     # odds: each bait / Lucky Rod / Lucky Lure, stacking, Legendary cap
     odds = lambda bait, rod_id, desert=False: g.evaluate(f"(() => {{ S.mastery = {{ desert: {str(desert).lower()} }}; return rarityWeights('{bait}', '{rod_id}').map(v => Math.round(v * 100) / 100); }})()")
@@ -1492,6 +1492,69 @@ with sync_playwright() as p:
             hp.focus("#mapHome"); hp.keyboard.press("Enter"); hp.wait_for_timeout(300)
             check(f"{vw}x{vh}: Fishing > Town Map > HOME (keyboard Enter) opens Home", hp.evaluate("current") == "home")
         hp.close()
+
+    # ---------- BUG-31: rods are a clear step up in forgiveness (1, 2, 3, 5 misses; +1 with Master's Charm) ----------
+    rc = b.new_context(viewport={"width": 1366, "height": 768}); rp = rc.new_page()
+    rp.on("pageerror", lambda e: errs.append(str(e))); rp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    rp.goto(URL); rp.evaluate("localStorage.clear()"); rp.reload(); rp.wait_for_timeout(200); start_new(rp, "Rods")
+    rp.add_style_tag(content="#toast { display: none !important; }")
+    AM = "m => Object.fromEntries(ROD_IDS.map(id => { S.rods = [...ROD_IDS]; S.rodEq = id; S.mastery = m; return [id, allowedMiss()]; }))"
+    am0, am1 = rp.evaluate(AM, {}), rp.evaluate(AM, {"forest": True})
+    check("allowedMiss(): Bamboo 1, Sturdy 2, Precision 3, Lucky 5; with Master's Charm 2, 3, 4, 6",
+          am0 == {"bamboo": 1, "sturdy": 2, "precision": 3, "lucky": 5} and am1 == {"bamboo": 2, "sturdy": 3, "precision": 4, "lucky": 6}, f"{am0} {am1}")
+    # a fish is lost only after the (allowedMiss + 1)th miss: miss on purpose and watch the phase after every press
+    def miss_run(pg, rod, mastery="{}"):
+        pg.evaluate(f"() => {{ stopFishing(); S.rods = [...ROD_IDS]; S.rodEq = '{rod}'; S.mastery = {mastery}; S.bag = []; save(); island = 'harbor'; go('fishing'); }}"); pg.wait_for_timeout(300)
+        pg.click("#actBtn"); pg.wait_for_function("F.phase === 'bite'", timeout=8000); pg.click("#actBtn"); pg.wait_for_timeout(80)
+        hearts = [pg.evaluate("document.querySelectorAll('#hearts .ico').length")]; phases = []
+        for _ in range(12):
+            if pg.evaluate("F.phase") != "reeling": break
+            pg.wait_for_function("F.phase !== 'reeling' || F.pos < F.zoneX - 0.06 || F.pos > F.zoneX + F.zoneW + 0.06", timeout=8000, polling=5)
+            if pg.evaluate("F.phase") != "reeling": break
+            pg.click("#actBtn"); pg.wait_for_timeout(40)
+            phases.append(pg.evaluate("F.phase")); hearts.append(pg.evaluate("document.querySelectorAll('#hearts .i-heart').length"))
+        return phases, hearts, pg.inner_text("#fMsg")
+    for rod, n in [("precision", 3), ("lucky", 5)]:
+        ph, he, msg = miss_run(rp, rod)
+        check(f"{rod.title()} Rod: {n + 1} hearts' worth of play: still reeling after {n} misses, the fish escapes on miss {n + 1}; {n} hearts shown",
+              ph == ["reeling"] * n + ["idle"] and he[0] == n and he[1:] == list(range(n - 1, -1, -1)) + [0] and "escaped" in msg, f"{ph} {he} {msg[:40]}")
+    rp.evaluate("() => { stopFishing(); S.rods = [...ROD_IDS]; S.rodEq = 'lucky'; S.mastery = { forest: true }; save(); go('tackle'); }"); rp.wait_for_timeout(250)
+    gear = rp.inner_text("#gearList")
+    check("Tackle Box: '3 misses allowed' (Precision), '5 misses allowed' (Lucky), '6 misses allowed in total with your Lucky Rod' (with Master's Charm)",
+          "3 misses allowed, green zone 35% wider" in gear and "5 misses allowed, better rarity odds" in gear and "6 misses allowed in total with your Lucky Rod" in gear, gear[:120])
+    rp.evaluate("() => { S.mastery = {}; save(); island = 'harbor'; go('fishing'); }"); rp.wait_for_timeout(250); rp.click("#rodChip"); rp.wait_for_timeout(250)
+    pick = {r: rp.inner_text(f"#pick-{r}") for r in ["bamboo", "sturdy", "precision", "lucky"]}
+    check("Choose Rod popup: 1, 2, 3 and 5 misses allowed", "1 miss allowed" in pick["bamboo"] and "2 misses allowed" in pick["sturdy"]
+          and "3 misses allowed" in pick["precision"] and "5 misses allowed" in pick["lucky"], str({k: v[:40] for k, v in pick.items()}))
+    rp.keyboard.press("Escape"); rp.evaluate("() => go('titleScreen')"); rp.click("#howBtn"); rp.wait_for_timeout(150)
+    check("HOW TO PLAY (Rods) lists the new misses",
+          "Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster marker)" in rp.inner_text("#howBox"))
+    rc.close()
+    # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
+    hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
+    hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")
+    hp6.add_style_tag(content="#toast { display: none !important; }")
+    hp6.evaluate("() => { S.rods = [...ROD_IDS]; S.rodEq = 'lucky'; S.mastery = { forest: true }; save(); island = 'harbor'; go('fishing'); }"); hp6.wait_for_timeout(500)
+    tops = [hp6.evaluate(ACT_POS)["top"]]
+    hp6.click("#actBtn"); hp6.wait_for_function("F.phase === 'waiting'"); tops.append(hp6.evaluate(ACT_POS)["top"])
+    hp6.wait_for_function("F.phase === 'bite'", timeout=8000); tops.append(hp6.evaluate(ACT_POS)["top"])
+    hp6.click("#actBtn"); hp6.wait_for_timeout(120); tops.append(hp6.evaluate(ACT_POS)["top"])
+    six = hp6.evaluate("""() => { const h = document.getElementById('hearts'), ri = document.querySelector('.reelinfo').getBoundingClientRect(), icons = [...h.querySelectorAll('.ico')];
+        return [icons.length, icons.every(i => { const r = i.getBoundingClientRect(); return r.left >= ri.left - .5 && r.right <= ri.right + .5 && r.top >= ri.top - .5 && r.bottom <= ri.bottom + .5; }),
+                new Set(icons.map(i => Math.round(i.getBoundingClientRect().top))).size, h.scrollWidth <= h.clientWidth + 1, document.documentElement.scrollWidth <= 360,
+                document.documentElement.scrollHeight <= innerHeight, document.getElementById('dots').getBoundingClientRect().height <= 24]; }""")
+    hp6.screenshot(path=str(SHOTS / "95_six_hearts_360x640.png"))
+    hp6.click("#actBtn"); hp6.wait_for_timeout(80); tops.append(hp6.evaluate(ACT_POS)["top"])
+    check("360x640: 6 hearts (Lucky Rod + Master's Charm) fit on one line inside the reel row beside a one-line HIT counter, no overflow, no side or page scroll",
+          six == [6, True, 1, True, True, True, True], str(six))
+    check("360x640 with 6 hearts: CAST/HOOK/REEL stays put in every phase (<= 1px)", max(tops) - min(tops) <= 1, str([round(t, 1) for t in tops]))
+    hp6.evaluate("() => stopFishing()"); hp6.close()
+    # save compatibility: a save that equips Precision or Lucky just gets the new miss counts
+    cp6 = b.new_page(viewport={"width": 1280, "height": 720}); cp6.goto(URL)
+    cp6.evaluate("localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 10, rods: ['bamboo', 'precision', 'lucky'], rodEq: 'precision', bag: [] }))"); cp6.reload(); cp6.wait_for_timeout(200)
+    a1 = cp6.evaluate("allowedMiss()"); cp6.evaluate("() => { S.rodEq = 'lucky'; }"); a2 = cp6.evaluate("allowedMiss()")
+    check("an existing save with Precision / Lucky equipped loads unchanged and gets 3 / 5 misses", a1 == 3 and a2 == 5 and cp6.evaluate(SAVED + ".rodEq") == "precision", f"{a1} {a2}")
+    cp6.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

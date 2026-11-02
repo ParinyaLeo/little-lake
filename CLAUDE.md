@@ -121,7 +121,8 @@ The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It
 2. A bite comes after a random **1–5 s** wait. Press **HOOK!** within **1 s** or the fish swims away.
 3. **Reel minigame:** a marker moves across a meter. Press **REEL** while it is inside the green zone.
    **3 hits** = caught. You may miss up to `allowedMiss()` times (= equipped rod's `miss`, +1 with the Forest reward).
-   One more miss and the fish escapes. The HUD shows one heart per allowed miss; each miss empties one. After every press the marker resets and the zone moves.
+   One more miss and the fish escapes. The HUD shows one heart per allowed miss (up to 6 as icons, "♥ xN" above that); each miss empties one.
+   On phones the 6 hearts (18px) fit on one line beside the one-line "HIT ○○○" counter. After every press the marker resets and the zone moves.
    Marker speed and zone width depend on rarity (`DIFF`) × the rod's `speed` / `zone` (× 0.8 speed with Steady Hands).
 4. **Rarity odds** (Common/Rare/Epic/Legendary, `rarityWeights(baitId, rodId)`): base 60/30/8/2, plus the selected
    bait's change (Worm −10/+10/0/0, Shrimp −20/0/+16/+4, Golden Lure −35/−5/+22/+18), plus Shrimp's change again with
@@ -152,14 +153,15 @@ It re-renders with the HUD and right after a catch.
 
 **Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL; the way out is the top bar's BACK.
 
-**Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a trade-off):
+**Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a clear step up in forgiveness, 1 / 2 / 3 / 5 misses, and
+Master's Charm adds 1, so up to 6 hearts with the Lucky Rod):
 
 | Rod | Price | Misses | Other |
 |-----|-------|--------|-------|
 | Bamboo Rod | free (starter) | 1 | – |
 | Sturdy Rod | 200 | 2 | – |
-| Precision Rod | 450 | 1 | green zone 35% wider |
-| Lucky Rod | 700 | 1 | Shrimp-like odds boost, but marker 10% faster |
+| Precision Rod | 450 | 3 | green zone 35% wider |
+| Lucky Rod | 700 | 5 | Shrimp-like odds boost, but marker 10% faster |
 
 **Baits** (`BAITS`, consumable, one kind selected in `S.baitSel` or `"none"`): Worm x5 60 coins (small Rare boost),
 Shrimp x5 100 coins (the old bait odds), Golden Lure x3 250 coins (strong Epic/Legendary boost).

@@ -40,11 +40,12 @@ const DIFF = { Common: { speed: .55, zone: .26 }, Rare: { speed: .8, zone: .2 },
 /* ===================== GEAR ===================== */
 // Rods: bought once, one is equipped. miss = misses allowed; zone / speed multiply the green zone width and
 // the marker speed; luck = the same odds boost as Shrimp bait. Island rewards apply on top.
+// Every rod is a step up in forgiveness: 1, 2, 3, 5 misses (Master's Charm adds 1, so up to 6 hearts with the Lucky Rod).
 const RODS = {
   bamboo:    { name: "Bamboo Rod",    short: "Bamboo",    price: 0,   miss: 1, zone: 1,    speed: 1,   luck: false },
   sturdy:    { name: "Sturdy Rod",    short: "Sturdy",    price: 200, miss: 2, zone: 1,    speed: 1,   luck: false },
-  precision: { name: "Precision Rod", short: "Precision", price: 450, miss: 1, zone: 1.35, speed: 1,   luck: false },
-  lucky:     { name: "Lucky Rod",     short: "Lucky",     price: 700, miss: 1, zone: 1,    speed: 1.1, luck: true },
+  precision: { name: "Precision Rod", short: "Precision", price: 450, miss: 3, zone: 1.35, speed: 1,   luck: false },
+  lucky:     { name: "Lucky Rod",     short: "Lucky",     price: 700, miss: 5, zone: 1,    speed: 1.1, luck: true },
 };
 const ROD_IDS = Object.keys(RODS);
 // Baits: bought in packs, one is used per cast from the selected kind. odds = change to the
