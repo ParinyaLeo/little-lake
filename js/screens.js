@@ -23,7 +23,6 @@ function go(id, back = false) {
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   current = id; document.body.classList.toggle("plain", id === "fishing"); document.body.classList.toggle("on-title", id === "titleScreen");
   document.body.classList.toggle("has-nav", !!NAV_SCREENS[id]); $("navName").textContent = NAV_SCREENS[id] || "";
-  $("navHome").hidden = id === "bag";   // the Bag's one way out is BACK (to Home, Fishing or the waiting catch); its 3rd column stays empty, so BAG stays centred
   document.body.classList.toggle("fit", FIT_SCREENS.includes(id));
   document.body.classList.toggle("center", CENTER_SCREENS.includes(id));
   setBackdrop();

@@ -82,16 +82,16 @@ A different browser, device or home-screen app has its own separate save."). **E
 
 **Navigation / BACK bar** (`#navbar`, inside the header row `.app > .top`): shown on Map, Bag, Shop, Collection and Tackle Box
 (`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) on the
-left, the screen name in the middle and a small **HOME** button (`#navHome`, `data-go="home"`) on the right — except on the Bag, where
-`go()` hides it (`hidden`): BACK is the Bag's one way out (to Home, Fishing or the waiting catch), and the empty third column keeps
-"BAG" centred. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
+left and the screen name in the middle; the empty third column (`.nav-end`) keeps the name centred. **No HOME button in the top bar**
+(one navigation rule: BACK is the way back). Bottom HOME buttons: Town Map (the only way Home from Fishing: Fishing > TOWN MAP > HOME),
+Shop and Tackle Box keep theirs; the Bag and the Collection have none. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
 wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
 visible while a phone page scrolls; it is in the normal flow, so it never covers content.
 `go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
 the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback. **Esc** also uses
 `goBack()` (the Bag has no separate BACK button any more: the bar's BACK does the same, including Result > OPEN BAG > BACK to the
 waiting catch); Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
-Fishing on the same island. The bottom HOME buttons stay on Map, Shop, Collection and Tackle Box; the Bag has none (only SELL ALL). On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
+Fishing on the same island; Fishing > OPEN BAG > BACK too. On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
 
 **Laptop / desktop fit (don't break this):** on windows 900px and wider, every screen fits the window without page scrolling, down to
 1280x600 (e.g. 1536x730 = a 1920x1080 laptop at 125%). Sizes inside `@media (min-width: 900px)` follow the window height with
@@ -149,7 +149,7 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
-**Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL; the top bar has only BACK (no HOME on the Bag).
+**Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL; the way out is the top bar's BACK.
 
 **Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a trade-off):
 
