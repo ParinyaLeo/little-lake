@@ -1461,13 +1461,21 @@ with sync_playwright() as p:
         sc_.screenshot(path=str(SHOTS / f"93_{sc}_1536x730.png"))
     sc_.close()
 
-    # ---------- BUG-30: Town Map HOME moved into the panel header ----------
+    # ---------- BUG-30 / BUG-34: Town Map HOME (BUG-30: out of the bottom bar; BUG-34: a bigger tab on the panel's top border, top right) ----------
     MH = """() => { const homes = [...document.querySelectorAll('[data-go="home"]')].filter(b => b.offsetParent), m = document.getElementById('mapHome'),
-        head = document.querySelector('#map .panel > .head'), p = document.querySelector('#map .panel').getBoundingClientRect(), r = m.getBoundingClientRect(), h2 = head.querySelector('h2').getBoundingClientRect();
-        return { n: homes.length, inHead: !!m.closest('#map .panel > .head'), inBar: !!document.querySelector('#navbar [data-go="home"]'),
-                 below: document.querySelectorAll('#map > .btns').length, right: Math.round(p.right - r.right), row: Math.abs((r.top + r.bottom) / 2 - (h2.top + h2.bottom) / 2) < 12,
-                 icon: getComputedStyle(m.querySelector('.ico.i-home')).backgroundImage.includes('svg'), label: m.textContent.trim(), title: m.title, tag: m.tagName,
-                 h: Math.round(r.height), page: document.documentElement.scrollHeight, vh: innerHeight, sw: document.documentElement.scrollWidth, vw: innerWidth }; }"""
+        panel = document.querySelector('#map .panel'), p = panel.getBoundingClientRect(), r = m.getBoundingClientRect(), h2 = panel.querySelector('h2').getBoundingClientRect(),
+        bw = parseFloat(getComputedStyle(panel).borderTopWidth), ico = m.querySelector('.ico.i-home').getBoundingClientRect(),
+        hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom,
+        others = [...document.querySelectorAll('.app > .top > *, #map .island, #map h2')].filter(e => e.offsetParent || getComputedStyle(e).position === 'fixed');
+        return { n: homes.length, inPanel: m.parentElement === panel, inBar: !!document.querySelector('#navbar [data-go="home"]'),
+                 below: document.querySelectorAll('#map > .btns').length, right: Math.round(p.right - r.right),
+                 above: Math.round(p.top - r.top), inside: Math.round(r.bottom - (p.top + bw)), straddles: r.top < p.top && r.bottom > p.top + bw,
+                 overlaps: others.filter(e => hit(r, e.getBoundingClientRect())).map(e => e.id || e.className),
+                 inView: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+                 topAt: document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2)?.closest('#mapHome') === m,
+                 icon: getComputedStyle(m.querySelector('.ico.i-home')).backgroundImage.includes('svg'), iconPx: Math.round(ico.width), font: parseFloat(getComputedStyle(m).fontSize),
+                 label: m.textContent.trim(), aria: m.getAttribute('aria-label'), tag: m.tagName, headH: Math.round(panel.querySelector('.head').getBoundingClientRect().height),
+                 h: Math.round(r.height), w: Math.round(r.width), page: document.documentElement.scrollHeight, vh: innerHeight, sw: document.documentElement.scrollWidth, vw: innerWidth }; }"""
     for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (390, 844), (360, 640)]:
         hp = b.new_page(viewport={"width": vw, "height": vh})
         hp.on("pageerror", lambda e: errs.append(str(e))); hp.on("console", lambda m: m.type == "error" and errs.append(m.text))
@@ -1476,14 +1484,18 @@ with sync_playwright() as p:
         hp.evaluate("() => { island = 'frost'; go('fishing'); }"); hp.wait_for_timeout(300)
         hp.click("#fishing [data-go=map]"); hp.wait_for_timeout(400)
         r = hp.evaluate(MH)
-        if (vw, vh) in ((1536, 730), (390, 844)): hp.screenshot(path=str(SHOTS / f"94_map_{vw}x{vh}.png"))
-        check(f"{vw}x{vh}: Town Map has exactly one HOME, a real button in the panel header (right end, same row as the title) with a pixel house icon, 'HOME' and title 'Back to Home'; none in the top bar or below the panel",
-              r["n"] == 1 and r["inHead"] and not r["inBar"] and r["below"] == 0 and r["right"] <= 40 and r["row"] and r["icon"] and r["label"] == "HOME"
-              and r["title"] == "Back to Home" and r["tag"] == "BUTTON", str({k: r[k] for k in ("n", "inHead", "inBar", "below", "right", "row", "icon", "label")}))
-        if vw >= 900:
-            check(f"{vw}x{vh}: Town Map fits without page scroll", r["page"] <= r["vh"] + 1, f"{r['page']} / {r['vh']}")
-        else:
-            check(f"{vw}x{vh}: Town Map HOME tap size >= 40px, no side scroll", r["h"] >= 40 and r["sw"] <= vw, f"h {r['h']} sw {r['sw']}")
+        if (vw, vh) in ((1536, 730), (360, 640)): hp.screenshot(path=str(SHOTS / f"98_map_home_tab_{vw}x{vh}.png"))
+        check(f"{vw}x{vh}: Town Map has exactly one HOME, a real button (pixel house icon, 'HOME', aria-label 'Home') on the panel frame; none in the top bar or below the panel",
+              r["n"] == 1 and r["inPanel"] and not r["inBar"] and r["below"] == 0 and r["icon"] and r["label"] == "HOME" and r["aria"] == "Home" and r["tag"] == "BUTTON",
+              str({k: r[k] for k in ("n", "inPanel", "inBar", "below", "icon", "label", "aria")}))
+        check(f"{vw}x{vh}: Town Map HOME is >= 44px tall with a bigger icon (>= 20px) and label (>= 18px)", r["h"] >= 44 and r["iconPx"] >= 20 and r["font"] >= 18,
+              f"h {r['h']} icon {r['iconPx']} font {r['font']}")
+        check(f"{vw}x{vh}: Town Map HOME sits on the panel's top border at the right edge (about half above, half inside; <= 20px from the right)",
+              r["straddles"] and abs(r["above"] - r["h"] / 2) <= 8 and 0 <= r["right"] <= 20, f"above {r['above']} inside {r['inside']} h {r['h']} right {r['right']}")
+        check(f"{vw}x{vh}: Town Map HOME doesn't overlap the title, the island cards or the top bar, is fully in view and on top (tappable)",
+              not r["overlaps"] and r["inView"] and r["topAt"], f"{r['overlaps']} inView {r['inView']} topAt {r['topAt']}")
+        check(f"{vw}x{vh}: Town Map header row is no taller than before (<= 44px) and the page has no page scroll or side scroll",
+              r["headH"] <= 44 and r["page"] <= r["vh"] + 1 and r["sw"] <= r["vw"], f"head {r['headH']} page {r['page']}/{r['vh']} sw {r['sw']}")
         if vw in (1536, 360):
             hp.click("#navBack"); hp.wait_for_timeout(300)
             back = [hp.evaluate("current"), hp.evaluate("island"), hp.inner_text("#isleProg")[:6]]
@@ -1491,6 +1503,8 @@ with sync_playwright() as p:
             hp.click("#fishing [data-go=map]"); hp.wait_for_timeout(300)
             hp.focus("#mapHome"); hp.keyboard.press("Enter"); hp.wait_for_timeout(300)
             check(f"{vw}x{vh}: Fishing > Town Map > HOME (keyboard Enter) opens Home", hp.evaluate("current") == "home")
+            hp.click("#home [data-go=map]"); hp.wait_for_timeout(300); hp.click("#mapHome"); hp.wait_for_timeout(300)
+            check(f"{vw}x{vh}: Home > Town Map > HOME (tap) opens Home", hp.evaluate("current") == "home")
         hp.close()
 
     # ---------- BUG-31: rods are a clear step up in forgiveness (1, 2, 3, 5 misses; +1 with Master's Charm) ----------

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=27">
+<link rel="stylesheet" href="css/style.css?v=28">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -85,11 +85,12 @@
 
   <!-- MAP -->
   <section class="screen" id="map">
-    <div class="panel wood">
-      <!-- HOME sits in the panel header (like MENU on Home): the only way Home from Fishing is Fishing > TOWN MAP > HOME -->
+    <div class="panel wood map-panel">
+      <!-- HOME is a tab on the panel's top border, top right (half above the border, half inside):
+           the only way Home from Fishing is Fishing > TOWN MAP > HOME -->
+      <button class="btn map-home" id="mapHome" data-go="home" title="Go to Home" aria-label="Home"><span class="ico i-home"></span>HOME</button>
       <div class="head">
         <h2>Town Map <small class="map-hint">pick an island to go fishing</small></h2>
-        <button class="btn small" id="mapHome" data-go="home" title="Back to Home"><span class="ico i-home"></span>HOME</button>
       </div>
       <!-- 4 island cards (picture + progress plate) in one row, the secret island as a wide strip below -->
       <div class="islands" id="islands"></div>
@@ -259,10 +260,10 @@
 </div>
 
 
-<script src="js/data.js?v=27"></script>
-<script src="js/state.js?v=27"></script>
-<script src="js/fisherman.js?v=27"></script>
-<script src="js/fishing.js?v=27"></script>
-<script src="js/screens.js?v=27"></script>
+<script src="js/data.js?v=28"></script>
+<script src="js/state.js?v=28"></script>
+<script src="js/fisherman.js?v=28"></script>
+<script src="js/fishing.js?v=28"></script>
+<script src="js/screens.js?v=28"></script>
 </body>
 </html>
