@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=30">
+<link rel="stylesheet" href="css/style.css?v=31">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -112,7 +112,7 @@
       </div>
       <!-- the island progress fills the meter's space when not reeling; both keep a fixed size so CAST never moves -->
       <div class="reelarea">
-        <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div></div>
+        <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div><div class="power" aria-hidden="true"><i id="powerFill"></i></div></div>
         <div class="reelinfo"><div class="dots" id="dots"></div><div class="hearts" id="hearts" role="status"></div></div>
         <div class="isle-prog" id="isleProg"></div>
       </div>
@@ -235,7 +235,7 @@
   <div class="panel wood how" id="howPanel" tabindex="-1">
     <h2 id="howTitle">How to Play</h2>
     <dl>
-      <dt>🎣 Cast</dt><dd>Pick an island on the Town Map and press CAST. Then wait for a bite.</dd>
+      <dt>🎣 Cast</dt><dd>Pick an island on the Town Map and press CAST. Hold CAST for a stronger throw. Then wait for a bite.</dd>
       <dt>❗ Bite</dt><dd>When a big "!" pops up over the bobber, press HOOK! within 1 second or the fish swims away.</dd>
       <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Each miss costs a ❤ heart; miss with no hearts left and the fish escapes.</dd>
       <dt>🎣 Rods</dt><dd>Buy rods once in the Shop. Equip one in the Tackle Box, or tap ROD on the fishing screen to pick from a list: Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster marker).</dd>
@@ -260,10 +260,10 @@
 </div>
 
 
-<script src="js/data.js?v=30"></script>
-<script src="js/state.js?v=30"></script>
-<script src="js/fisherman.js?v=30"></script>
-<script src="js/fishing.js?v=30"></script>
-<script src="js/screens.js?v=30"></script>
+<script src="js/data.js?v=31"></script>
+<script src="js/state.js?v=31"></script>
+<script src="js/fisherman.js?v=31"></script>
+<script src="js/fishing.js?v=31"></script>
+<script src="js/screens.js?v=31"></script>
 </body>
 </html>

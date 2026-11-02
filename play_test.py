@@ -1,4 +1,4 @@
-import base64, json, re, sys
+import base64, json, re, sys, time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 sys.stdout.reconfigure(errors="replace")   # Windows consoles can't print every character in the details
@@ -1622,6 +1622,150 @@ with sync_playwright() as p:
         rp3.evaluate("() => { go('fishing'); }"); rp3.wait_for_timeout(300)
         check(f"{vw}x{vh}: back on the fishing screen the Sturdy Rod is drawn", rp3.evaluate("fisherRodStyle()") == "sturdy")
         rp3.close()
+    # ---------- Playtest 1, part 4: hold-to-charge power cast (bobber landing spot only) ----------
+    CAST_POS = """(() => { const e = document.getElementById('actBtn'), r = e.getBoundingClientRect(), ty = new DOMMatrix(getComputedStyle(e).transform).m42;   // minus the :active press offset
+        return { top: r.top - ty, left: r.left, w: r.width, h: r.height }; })()"""
+    def same_pos(a, b): return all(abs(a[k] - b[k]) <= 1 for k in a)
+    CHARGING = "(() => { const m = document.getElementById('meter'); return m.classList.contains('charging') && getComputedStyle(m).visibility === 'visible' && getComputedStyle(m.querySelector('.power')).display === 'block'; })()"
+    NO_SCROLL = "(() => document.documentElement.scrollHeight <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth)()"
+
+    def cast_reset(pg):
+        pg.evaluate("() => { stopFishing(); S.bag = []; S.baitSel = 'none'; save(); island = 'harbor'; go('home'); go('fishing'); }"); pg.wait_for_timeout(250)
+
+    def center(pg, sel):
+        r = pg.locator(sel).bounding_box(); return r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
+
+    def hold_btn(pg, ms, sel="#actBtn"):
+        x, y = center(pg, sel); pg.mouse.move(x, y); pg.mouse.down(); pg.wait_for_timeout(ms)
+
+    def exp_power(held):                                           # the meter's power after `held` ms: fills in 1.2 s after 250 ms, then ping-pongs
+        d = max(0, (held - 250) / 1200); m = d % 2; return m if m < 1 else 2 - m
+    def timed_hold(pg, ms):
+        x, y = center(pg, "#actBtn"); pg.mouse.move(x, y); pg.mouse.down(); t0 = time.perf_counter(); pg.wait_for_timeout(ms)
+        held = (time.perf_counter() - t0) * 1000; pg.mouse.up(); pg.wait_for_timeout(50); return pg.evaluate("F.land"), held
+
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (390, 844), (360, 640)]:
+        cp = b.new_page(viewport={"width": vw, "height": vh})
+        cp.on("pageerror", lambda e: errs.append(str(e))); cp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        cp.goto(URL); cp.evaluate("localStorage.clear()"); cp.reload(); cp.wait_for_timeout(200); start_new(cp, "Power")
+        cp.add_style_tag(content="#toast { display: none !important; }")
+        cast_reset(cp)
+        tag = f"{vw}x{vh}"
+        cp.wait_for_timeout(600)                                   # let the layout settle after the first draw
+        pos0 = cp.evaluate(CAST_POS)
+        # a quick press-and-release is the normal medium cast: same phase flow, lands near the old fixed spot
+        cp.click("#actBtn"); cp.wait_for_timeout(60)
+        quick = cp.evaluate("[F.phase, F.land, document.getElementById('meter').classList.contains('charging')]")
+        check(f"{tag}: a quick press on CAST casts as before (casting, no power meter) and lands near the old spot (.58, .66)",
+              quick[0] == "casting" and not quick[2] and abs(quick[1]["x"] - .58) <= .02 and abs(quick[1]["y"] - .66) <= .02, str(quick))
+        if vw == 1536:
+            cp.wait_for_function("F.phase === 'waiting'", timeout=3000); cp.wait_for_function("F.phase === 'bite'", timeout=8000)
+            check(f"{tag}: quick cast keeps the phase flow casting > waiting > bite", True)
+        cast_reset(cp)
+        # hold: the meter shows in the reel meter's space, nothing moves, no scroll
+        hold_btn(cp, 600)
+        ch = cp.evaluate(CHARGING); pos1 = cp.evaluate(CAST_POS); ns1 = cp.evaluate(NO_SCROLL)
+        prog = cp.evaluate("getComputedStyle(document.getElementById('isleProg')).visibility")
+        if vw in (1536, 360): cp.screenshot(path=str(SHOTS / f"100_cast_power_{tag}.png"))
+        cp.mouse.up(); cp.wait_for_timeout(50)
+        check(f"{tag}: holding CAST for 600 ms shows the power meter (in the reel meter space, the island progress hides) and the page doesn't scroll", ch and prog == "hidden" and ns1, f"{ch} {prog} {ns1}")
+        check(f"{tag}: the CAST button doesn't move while charging", same_pos(pos0, pos1), f"{pos0} {pos1}")
+        cast_reset(cp)
+        l600, h600 = timed_hold(cp, 600); cast_reset(cp)
+        l1200, h1200 = timed_hold(cp, 1200)
+        e600, e1200 = exp_power(h600), exp_power(h1200)
+        check(f"{tag}: low power (600 ms) lands closer than high power (1200 ms); each lands where its real hold time says (+-.12 power)",
+              abs(l600["p"] - e600) <= .12 and abs(l1200["p"] - e1200) <= .12 and (l600["x"] < l1200["x"] - .03 if e1200 - e600 > .3 else True) and e1200 - e600 > .1,
+              f"{h600:.0f} ms p {l600['p']:.2f} (exp {e600:.2f}) x {l600['x']:.3f} | {h1200:.0f} ms p {l1200['p']:.2f} (exp {e1200:.2f}) x {l1200['x']:.3f}")
+        phases = []
+        for ph in ("casting", "waiting"):
+            cp.wait_for_function(f"F.phase === '{ph}'", timeout=3000); phases.append(same_pos(cp.evaluate(CAST_POS), pos0))
+        cp.wait_for_function("F.phase === 'bite'", timeout=8000); phases.append(same_pos(cp.evaluate(CAST_POS), pos0))
+        check(f"{tag}: the CAST/HOOK button stays in the same place in every phase after a power cast (casting, waiting, bite)", all(phases), str(phases))
+        ncharge = cp.evaluate("document.getElementById('meter').classList.contains('charging')")
+        check(f"{tag}: the power meter isn't shown on the HOOK phase", not ncharge)
+        cast_reset(cp)
+        if vw != 1536 and vw != 360:
+            cp.close(); continue
+        # two quick casts never land on exactly the same spot (+-5% offset)
+        lands = []
+        for _ in range(4):
+            cp.click("#actBtn"); cp.wait_for_timeout(40); lands.append(cp.evaluate("F.land")); cast_reset(cp)
+        xs = [l["x"] for l in lands]
+        check(f"{tag}: quick casts never land on exactly the same spot", len({(l["x"], l["y"]) for l in lands}) == 4 and max(xs) - min(xs) > .001, str([(round(l["x"], 4), round(l["y"], 4)) for l in lands]))
+        # no power meter during waiting / bite / reeling, and holding in those phases does nothing but the normal action
+        cp.click("#actBtn"); cp.wait_for_function("F.phase === 'waiting'", timeout=3000)
+        sx, sy = center(cp, "#scene"); cp.mouse.move(sx, sy); cp.mouse.down(); cp.wait_for_timeout(450)
+        w_ch = cp.evaluate("[document.getElementById('meter').classList.contains('charging'), F.phase]"); cp.mouse.up()
+        cp.wait_for_function("F.phase === 'bite'", timeout=8000)
+        cp.click("#actBtn"); cp.wait_for_timeout(100)
+        r_ch = cp.evaluate("[document.getElementById('meter').classList.contains('charging'), F.phase, getComputedStyle(document.getElementById('meter')).visibility, getComputedStyle(document.querySelector('#meter .power')).display]")
+        check(f"{tag}: the power meter never appears while waiting, on HOOK or while reeling", w_ch == [False, "waiting"] and r_ch == [False, "reeling", "visible", "none"], f"{w_ch} {r_ch}")
+        cast_reset(cp)
+        # not on other screens either: hold Space on the Home screen
+        cp.evaluate("() => go('home')"); cp.keyboard.down("Space"); cp.wait_for_timeout(450)
+        h_ch = cp.evaluate("[CH.on, document.getElementById('meter').classList.contains('charging'), F.phase]"); cp.keyboard.up("Space")
+        check(f"{tag}: holding Space on another screen starts no charge", h_ch[0] is False and h_ch[1] is False and h_ch[2] == "idle", str(h_ch))
+        cast_reset(cp)
+        # release outside the scene / the button still casts, with that power
+        hold_btn(cp, 1300, "#scene"); cp.mouse.move(3, 3); cp.mouse.up(); cp.wait_for_timeout(60)
+        o1 = cp.evaluate("[F.phase, F.land && F.land.x]"); cast_reset(cp)
+        hold_btn(cp, 1300); cp.mouse.move(3, 3); cp.mouse.up(); cp.wait_for_timeout(60)
+        o2 = cp.evaluate("[F.phase, F.land && F.land.x]"); cast_reset(cp)
+        check(f"{tag}: releasing outside the scene / the button still casts with the charged power", o1[0] == "casting" and o1[1] > .62 and o2[0] == "casting" and o2[1] > .62, f"{o1} {o2}")
+        # a scene tap (quick) is a normal cast
+        cp.mouse.click(sx, sy); cp.wait_for_timeout(60)
+        st = cp.evaluate("[F.phase, F.land && Math.abs(F.land.x - .58) < .02]"); cast_reset(cp)
+        check(f"{tag}: a quick tap on the scene casts a normal medium cast", st == ["casting", True], str(st))
+        # Space: hold = stronger throw, quick press = normal
+        cp.keyboard.down("Space"); cp.wait_for_timeout(1200); k_ch = cp.evaluate(CHARGING); cp.keyboard.up("Space"); cp.wait_for_timeout(60)
+        k1 = cp.evaluate("[F.phase, F.land && F.land.x]"); cast_reset(cp)
+        cp.keyboard.press("Space"); cp.wait_for_timeout(60); k2 = cp.evaluate("[F.phase, F.land && F.land.x]"); cast_reset(cp)
+        check(f"{tag}: Space works: hold = meter and a far cast, quick press = medium cast", k_ch and k1[0] == "casting" and k1[1] > .62 and k2[0] == "casting" and abs(k2[1] - .58) < .02, f"{k_ch} {k1} {k2}")
+        # Escape, window blur and a screen change cancel the charge cleanly
+        hold_btn(cp, 500); e0 = cp.evaluate(CHARGING); cp.keyboard.press("Escape"); cp.wait_for_timeout(80)
+        e1 = cp.evaluate("[CH.on, document.getElementById('meter').classList.contains('charging'), getComputedStyle(document.getElementById('meter')).visibility, getComputedStyle(document.getElementById('isleProg')).visibility, document.getElementById('fMsg').textContent]")
+        cp.mouse.up(); cp.wait_for_timeout(80); e2 = cp.evaluate("[F.phase, document.getElementById('actBtn').disabled]")
+        check(f"{tag}: Escape cancels the charge (meter gone, message back, nothing thrown on release)", e0 and e1[:4] == [False, False, "hidden", "visible"] and "Ready" in e1[4] and e2 == ["idle", False], f"{e0} {e1} {e2}")
+        cp.keyboard.down("Space"); cp.wait_for_timeout(450); cp.keyboard.press("Escape"); cp.keyboard.up("Space"); cp.wait_for_timeout(80)
+        check(f"{tag}: Escape also cancels a held Space (no cast)", cp.evaluate("[F.phase, CH.on]") == ["idle", False])
+        hold_btn(cp, 450); cp.evaluate("() => window.dispatchEvent(new Event('blur'))"); cp.wait_for_timeout(80)
+        b1 = cp.evaluate("[CH.on, document.getElementById('meter').classList.contains('charging')]"); cp.mouse.up(); cp.wait_for_timeout(60)
+        check(f"{tag}: losing window focus cancels the charge", b1 == [False, False] and cp.evaluate("F.phase") == "idle", str(b1))
+        hold_btn(cp, 450); cp.evaluate("() => go('map')"); cp.wait_for_timeout(100); cp.mouse.up()
+        s1 = cp.evaluate("[CH.on, document.getElementById('meter').classList.contains('charging'), F.phase, current]")
+        cp.evaluate("() => { island = 'harbor'; go('fishing'); }"); cp.wait_for_timeout(250)
+        s2 = cp.evaluate("[document.getElementById('meter').classList.contains('charging'), getComputedStyle(document.getElementById('meter')).visibility, F.phase]")
+        check(f"{tag}: changing screen cancels the charge, and the meter is gone when you come back", s1 == [False, False, "idle", "map"] and s2 == [False, "hidden", "idle"], f"{s1} {s2}")
+        # touch pointers charge too
+        cp.evaluate("""() => { const sc = document.getElementById('scene'), r = sc.getBoundingClientRect(); window.__tp = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            sc.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, pointerType: 'touch', button: 0, bubbles: true, cancelable: true, clientX: __tp.x, clientY: __tp.y })); }""")
+        cp.wait_for_timeout(1300); t_ch = cp.evaluate(CHARGING)
+        cp.evaluate("() => document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType: 'touch', bubbles: true }))"); cp.wait_for_timeout(60)
+        t1 = cp.evaluate("[F.phase, F.land && F.land.x]")
+        check(f"{tag}: a held touch pointer charges and throws too", t_ch and t1[0] == "casting" and t1[1] > .62, f"{t_ch} {t1}")
+        cp.close()
+    # landing spots are random in a small range, and the same code is used by every cast
+    lp = b.new_page(viewport={"width": 1366, "height": 768}); lp.on("pageerror", lambda e: errs.append(str(e)))
+    lp.goto(URL); lp.evaluate("localStorage.clear()"); lp.reload(); lp.wait_for_timeout(200)
+    ls = lp.evaluate("Array.from({ length: 200 }, () => landing(.5))")
+    lo = lp.evaluate("[landing(0), landing(1)]")
+    check("landing(power): 200 medium casts are all different, within +-.06 of the old spot; power 0 is near (left, low) and 1 is far (right, high)",
+          len({(l["x"], l["y"]) for l in ls}) == 200 and all(abs(l["x"] - .58) <= .06 and abs(l["y"] - .66) <= .04 for l in ls) and lo[0]["x"] < .52 and lo[1]["x"] > .64 and lo[0]["y"] > lo[1]["y"],
+          f"{lo}")
+    lp.close()
+    # reduced motion: the meter fills once and holds at max (no ping-pong); normally it ping-pongs
+    for reduced in (False, True):
+        rc2 = b.new_context(viewport={"width": 1366, "height": 768}, reduced_motion="reduce" if reduced else "no-preference"); rq = rc2.new_page()
+        rq.on("pageerror", lambda e: errs.append(str(e))); rq.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        rq.goto(URL); rq.evaluate("localStorage.clear()"); rq.reload(); rq.wait_for_timeout(200); start_new(rq, "Calm")
+        rq.add_style_tag(content="#toast { display: none !important; }")
+        res = []
+        for ms in (1450, 2400):
+            cast_reset(rq); hold_btn(rq, ms); rq.mouse.up(); rq.wait_for_timeout(40); res.append(rq.evaluate("F.land.x"))
+        if reduced: check("reduced motion: the power meter fills once and holds at max (2.4 s lands as far as 1.45 s, no ping-pong)", abs(res[0] - res[1]) <= .025 and res[1] > .65, str(res))
+        else: check("normal motion: the power meter ping-pongs (2.4 s lands nearer than 1.45 s)", res[1] < res[0] - .04, str(res))
+        rc2.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")

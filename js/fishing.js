@@ -41,6 +41,11 @@ function preloadScenes() {
   }
 }
 const REDUCED = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+/* Power cast (Playtest 1, part 4): hold CAST (button, Space or the scene) longer than POWER.quick ms to charge a power meter in the reel meter's
+   space, release to throw. Only WHERE the bobber lands changes (a point on the near > far line, plus a small random offset); the wait,
+   bite, HOOK, REEL, odds and rewards are untouched. A quick press (< POWER.quick) is the normal medium cast (POWER.mid). */
+const POWER = { quick: 250, fill: 1200, mid: .5, near: { x: .48, y: .72 }, far: { x: .68, y: .60 } };   // mid = BOB = (.58, .66)
+const CH = { on: false, src: "", pid: -1, t0: 0, shown: false };
 let sceneBg = null;   // cached painted background: { key, canvas, info }
 const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1, outfit: "harbor" };   // reused every frame (no allocations)
 const CROP = { sx: 0, sy: 0, sw: 1, sh: 1 };              // part of the picture shown on the canvas (image pixels)
@@ -290,11 +295,12 @@ function drawScene(t) {
   }
   // line + bobber
   if (F.phase !== "idle") {
-    let bx = W * BOB.x, by = H * BOB.y;
+    const L = F.land || BOB;                                                                   // where this cast lands (BOB for a medium cast)
+    let bx = W * L.x, by = H * L.y;
     if (F.phase === "casting") {
       let k = Math.min(1, (t - F.castAt) / 500);
       if (sc.fisher) k = Math.max(0, (k - .4) / .6);                                      // the bobber flies after his wind-up
-      bx = W * (ROD_TIP.x + (BOB.x - ROD_TIP.x) * k); by = H * (ROD_TIP.y + (BOB.y - ROD_TIP.y) * k) - Math.sin(k * Math.PI) * H * .25; }
+      bx = W * (ROD_TIP.x + (L.x - ROD_TIP.x) * k); by = H * (ROD_TIP.y + (L.y - ROD_TIP.y) * k) - Math.sin(k * Math.PI) * H * .25; }
     else if (F.phase === "waiting") by += Math.sin(t / 300) * 3;
     else if (F.phase === "bite") by += 8 + Math.sin(t / 40) * 5;
     else if (F.phase === "reeling") by += Math.sin(t / 60) * 6;
@@ -322,6 +328,7 @@ function drawScene(t) {
   }
 }
 function loop(t) {
+  if (CH.on) chargeTick(t);
   drawScene(t);
   if (F.phase === "reeling") {
     const dt = Math.min(.05, (t - (F.lastT || t)) / 1000); F.lastT = t;
@@ -332,7 +339,7 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 // the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
 // (both use visibility, never display, so nothing below them moves)
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
@@ -368,7 +375,7 @@ function renderFishingHud() {
     $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag." : `${ISLANDS[island].name}: Ready? Cast your line!`;
     $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
-  renderIsleProgress(); if (F.phase !== "reeling") showMeter(false);
+  renderIsleProgress(); if (F.phase !== "reeling") showMeter(CH.on && CH.shown);
   preloadScenes(); fitCanvas(); startLoop();
 }
 
@@ -434,19 +441,66 @@ function act() {
   else if (F.phase === "bite") hook();
   else if (F.phase === "reeling") reel();
 }
-$("actBtn").onclick = act;
-$("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); act(); });
+// CAST: a press on the button / scene / Space starts a charge when idle (HOOK and REEL act at once, as before); the release throws.
+// A real pointer click while idle is already handled by pointerdown/up; detail 0 (Enter on the focused button, el.click()) still casts at once.
+$("actBtn").addEventListener("pointerdown", e => { if (!e.button && F.phase === "idle") chargeStart("ptr", e.pointerId); });
+$("actBtn").addEventListener("click", e => { if (F.phase === "idle" && e.detail) return; act(); });
+$("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); if (F.phase === "idle") chargeStart("ptr", e.pointerId); else act(); });
+document.addEventListener("pointerup", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeEnd(); });      // anywhere on the page
+document.addEventListener("pointercancel", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); });
 document.addEventListener("keydown", e => {
+  if (e.key === "Escape") chargeReset();                                                    // Esc cancels the charge, nothing is thrown
   if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show")) return;
-  e.preventDefault(); if (!e.repeat) act();          // preventDefault: no page scroll, no second click on a focused button
+  e.preventDefault();                                                                       // no page scroll, no second click on a focused button
+  if (e.repeat) return;
+  if (F.phase === "idle") chargeStart("key"); else act();
 });
-document.addEventListener("keyup", e => { if (e.code === "Space" && current === "fishing" && !document.querySelector(".banner.show")) e.preventDefault(); });
-function cast() {
+document.addEventListener("keyup", e => {
+  if (e.code !== "Space") return;
+  if (CH.on && CH.src === "key") chargeEnd();
+  if (current === "fishing" && !document.querySelector(".banner.show")) e.preventDefault();
+});
+window.addEventListener("blur", () => chargeReset());
+document.addEventListener("visibilitychange", () => { if (document.hidden) chargeReset(); });
+function chargeStart(src, pid = -1) {
+  if (CH.on || F.phase !== "idle" || current !== "fishing" || $("actBtn").disabled || document.querySelector(".banner.show")) return;
+  Object.assign(CH, { on: true, src, pid, t0: performance.now(), shown: false });
+}
+// power 0..1: the meter fills in POWER.fill ms after the quick-press time, then ping-pongs; with reduced motion it fills once and holds at max
+function chargePower(now) {
+  const d = Math.max(0, (now - CH.t0 - POWER.quick) / POWER.fill);
+  if (REDUCED && REDUCED.matches) return Math.min(1, d);
+  const m = d % 2; return m < 1 ? m : 2 - m;
+}
+function chargeTick(now) {
+  if (current !== "fishing" || F.phase !== "idle" || document.querySelector(".banner.show")) { chargeReset(); return; }
+  if (!CH.shown && now - CH.t0 >= POWER.quick) {                                            // held longer than a tap: show the meter (same space as the reel meter)
+    CH.shown = true; $("meter").classList.add("charging"); showMeter(true); $("fMsg").textContent = "Release to throw!";
+  }
+  if (CH.shown) $("powerFill").style.transform = `scaleX(${(1 - chargePower(now)).toFixed(3)})`;   // the cover shrinks from the right, the bar grows
+}
+// stop charging without throwing (Esc, focus lost, screen change, bag full...); quiet = leaving the screen, so don't redraw the HUD
+function chargeReset(quiet) {
+  const was = CH.on && CH.shown; CH.on = false; CH.shown = false;
+  $("meter").classList.remove("charging");
+  if (was && F.phase === "idle") { showMeter(false); if (!quiet && current === "fishing") renderFishingHud(); }
+}
+function chargeEnd() {
+  const now = performance.now(), p = now - CH.t0 < POWER.quick ? POWER.mid : chargePower(now);
+  chargeReset(true);
+  if (F.phase === "idle" && current === "fishing" && !$("actBtn").disabled) cast(p);
+}
+// where a cast with this power lands: a point on the near > far line, with a random offset of about +-5% of the power and +-1% of the height
+function landing(power) {
+  const p = Math.min(1, Math.max(0, power + (Math.random() - .5) * .1));
+  return { x: POWER.near.x + (POWER.far.x - POWER.near.x) * p, y: POWER.near.y + (POWER.far.y - POWER.near.y) * p + (Math.random() - .5) * .02, p };
+}
+function cast(power = POWER.mid) {
   if (bagFull()) { toast("Your bag is full."); return; }
   // one bait of the selected kind; when it runs out the selection goes back to "no bait"
   const usedBait = BAITS[S.baitSel] && S.baits[S.baitSel] > 0 ? S.baitSel : null;
   if (usedBait) { S.baits[usedBait]--; if (!S.baits[usedBait]) S.baitSel = "none"; save(); }
-  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait };
+  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait, land: landing(power) };
   sfx.cast(); $("actBtn").disabled = true; $("actBtn").textContent = "...";
   const left = usedBait && S.baits[usedBait];
   $("fMsg").textContent = !usedBait ? "Waiting for a bite..." : left ? `Cast with ${BAITS[usedBait].name} (${left} left)... waiting` : `Cast with your last ${BAITS[usedBait].name}... waiting`;

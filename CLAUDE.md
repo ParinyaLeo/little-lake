@@ -128,7 +128,7 @@ The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It
 4 islands are mastered.
 
 **Fishing:**
-1. **CAST**. You can't cast if the bag is full. One bait of the selected kind (`S.baitSel`) is used per cast;
+1. **CAST** (tap, or hold to charge a stronger throw, see Power cast). You can't cast if the bag is full. One bait of the selected kind (`S.baitSel`) is used per cast;
    when it runs out the selection goes back to `"none"`. Rod and bait can't change mid-cast.
 2. A bite comes after a random **1–5 s** wait. Press **HOOK!** within **1 s** or the fish swims away.
 3. **Reel minigame:** a marker moves across a meter. Press **REEL** while it is inside the green zone.
@@ -151,6 +151,18 @@ The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It
 
 **Main action:** the CAST / HOOK! / REEL button (`#actBtn`), the **Space** key, and a tap anywhere on the scene
 all call `act()`. It does nothing while the button is disabled or outside the fishing screen.
+
+**Power cast** (Playtest 1, part 4; `POWER`, `CH`, `chargeStart/Tick/End/Reset`, `landing()` in `js/fishing.js`): while idle, CAST (button pointer,
+Space key or a pointer on the scene) starts a *charge* on press and throws on release. A press shorter than `POWER.quick` (250 ms) is the normal
+medium cast (power .5, same as the old fixed spot), so nothing is slower. Held longer, the **power meter** appears in the reel meter's space
+(`#meter.charging`: `.power` bar instead of zone + marker, the island progress hides with `showMeter`, so nothing moves) and fills in 1.2 s,
+then ping-pongs (with reduced motion it fills once and holds at max). Releasing anywhere on the page casts with that power. Power only picks
+the **landing spot** of the bobber on the line `POWER.near` (.48, .72) > `POWER.far` (.68, .60) (mid = old `BOB` (.58, .66)) plus a random
+offset (+-5% of the power, +-1% of the height), stored in `F.land`; the line/arc animation follows it. The wait, bite, HOOK, REEL, odds and rewards
+are unchanged. HOOK and REEL still act at once (no charge). The charge is cancelled (nothing thrown, meter hidden, message restored) by Esc,
+window blur, the page being hidden, a pointer cancel, a banner/popup opening or leaving the Fishing screen; the meter never shows outside idle.
+Enter on the focused button (a click with `detail` 0) still casts at once. The landing line was checked against the water masks
+(`tools/water_masks`) for scene shapes from 2.0:1 to 4.1:1 (every desktop size and 360x640); keep new landing spots on open water.
 
 **Fishing screen layout (don't break this):** the CAST/HOOK/REEL button must not move between phases, and the
 screen must fit 1366x768, 1280x720 and phones without page scroll. While fishing, `.app` is exactly one viewport
