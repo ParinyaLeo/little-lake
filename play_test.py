@@ -1372,7 +1372,7 @@ with sync_playwright() as p:
             check("top bar of Map, Bag, Shop, Collection and Tackle Box: only '< BACK' (no HOME), the name centred, BACK returns Home",
                   all(v[0] == ["< BACK"] and v[1] == n and v[2] <= 2 and v[4] == "home" for (s_, n), v in zip([("map", "TOWN MAP"), ("bag", "BAG"), ("shop", "SHOP"), ("collection", "COLLECTION"), ("tackle", "TACKLE BOX")], bars.values()))
                   and not gp.evaluate("!!document.getElementById('navHome')"), str(bars))
-            check("HOME buttons: Town Map, Shop and Tackle Box keep exactly one (bottom); Collection and Bag have none",
+            check("HOME buttons: Town Map (panel header), Shop and Tackle Box (bottom) have exactly one; Collection and Bag have none",
                   {k: v[3] for k, v in bars.items()} == {"map": 1, "bag": 0, "shop": 1, "collection": 0, "tackle": 1}, str({k: v[3] for k, v in bars.items()}))
             gp.evaluate("() => { go('home'); island = 'forest'; go('fishing'); }"); gp.wait_for_timeout(300)
             gp.click("#fishing [data-go=map]"); gp.wait_for_timeout(250); gp.click("#map [data-go=home]"); gp.wait_for_timeout(250)
@@ -1385,8 +1385,8 @@ with sync_playwright() as p:
             check("Fishing (Desert) > OPEN BAG > BACK returns to the Fishing screen on the same island",
                   on_bag == "bag" and gp.evaluate("current") == "fishing" and gp.evaluate("island") == "desert" and "Desert:" in gp.inner_text("#isleProg"), gp.inner_text("#isleProg")[:30])
             gp.evaluate("() => stopFishing()")
-            keep = gp.evaluate("['map', 'shop', 'tackle'].every(s => !!document.querySelector('#' + s + ' > .btns [data-go=\"home\"]'))")
-            check("Map, Shop and Tackle Box keep their bottom HOME button", keep)
+            keep = gp.evaluate("['shop', 'tackle'].every(s => !!document.querySelector('#' + s + ' > .btns [data-go=\"home\"]'))")
+            check("Shop and Tackle Box keep their bottom HOME button", keep)
 
         gc.close()
     check("Bag rows: about 64px on tall desktop windows and phones, about 56px on windows under 760px high",
@@ -1419,9 +1419,9 @@ with sync_playwright() as p:
         if phone:
             check(f"{vw}x{vh}: Town Map island cards 2x2 + secret strip, no side scroll", f["n"] == 4 and f["sw"] <= vw and f["stripBelow"], str(f["w"]))
         else:
-            check(f"{vw}x{vh}: Town Map = 4 equal island cards in one row (220-260px) + a separate wide secret strip below, one HOME button, no page scroll",
+            check(f"{vw}x{vh}: Town Map = 4 equal island cards in one row (220-260px) + a separate wide secret strip below, one HOME button (panel header), no page scroll",
                   f["n"] == 4 and f["ids"] == ["bg-harbor", "bg-frost", "bg-desert", "bg-forest"] and f["row"] and len(set(f["w"])) == 1
-                  and (220 <= f["w"][0] <= 260 or vw < 1366) and f["stripBelow"] and f["stripWide"] and f["homes"] == 1 and f["bars2"] == 1 and f["page"] <= f["vh"] + 1,
+                  and (220 <= f["w"][0] <= 260 or vw < 1366) and f["stripBelow"] and f["stripWide"] and f["homes"] == 1 and f["bars2"] == 0 and f["page"] <= f["vh"] + 1,
                   f"w {f['w']} h {f['h']} page {f['page']}")
         check(f"{vw}x{vh}: progress bars and counts match the save (Harbor 8/10, Frost 2/10, Desert 1/10, Forest 0/10)",
               h8["bars"] == [80, 20, 10, 0] and h8["counts"] == ["8 / 10", "2 / 10", "1 / 10", "0 / 10"] and h8["rewards"] == ["Golden Hook", "Steady Hands", "Lucky Lure", "Master's Charm"],
@@ -1460,6 +1460,38 @@ with sync_playwright() as p:
         sc_.evaluate(f"() => {{ collTab = 'harbor'; go('home'); go('{sc}'); }}"); sc_.wait_for_timeout(450)
         sc_.screenshot(path=str(SHOTS / f"93_{sc}_1536x730.png"))
     sc_.close()
+
+    # ---------- BUG-30: Town Map HOME moved into the panel header ----------
+    MH = """() => { const homes = [...document.querySelectorAll('[data-go="home"]')].filter(b => b.offsetParent), m = document.getElementById('mapHome'),
+        head = document.querySelector('#map .panel > .head'), p = document.querySelector('#map .panel').getBoundingClientRect(), r = m.getBoundingClientRect(), h2 = head.querySelector('h2').getBoundingClientRect();
+        return { n: homes.length, inHead: !!m.closest('#map .panel > .head'), inBar: !!document.querySelector('#navbar [data-go="home"]'),
+                 below: document.querySelectorAll('#map > .btns').length, right: Math.round(p.right - r.right), row: Math.abs((r.top + r.bottom) / 2 - (h2.top + h2.bottom) / 2) < 12,
+                 icon: getComputedStyle(m.querySelector('.ico.i-home')).backgroundImage.includes('svg'), label: m.textContent.trim(), title: m.title, tag: m.tagName,
+                 h: Math.round(r.height), page: document.documentElement.scrollHeight, vh: innerHeight, sw: document.documentElement.scrollWidth, vw: innerWidth }; }"""
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (390, 844), (360, 640)]:
+        hp = b.new_page(viewport={"width": vw, "height": vh})
+        hp.on("pageerror", lambda e: errs.append(str(e))); hp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        hp.goto(URL); hp.evaluate("localStorage.clear()"); hp.reload(); hp.wait_for_timeout(200); start_new(hp, "MapHome")
+        hp.add_style_tag(content="#toast { display: none !important; }")
+        hp.evaluate("() => { island = 'frost'; go('fishing'); }"); hp.wait_for_timeout(300)
+        hp.click("#fishing [data-go=map]"); hp.wait_for_timeout(400)
+        r = hp.evaluate(MH)
+        if (vw, vh) in ((1536, 730), (390, 844)): hp.screenshot(path=str(SHOTS / f"94_map_{vw}x{vh}.png"))
+        check(f"{vw}x{vh}: Town Map has exactly one HOME, a real button in the panel header (right end, same row as the title) with a pixel house icon, 'HOME' and title 'Back to Home'; none in the top bar or below the panel",
+              r["n"] == 1 and r["inHead"] and not r["inBar"] and r["below"] == 0 and r["right"] <= 40 and r["row"] and r["icon"] and r["label"] == "HOME"
+              and r["title"] == "Back to Home" and r["tag"] == "BUTTON", str({k: r[k] for k in ("n", "inHead", "inBar", "below", "right", "row", "icon", "label")}))
+        if vw >= 900:
+            check(f"{vw}x{vh}: Town Map fits without page scroll", r["page"] <= r["vh"] + 1, f"{r['page']} / {r['vh']}")
+        else:
+            check(f"{vw}x{vh}: Town Map HOME tap size >= 40px, no side scroll", r["h"] >= 40 and r["sw"] <= vw, f"h {r['h']} sw {r['sw']}")
+        if vw in (1536, 360):
+            hp.click("#navBack"); hp.wait_for_timeout(300)
+            back = [hp.evaluate("current"), hp.evaluate("island"), hp.inner_text("#isleProg")[:6]]
+            check(f"{vw}x{vh}: Fishing (Frost) > Town Map > BACK returns to the Fishing screen on the same island", back == ["fishing", "frost", "Frost:"], str(back))
+            hp.click("#fishing [data-go=map]"); hp.wait_for_timeout(300)
+            hp.focus("#mapHome"); hp.keyboard.press("Enter"); hp.wait_for_timeout(300)
+            check(f"{vw}x{vh}: Fishing > Town Map > HOME (keyboard Enter) opens Home", hp.evaluate("current") == "home")
+        hp.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

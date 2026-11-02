@@ -83,8 +83,9 @@ A different browser, device or home-screen app has its own separate save."). **E
 **Navigation / BACK bar** (`#navbar`, inside the header row `.app > .top`): shown on Map, Bag, Shop, Collection and Tackle Box
 (`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) on the
 left and the screen name in the middle; the empty third column (`.nav-end`) keeps the name centred. **No HOME button in the top bar**
-(one navigation rule: BACK is the way back). Bottom HOME buttons: Town Map (the only way Home from Fishing: Fishing > TOWN MAP > HOME),
-Shop and Tackle Box keep theirs; the Bag and the Collection have none. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
+(one navigation rule: BACK is the way back). HOME buttons: the Town Map has one in its panel header (`#mapHome`, house icon `i-home`,
+styled like MENU on Home; it is the only way Home from Fishing: Fishing > TOWN MAP > HOME); Shop and Tackle Box keep their bottom HOME;
+the Bag and the Collection have none. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
 wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
 visible while a phone page scrolls; it is in the normal flow, so it never covers content.
 `go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
@@ -195,7 +196,7 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   small text and numbers. The `@font-face` leaves out the digits (`unicode-range`) because the font's 5 and 7 look
   like letters. Ligatures are off because "fi" turned into one odd glyph.
 - **Icons:** 12x12 pixel art in `css/style.css` as inline SVG data URIs (`.ico .i-coin`, `i-fish`, `i-book`,
-  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-shop`, `i-box`, `i-bait`, `i-heart`, `i-heart0`, `i-lock`, `i-rod-<rod id>`,
+  `i-bag`, `i-rod`, `i-star`, `i-map`, `i-home`, `i-shop`, `i-box`, `i-bait`, `i-heart`, `i-heart0`, `i-lock`, `i-rod-<rod id>`,
   `i-bait-<bait id>` / `i-bait-none`, and the reward icons
   `i-hook`, `i-hands`, `i-lure`, `i-charm` named by `ISLANDS[id].icon`). Icon rules must come after the `.ico` rule,
   because its `background` shorthand resets `background-image`. Use `<span class="ico i-NAME"></span>` inside a button or card.
@@ -231,7 +232,8 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   desktop). Each card is the island picture with a dark progress plate at the bottom (`.isl-plate`): name + gold star (`i-star`) when
   mastered, a bar with "x / 10" (gold when mastered) and the reward name with its icon (padlock until mastered). The secret island is a
   separate wide strip below (`.secret-strip`): locked = padlock, "???", "Master all 4 islands to unlock" and "x / 4 mastered" on its
-  dark night gradient (no picture, no moon); unlocked = `secret.png`, "Little Lake" and "x / 1 found". One HOME button below the panel.
+  dark night gradient (no picture, no moon); unlocked = `secret.png`, "Little Lake" and "x / 1 found". HOME is a small button at the right
+  end of the panel header (no button row below the panel).
   Every card shows only the place (no figure). Harbor uses `assets/harbor_clean.jpg` (the photo after `cleanPlate()`, made by
   `tools/make_harbor_clean.py`) with `harbor.jpg` behind it as the fallback layer; the Title screen keeps `harbor.jpg` with its
   fisherman as cover art. `.bg-<island>` = `--card-shade`, the island picture (`cover`, positioned on its best part), then the old
