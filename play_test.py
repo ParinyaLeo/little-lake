@@ -1266,6 +1266,55 @@ with sync_playwright() as p:
                   all(all(v) for v in pops.values()), str({k: v for k, v in pops.items() if not all(v)}))
         lc.close()
 
+    # ---------- BUG-24: Home, Map, Bag and Collection use the whole window on wide / tall screens ----------
+    BLOCK = """sc => { const s = document.getElementById(sc), kids = [...s.children].filter(e => e.offsetParent && !e.classList.contains('demo'));
+        const top = Math.min(...kids.map(e => e.getBoundingClientRect().top)), bottom = Math.max(...kids.map(e => e.getBoundingClientRect().bottom));
+        const btns = [...document.querySelectorAll('.screen.active .btn, .app > .top .btn')].filter(b => b.offsetParent && !b.closest('.scroll-list'));
+        return { top, bottom, vh: innerHeight, page: document.documentElement.scrollHeight, center: document.body.classList.contains('center'),
+                 out: btns.filter(b => { const r = b.getBoundingClientRect(); return r.top < 0 || r.bottom > innerHeight + .5 || r.right > innerWidth + .5; }).map(b => b.textContent.trim().slice(0, 12)),
+                 appW: document.querySelector('.app').getBoundingClientRect().width }; }"""
+    BIG = """() => { const r = id => document.querySelector('#home > .btns > [data-go="' + id + '"]').getBoundingClientRect();
+        const m = r('map'); return [m.width, m.height, ['bag', 'shop', 'collection', 'tackle'].map(k => [r(k).width, r(k).height])]; }"""
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600)]:
+        cc = b.new_context(viewport={"width": vw, "height": vh}); cp = cc.new_page()
+        cp.on("pageerror", lambda e: errs.append(str(e))); cp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        cp.goto(URL); cp.evaluate("localStorage.clear()"); cp.reload(); cp.wait_for_timeout(200); start_new(cp, "Center")
+        cp.evaluate("() => { S.coins = 1500; S.discovered = { harbor_0: true, harbor_4: true, frost_2: true }; S.bag = [{ fishId: 'harbor_0', weight: .4, price: 18, time: 1 }, { fishId: 'frost_2', weight: 1.1, price: 40, time: 2 }]; save(); }")
+        cp.add_style_tag(content="#toast { display: none !important; }")
+        blocks = {}
+        for sc in ["home", "map", "bag", "collection"]:
+            cp.evaluate(f"() => {{ collTab = 'harbor'; go('{sc}'); }}"); cp.wait_for_timeout(450)
+            blocks[sc] = r = cp.evaluate(BLOCK, sc)
+            check(f"{vw}x{vh} {sc}: centred layout, no page scroll, every main button fully on screen",
+                  r["center"] and r["page"] <= r["vh"] + 1 and not r["out"], f"page {r['page']} out {r['out']}")
+            if vw in (1920, 1366): cp.screenshot(path=str(SHOTS / f"80_{sc}_{vw}x{vh}.png"))
+        h = blocks["home"]; mid = (h["top"] + h["bottom"]) / 2
+        if vw == 1920:
+            check("1920x915: Home panel + buttons are vertically centred (within 10% of the window) and use at least 55% of its height",
+                  abs(mid - vh / 2) <= vh * .10 and (h["bottom"] - h["top"]) >= vh * .55, f"centre {mid:.0f} vs {vh / 2:.0f}, block {h['bottom'] - h['top']:.0f}px = {(h['bottom'] - h['top']) / vh:.0%}")
+            check("1920x915: Map, Bag and Collection are centred below the header too (within 10%)",
+                  all(abs((blocks[k]["top"] + blocks[k]["bottom"]) / 2 - vh / 2) <= vh * .10 for k in ("map", "bag", "collection")),
+                  str({k: round((v["top"] + v["bottom"]) / 2) for k, v in blocks.items()}))
+            check("1920x915: the content is at most about 1100px wide", blocks["home"]["appW"] <= 1100)
+        cp.evaluate("() => go('home')"); cp.wait_for_timeout(300); big = cp.evaluate(BIG)
+        check(f"{vw}x{vh}: TOWN MAP is the main Home action (wider and taller than OPEN BAG, SHOP, COLLECTION, TACKLE BOX)",
+              all(big[0] > w and big[1] > hh for w, hh in big[2]), str(big))
+        if vw == 1280:
+            cp.evaluate("() => { island = 'harbor'; go('fishing'); }"); cp.wait_for_timeout(300)
+            check("Fishing screen is not affected by the centred layout (no body.center, same 980px width)",
+                  not cp.evaluate("document.body.classList.contains('center')") and cp.evaluate("getComputedStyle(document.querySelector('.app')).maxWidth") == "980px")
+            cp.evaluate("() => { stopFishing(); go('shop'); }"); cp.wait_for_timeout(200)
+            check("Shop and Tackle Box keep their fixed layout (not centred)", not cp.evaluate("document.body.classList.contains('center')"))
+        cc.close()
+    for vw, vh in [(360, 640), (390, 844)]:
+        ph = b.new_page(viewport={"width": vw, "height": vh}); ph.on("pageerror", lambda e: errs.append(str(e)))
+        ph.goto(URL); ph.evaluate("localStorage.clear()"); ph.reload(); ph.wait_for_timeout(200); start_new(ph, "Phone")
+        r = ph.evaluate("""() => [getComputedStyle(document.querySelector('#home'), '::before').content, getComputedStyle(document.querySelector('#home > .btns > [data-go="map"]')).gridRowStart,
+                               document.documentElement.scrollWidth <= innerWidth]""")
+        check(f"{vw}x{vh}: phones keep the current Home layout (no centring spacers, TOWN MAP a normal button), no side scroll",
+              r[0] in ("none", "normal") and r[1] == "auto" and r[2], str(r))
+        ph.close()
+
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
 

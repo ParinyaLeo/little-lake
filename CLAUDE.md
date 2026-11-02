@@ -96,6 +96,11 @@ Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing 
 Bag, Shop and Tackle Box (`FIT_SCREENS` → `body.fit`) are exactly one window tall and only their `.scroll-list` scrolls inside the panel
 (thin gold scrollbar, sticky fade at the bottom); the header and bottom buttons stay visible. Phones (below 900px) scroll the page.
 Anything new on these screens must keep fitting: the tests check 1920x915, 1536x730, 1366x625 and 1280x600.
+Home, Town Map, Bag and Collection (`CENTER_SCREENS` → `body.center`, wide windows only) use the whole window: `.app` is at least
+`100dvh` tall and up to 1100px wide, the header stays at the top, and the panel + buttons are centred below it with a slight upward
+bias (`::before` / `::after` spacers, flex-grow 45 / 55). Tiles, fonts and buttons grow with the window height up to a maximum (stat tiles
+<= 120px, map cards <= 220px) and shrink on short windows. On Home, TOWN MAP is the main action: a big button two rows tall beside the
+other four (2x2). Shop, Tackle Box, Fishing and phones don't use this.
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all

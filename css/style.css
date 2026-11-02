@@ -196,7 +196,7 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
 .row { display: flex; align-items: center; gap: 12px; background: var(--teal); border: 2px solid var(--gold); padding: 6px 10px; text-shadow: none; }
 .row canvas { width: 72px; height: 48px; image-rendering: pixelated; flex-shrink: 0; }
 .row .grow { flex: 1; min-width: 0; }
-.row .btn { padding: 8px 12px; font-size: 14px; }
+.row .btn { padding: 8px 22px; font-size: 14px; white-space: nowrap; }   /* 22px: the label clears the corner rivets */
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .tab { padding: 8px 12px; font-family: inherit; font-weight: bold; background: #3a210d; color: var(--cream); border: 2px solid var(--gold); cursor: pointer; }
 .tab.on { background: var(--gold); color: #2a1608; }
@@ -534,4 +534,34 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   body.fit .scroll-list::after { content: ""; position: sticky; bottom: 0; display: block; height: 22px; pointer-events: none;
     background: linear-gradient(rgba(107,61,27,0), rgba(107,61,27,.95)); }
   .shop-h { margin: clamp(10px, 2vh, 16px) 0 8px; }
+}
+
+/* ---- wide windows: Home, Town Map, Bag and Collection (body.center) use the whole window. The header stays at the top; the
+   panel + buttons are centred in the space below it with a slight upward bias (free space split 45 / 55 by the ::before /
+   ::after spacers), and tiles, fonts and buttons grow with the window height up to a maximum (they shrink on short windows
+   as before). The Fishing, Shop and Tackle Box screens are not affected. ---- */
+@media (min-width: 900px) {
+  body.center .app { max-width: 1100px; min-height: calc(100vh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    min-height: calc(100dvh - 28px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  body.center:not(.fit) .screen.active { flex: 1 0 auto; }
+  body.center .screen.active::before, body.center .screen.active::after { content: ""; flex: 45 1 0; min-height: 0; }
+  body.center .screen.active::after { flex-grow: 55; }
+  body.center h2 { font-size: clamp(19px, 3.4vh, 30px); }
+  body.center .btn { font-size: clamp(15px, 2.6vh, 22px); padding: clamp(8px, 1.9vh, 20px) 10px; }
+  body.center .btn.small { font-size: 14px; padding: 8px 12px; }
+  body.center .row .btn { font-size: 14px; padding: 8px 22px; }   /* small buttons (MENU, SELL in the Bag) keep their size */
+  /* Home: stat tiles up to 120px high; TOWN MAP is the main action, a big button two rows tall beside the four others (2x2) */
+  body.center .stat { min-height: clamp(52px, calc(14vh - 30px), 120px); }
+  body.center .stat .l { font-size: clamp(13px, 1.7vh, 16px); }
+  body.center .stat .v { font-size: clamp(18px, 3.8vh, 34px); }
+  body.center .stat > .ico { width: clamp(26px, 5.4vh, 48px); height: clamp(26px, 5.4vh, 48px); }
+  #home > .btns { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); }
+  #home > .btns > [data-go="map"] { grid-row: span 2; font-size: clamp(19px, 3.8vh, 32px); letter-spacing: 2px; }
+  #home > .btns > [data-go="map"] .ico { width: 1.5em; height: 1.5em; }
+  /* Town Map cards and Collection cards grow too */
+  body.center .island { height: clamp(86px, 24vh, 220px); font-size: clamp(20px, 2.8vh, 26px); }
+  body.center .island small { font-size: clamp(13px, 1.7vh, 16px); }
+  body.center .cell { font-size: clamp(12px, 1.8vh, 15px); }
+  body.center .cell canvas { height: clamp(36px, calc(13vh - 40px), 80px); }
+  body.center .row canvas { width: clamp(72px, 9vh, 96px); height: auto; aspect-ratio: 3 / 2; }
 }

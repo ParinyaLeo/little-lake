@@ -24,6 +24,7 @@ function go(id, back = false) {
   current = id; document.body.classList.toggle("plain", id === "fishing"); document.body.classList.toggle("on-title", id === "titleScreen");
   document.body.classList.toggle("has-nav", !!NAV_SCREENS[id]); $("navName").textContent = NAV_SCREENS[id] || "";
   document.body.classList.toggle("fit", FIT_SCREENS.includes(id));
+  document.body.classList.toggle("center", CENTER_SCREENS.includes(id));
   setBackdrop();
   render(); window.scrollTo(0, 0);
 }
@@ -31,6 +32,8 @@ function go(id, back = false) {
 // on Home it goes back to the Title screen, where the player came from
 // wide windows: these screens are exactly one window tall and their list scrolls inside the panel (css: body.fit)
 const FIT_SCREENS = ["bag", "shop", "tackle"];
+// wide windows: the panel + buttons of these short screens are centred (slightly high) below the header and grow with the window (css: body.center)
+const CENTER_SCREENS = ["home", "map", "bag", "collection"];
 function goBack() {
   if (current === "home") return go("titleScreen");
   let id; do { id = navStack.pop(); } while (id && (id === current || (id === "result" && !S.pending)));
