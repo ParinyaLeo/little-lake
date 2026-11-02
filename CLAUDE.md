@@ -22,8 +22,8 @@ js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fis
 js/state.js       Save/load (S, load, cleanSave, save), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
                   rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
-js/fisherman.js   Animated fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, OUTFITS (one per island), poses,
-                  drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip()/fisherOutfit() for tests
+js/fisherman.js   Animated fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, OUTFITS (one per island), ROD_STYLES (one per rod), poses,
+                  drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip()/fisherOutfit()/fisherRodStyle() for tests
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
 js/screens.js     Navigation (go, goBack, navStack, render), the sticky BACK bar, the full-screen backdrop (setBackdrop,
@@ -31,7 +31,10 @@ js/screens.js     Navigation (go, goBack, navStack, render), the sticky BACK bar
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image (Title cover art, fishing scene under cleanPlate())
 assets/harbor_clean.jpg
-                  harbor.jpg with the baked-in fisherman patched out (Town Map card, menu backdrop), written by tools/make_harbor_clean.py
+                  harbor.jpg with the baked-in fisherman patched out (Town Map card, menu backdrop), written by tools/make_rod_icons.py
+                  Tool only: paints the rod icons (.i-rod-<id> 12x12, .i-rodlg-<id> 16x16) from the same colours as ROD_STYLES;
+                  `python tools/make_rod_icons.py --write` rewrites those rules in css/style.css, `--sheet` writes shots/rod_icons_contact.png (Pillow)
+tools/make_harbor_clean.py
 assets/frost.png, desert.png, forest.png, secret.png
                   Island backgrounds painted by tools/make_backgrounds.py (1920x800 = 480x200 art pixels x4)
 tools/make_backgrounds.py
@@ -262,6 +265,15 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   waiting (head tilt, tip dips with the bobber), bite (startled), reeling (rod bent; `fisherTug()` = tug on a hit,
   slack wobble on a miss), caught (700 ms) and escaped (1.4 s). With reduced motion each pose is one still frame.
   A scene without `fisher` draws no figure. Don't allocate objects per frame in this code.
+- **Rod styles** (`ROD_STYLES` in `js/fisherman.js`, picked by `S.rodEq`, or `cfg.rod` in tests; Playtest 1 part 3): the rod's shape, length, angle
+  and tip never change, only its look, so `fisherTip()` is identical for every rod. Bamboo = yellow-green cane with darker joints and a cork
+  grip; Sturdy = dark thick wood (butt one art pixel thicker) with a grey metal ring where the grip ends; Precision = thin silver-blue
+  carbon cane with a dark-blue reel dot; Lucky = gold cane, red grip and a gold star charm on the tip that sparkles in a 2-frame loop
+  (500 ms; a still frame with reduced motion). `fisherRodStyle()` returns the key drawn last. Equipping a rod (`equipRod()`: Tackle Box,
+  Choose Rod popup) shows the toast "Equipped: <rod name>" and the next frame draws the new rod. Icons: `.i-rod-<id>` (12x12, HUD chip) and the
+  larger `.i-rodlg-<id>` (16x16 art, 32px in the Shop and the Choose Rod popup, 48px in the Tackle Box: whole pixel multiples), same colours.
+  If you change a colour, change it in `ROD_STYLES` and in `tools/make_rod_icons.py`, then run `--write`. Check `shots/99_rods_contact.png`
+  (written by the tests: 4 rods x 5 outfits x 7 poses).
 - **Fisherman outfits** (`OUTFITS` in `js/fisherman.js`, picked by `SCENES[island].fisher.outfit`, passed in `cfg.outfit`): each has its
   own palette, head/body/legs maps and arm colours (`arm` = sleeve, sleeve highlight, forearm, hand, hand shade as palette letters;
   optional `front` = a small map drawn over the arm, e.g. the Little Lake lantern). Maps must keep the grids (head 22x15, body

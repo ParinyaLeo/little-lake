@@ -191,7 +191,7 @@ const needMore = price => S.coins < price ? `<span class="need">Need ${fmt(price
 function renderShop() {
   $("shopRods").innerHTML = ROD_IDS.map(id => {
     const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
-    return shopItem({ buy: `rod:${id}`, icon: `rod-${id}`, name: r.name, tag: eq ? "EQUIPPED" : own ? "OWNED" : "",
+    return shopItem({ buy: `rod:${id}`, icon: `rodlg-${id}`, name: r.name, tag: eq ? "EQUIPPED" : own ? "OWNED" : "",
       fx: rodFx(id), odds: r.luck ? `Odds without bait: ${oddsText(rarityWeights("none", id))}` : "",
       note: own ? "" : needMore(r.price), can: !own && S.coins >= r.price,
       label: own ? (eq ? "EQUIPPED" : "OWNED") : r.price ? `${r.price} COINS` : "FREE" });
@@ -230,7 +230,7 @@ function renderTackle() {
   const chip = t => `<span class="chip">${t}</span>`, charm = S.mastery.forest ? " +1 miss from Master's Charm." : "";
   const rods = ROD_IDS.map(id => {
     const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
-    return row(`rod-${id}`, r.name, rodFx(id) + (own ? charm : ""),
+    return row(`rodlg-${id}`, r.name, rodFx(id) + (own ? charm : ""),
       eq ? chip("EQUIPPED") : own ? `<button class="btn small green" data-equip="${id}">EQUIP</button>` : chip(`SHOP · ${r.price} COINS`),
       eq ? "active" : own ? "" : "notowned");
   }).join("");

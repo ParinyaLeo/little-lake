@@ -20,6 +20,9 @@ def catch_one(pg, perfect=True):
         pg.click("#actBtn")
         pg.wait_for_timeout(30)
 
+ROD_IDS_PY = ["bamboo", "sturdy", "precision", "lucky"]
+
+
 def start_new(pg, name="Tester"):
     """Title screen -> NEW GAME -> enter name -> Home."""
     pg.click("#newBtn"); pg.fill("#nameInput", name); pg.click("#nameStart"); pg.wait_for_timeout(200)
@@ -557,7 +560,7 @@ with sync_playwright() as p:
     g.click("#pick-lucky"); g.wait_for_timeout(100)
     check("equipping a non-first rod takes one tap in the popup (Lucky Rod)",
           g.evaluate("S.rodEq") == "lucky" and "Lucky" in g.inner_text("#rodChip") and not g.is_visible("#pickBox")
-          and "Equipped Lucky Rod" in g.inner_text("#toast") and g.evaluate(SAVED + ".rodEq") == "lucky")
+          and "Equipped: Lucky Rod" in g.inner_text("#toast") and g.evaluate(SAVED + ".rodEq") == "lucky")
     g.evaluate("() => { S.rods = ['bamboo', 'lucky']; save(); render(); }")
     g.click("#rodChip"); g.wait_for_timeout(150)
     rl = cards()
@@ -867,6 +870,30 @@ with sync_playwright() as p:
           str({k: v["hash"] for k, v in out.items()}))
     check("every outfit keeps the sprite size and the exact rod tip in all 7 poses",
           all(v["ok"] and v["size"] == out["harbor"]["size"] and v["tips"] == out["harbor"]["tips"] for v in out.values()), str({k: v["tips"][:3] for k, v in out.items()}))
+    # ---------- Playtest 1, part 3: all rods looked the same -> each rod has its own style, the tip and the angle stay the same ----------
+    rd = oc.evaluate("""() => { const outs = Object.keys(OUTFITS), poses = ['idle', 'casting', 'waiting', 'bite', 'reeling', 'caught', 'escaped'], rods = Object.keys(ROD_STYLES);
+        const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = 300; c.height = 300;
+        const hash = d => { let h = 2166136261; for (let i = 0; i < d.length; i++) h = Math.imul(h ^ d[i], 16777619); return (h >>> 0).toString(16); };
+        const r = { rods, keys: {}, hashes: {}, tipsSame: true, inside: true, ok: true, tipsBad: [], sparkle: {}, still: {} };
+        for (const o of outs) for (const ps of poses) for (const t of [0, 1000, 2600]) {
+            const tips = [];
+            for (const rod of rods) { g.clearRect(0, 0, 300, 300); FISHER.pose = '';
+                try { drawFisherman(g, { x: 60, y: 140, p: 3, outfit: o, rod }, ps, t, false); } catch (e) { r.ok = false; }
+                const tp = fisherTip(); tips.push(Math.round(tp.x) + ',' + Math.round(tp.y)); r.keys[rod] = fisherRodStyle();
+                if (!(tp.x >= 0 && tp.x <= 300 && tp.y >= 0 && tp.y <= 300)) { r.inside = false; r.tipsBad.push([o, ps, rod, tp.x, tp.y]); }
+                if (o === 'harbor' && t === 1000) (r.hashes[rod] = r.hashes[rod] || []).push(hash(g.getImageData(0, 0, 300, 300).data)); }
+            if (new Set(tips).size !== 1) { r.tipsSame = false; r.tipsBad.push([o, ps, tips.join(' | ')]); } }
+        const shot = (t, still) => { g.clearRect(0, 0, 300, 300); FISHER.pose = ''; drawFisherman(g, { x: 60, y: 140, p: 3, outfit: 'harbor', rod: 'lucky' }, 'idle', t, still); return hash(g.getImageData(0, 0, 300, 300).data); };
+        r.sparkle = [shot(0, false), shot(500, false), shot(1000, false)]; r.still = [shot(0, true), shot(500, true), shot(1000, true)];
+        return r; }""")
+    check("rod styles: bamboo, sturdy, precision and lucky each draw under their own key (fisherRodStyle) for every outfit and pose, with no errors",
+          rd["ok"] and rd["rods"] == ["bamboo", "sturdy", "precision", "lucky"] and rd["keys"] == {k: k for k in rd["rods"]}, str(rd["keys"]))
+    check("the four rods draw four different pictures in every pose (pixel hashes all different)",
+          all(len({rd["hashes"][k][i] for k in rd["rods"]}) == 4 for i in range(7)), str({k: v[:2] for k, v in rd["hashes"].items()}))
+    check("the line start (fisherTip) is the same for all 4 rods in all 5 outfits x 7 poses and always inside the canvas (rod angle unchanged)",
+          rd["tipsSame"] and rd["inside"], str(rd["tipsBad"][:3]))
+    check("Lucky Rod charm sparkles with a 2-frame loop (500 ms), but not with reduced motion (still frame)",
+          rd["sparkle"][0] != rd["sparkle"][1] and rd["sparkle"][0] == rd["sparkle"][2] and len(set(rd["still"])) == 1, f"{rd['sparkle']} {rd['still']}")
     # contact sheet: every outfit (rows) in every pose (columns) over its own island picture
     oc.set_viewport_size({"width": 1600, "height": 900})
     oc.wait_for_function("Object.values(SCENES).every(s => s.img || s.failed)", timeout=8000)
@@ -880,6 +907,17 @@ with sync_playwright() as p:
             FISHER.pose = ''; drawFisherman(g, { x: col * cw + 8 * p, y: r * ch + 18 * p, p, outfit: k }, ps, 1000, true); g.restore(); }));
         document.body.appendChild(c); }""")
     oc.locator("#outfitSheet").screenshot(path=str(SHOTS / "outfits_contact.png"))
+    oc.evaluate("document.getElementById('outfitSheet').remove()")
+    # contact sheet: every rod x every outfit (rows) in every pose (columns), in the rod's own colours
+    oc.evaluate("""() => { const isl = ['harbor', 'frost', 'desert', 'forest', 'secret'], rods = Object.keys(ROD_STYLES), poses = ['idle', 'casting', 'waiting', 'bite', 'reeling', 'caught', 'escaped'];
+        const p = 2, AW = 72, AH = 58, cw = AW * p, ch = AH * p, c = document.createElement('canvas'), g = c.getContext('2d'); c.id = 'rodSheet';
+        c.width = cw * poses.length; c.height = ch * isl.length * rods.length; c.style.cssText = 'position:fixed;left:0;top:0;z-index:9999'; g.imageSmoothingEnabled = false;
+        rods.forEach((rod, ri) => isl.forEach((k, r) => poses.forEach((ps, col) => { const s = SCENES[k], fc = s.fisher, k2 = fc.scale, row = ri * isl.length + r;
+            g.save(); g.beginPath(); g.rect(col * cw, row * ch, cw, ch); g.clip();
+            g.drawImage(s.plate || s.img, fc.x - 8 * k2, fc.y - 18 * k2, AW * k2, AH * k2, col * cw, row * ch, cw, ch);
+            FISHER.pose = ''; drawFisherman(g, { x: col * cw + 8 * p, y: row * ch + 18 * p, p, outfit: k, rod }, ps, 1000, true); g.restore(); })));
+        document.body.appendChild(c); }""")
+    oc.locator("#rodSheet").screenshot(path=str(SHOTS / "99_rods_contact.png"))
     oc.close()
 
     # a picture that can't load: the island keeps its painted scene and gradient card, with no JavaScript errors
@@ -1544,6 +1582,46 @@ with sync_playwright() as p:
     check("HOW TO PLAY (Rods) lists the new misses",
           "Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster marker)" in rp.inner_text("#howBox"))
     rc.close()
+    # ---------- Playtest 1, part 3: the rod you equip is visible (fisherman, icons, toast) ----------
+    ICON_BG = """ids => ids.map(id => { const e = document.createElement('span'); e.className = 'ico ' + id; document.body.appendChild(e);
+        const bg = getComputedStyle(e).backgroundImage; e.remove(); return bg; })"""
+    for vw, vh in [(1536, 730), (360, 640)]:
+        rp3 = b.new_page(viewport={"width": vw, "height": vh})
+        rp3.on("pageerror", lambda e: errs.append(str(e))); rp3.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        rp3.goto(URL); rp3.evaluate("localStorage.clear()"); rp3.reload(); rp3.wait_for_timeout(200); start_new(rp3, "Rodlook")
+        rp3.evaluate("() => { S.rods = [...ROD_IDS]; S.coins = 5000; save(); island = 'harbor'; go('fishing'); }")
+        rp3.wait_for_function("SCENES.harbor.img || SCENES.harbor.failed", timeout=8000); rp3.wait_for_timeout(500)
+        if vw == 1536:
+            small = rp3.evaluate(ICON_BG, [f"i-rod-{r}" for r in ROD_IDS_PY]); big = rp3.evaluate(ICON_BG, [f"i-rodlg-{r}" for r in ROD_IDS_PY])
+            check("the four small rod icons (.i-rod-*) have four different background images", len(set(small)) == 4 and all("svg" in x for x in small))
+            check("the four large rod icons (.i-rodlg-*) have four different background images, also different from the small ones", len(set(big)) == 4 and not set(big) & set(small))
+        seen = []
+        for rid, name in [("sturdy", "Sturdy Rod"), ("precision", "Precision Rod"), ("lucky", "Lucky Rod"), ("bamboo", "Bamboo Rod")]:
+            rp3.evaluate("() => { document.getElementById('toast').style.visibility = ''; }")
+            rp3.click("#rodChip"); rp3.wait_for_timeout(300)
+            if rid == "sturdy":
+                big_sz = rp3.evaluate("[...document.querySelectorAll('#pickList .pick-card > .ico')].map(i => [i.className.includes('i-rodlg-'), i.offsetWidth])")
+                bgs = rp3.evaluate("[...document.querySelectorAll('#pickList .pick-card > .ico')].map(i => getComputedStyle(i).backgroundImage)")
+                check(f"{vw}x{vh}: the Choose Rod popup shows the four large rod icons (32px, all different)", len(big_sz) == 4 and all(x[0] and x[1] == 32 for x in big_sz) and len(set(bgs)) == 4, str(big_sz))
+            rp3.click(f"#pick-{rid}"); rp3.wait_for_timeout(350)
+            toast_txt = rp3.inner_text("#toast")
+            rp3.evaluate("() => { const t = document.getElementById('toast'); t.style.visibility = 'hidden'; }")
+            rp3.wait_for_timeout(150)
+            seen.append((rid, toast_txt.strip(), rp3.evaluate("[S.rodEq, fisherRodStyle()]")))
+            rp3.screenshot(path=str(SHOTS / f"99_rod_{rid}_{vw}x{vh}.png"))
+        check(f"{vw}x{vh}: switching rods in the Choose Rod popup shows 'Equipped: <rod name>' and the fisherman draws the new rod at once",
+              all(t == f"Equipped: {n}" and eq == [r, r] for (r, t, eq), n in zip(seen, ["Sturdy Rod", "Precision Rod", "Lucky Rod", "Bamboo Rod"])), str(seen))
+        rp3.evaluate("() => { go('shop'); }"); rp3.wait_for_timeout(250)
+        sh = rp3.evaluate("[...document.querySelectorAll('#shopRods .item b .ico')].map(i => [i.className.includes('i-rodlg-'), Math.round(i.getBoundingClientRect().width), getComputedStyle(i).backgroundImage])")
+        check(f"{vw}x{vh}: the Shop shows the four large rod icons (32px, all different)", len(sh) == 4 and all(x[0] and x[1] == 32 for x in sh) and len({x[2] for x in sh}) == 4, str([x[:2] for x in sh]))
+        rp3.evaluate("() => { go('tackle'); }"); rp3.wait_for_timeout(250)
+        tk = rp3.evaluate("[...document.querySelectorAll('#gearList .gear-row > .ico')].filter(i => i.className.includes('i-rodlg-')).map(i => [Math.round(i.getBoundingClientRect().width), getComputedStyle(i).backgroundImage])")
+        check(f"{vw}x{vh}: the Tackle Box shows the four large rod icons (48px, all different)", len(tk) == 4 and all(x[0] == 48 for x in tk) and len({x[1] for x in tk}) == 4, str([x[0] for x in tk]))
+        rp3.click('[data-equip="sturdy"]'); rp3.wait_for_timeout(250)
+        check(f"{vw}x{vh}: equipping a rod in the Tackle Box shows 'Equipped: Sturdy Rod'", rp3.evaluate("S.rodEq") == "sturdy" and rp3.evaluate("document.getElementById('toast').textContent.trim()") == "Equipped: Sturdy Rod")
+        rp3.evaluate("() => { go('fishing'); }"); rp3.wait_for_timeout(300)
+        check(f"{vw}x{vh}: back on the fishing screen the Sturdy Rod is drawn", rp3.evaluate("fisherRodStyle()") == "sturdy")
+        rp3.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")

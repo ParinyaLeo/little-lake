@@ -394,7 +394,7 @@ function renderPicker() {
   $("pickList").innerHTML = isRod
     ? ROD_IDS.map(id => {
         const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
-        return card(id, `rod-${id}`, r.name, rodFx(id) + (own ? charm : ""), oddsText(rarityWeights(S.baitSel, id)),
+        return card(id, `rodlg-${id}`, r.name, rodFx(id) + (own ? charm : ""), oddsText(rarityWeights(S.baitSel, id)),
           eq ? "equipped" : own ? "" : "locked", eq ? "EQUIPPED" : own ? "EQUIP" : lockedLabel(r.price));
       }).join("")
     : ["none", ...BAIT_IDS].map(id => {

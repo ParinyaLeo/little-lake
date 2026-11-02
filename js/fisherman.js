@@ -302,7 +302,7 @@ function fisherPoseFor(phase, t) {
   if (phase !== "idle") return phase;
   return FISH_EVT.name && t - FISH_EVT.at < FISHER_HOLD[FISH_EVT.name] ? FISH_EVT.name : "idle";
 }
-const P = { f: 0, a: 38, bend: 3 }, FISHER = { pose: "idle", since: 0, tipX: 0, tipY: 0, outfit: "harbor" };
+const P = { f: 0, a: 38, bend: 3 }, FISHER = { pose: "idle", since: 0, tipX: 0, tipY: 0, outfit: "harbor", rod: "bamboo" };
 const fEase = k => 1 - (1 - k) * (1 - k) * (1 - k);
 function poseParams(name, lt, t, still) {
   const sin = Math.sin;
@@ -332,8 +332,23 @@ function poseParams(name, lt, t, still) {
   return P;
 }
 
-// Draw the fisherman and his rod. cfg = { x, y, p, outfit } in canvas pixels (p = canvas pixels per art pixel;
-// outfit = a key of OUTFITS, anything else draws the harbor look).
+/* ---------- rod styles (Playtest 1, part 3: all rods looked the same) ----------
+   One entry per rod in RODS, picked by S.rodEq (or cfg.rod). The shape, length and angle never change, only the look:
+   grip / cane / tip = colours of the first 20% / middle / last 30% of the rod, shade = the dark pixel row(s) under the butt (butt = how many
+   art pixels thick that butt is, 0 = a thin rod), ring = a metal ring where the grip ends, node = bamboo joints, reel = a reel dot just past
+   the hands (+ reelHi, its highlight), charm = a sparkling star at the tip. The icons in css/style.css (.i-rod-*, .i-rodlg-*, made by
+   tools/make_rod_icons.py) use the same colours. */
+const ROD_STYLES = {
+  bamboo:    { grip: "#c9a26a", cane: "#a9bd3c", tip: "#7d9a2a", shade: "#3b4a14", butt: 1, node: "#6b8120" },
+  sturdy:    { grip: "#3a2210", cane: "#5b3517", tip: "#4a2b12", shade: "#1a0d04", butt: 2, ring: "#aeb8be" },
+  precision: { grip: "#7f96aa", cane: "#b8dcef", tip: "#e6f6ff", shade: "", butt: 0, reel: "#1c3f78", reelHi: "#6fa8ff" },
+  lucky:     { grip: "#c0392b", cane: "#ffcf3f", tip: "#fff3a8", shade: "#9a6a00", butt: 1, charm: true }
+};
+const CHARM = ["#ffcf3f", "#fff6c0"];                       // star arms, star centre / sparkle
+function rodStyleKey(cfg) { return ROD_STYLES[cfg.rod] ? cfg.rod : ROD_STYLES[S.rodEq] ? S.rodEq : "bamboo"; }
+
+// Draw the fisherman and his rod. cfg = { x, y, p, outfit, rod? } in canvas pixels (p = canvas pixels per art pixel;
+// outfit = a key of OUTFITS, anything else draws the harbor look; rod = a key of ROD_STYLES, default the equipped rod S.rodEq).
 // pose = idle | casting | waiting | bite | reeling | caught | escaped; t = animation time (ms).
 // Sets FISHER.tipX / tipY (canvas pixels) to the centre of the drawn rod tip, where the line starts.
 const ROD_LEN = 44;
@@ -341,6 +356,7 @@ function drawFisherman(c, cfg, pose, t, still) {
   if (pose !== FISHER.pose) { FISHER.pose = pose; FISHER.since = t; }
   const q = poseParams(pose, t - FISHER.since, t, still), fr = F_FRAMES[q.f], p = cfg.p;
   const name = OUTFITS[cfg.outfit] ? cfg.outfit : "harbor", o = OUTFITS[name], pal = o.pal; FISHER.outfit = name;
+  const rk = rodStyleKey(cfg), rs = ROD_STYLES[rk]; FISHER.rod = rk;
   c.imageSmoothingEnabled = false;
   c.drawImage(fFrame(q.f, name),cfg.x - FM * p, cfg.y - FM * p, (28 + FM * 2) * p, (36 + FM * 2) * p);
   // rod: a quadratic curve from the hands, straight at the butt and bending down toward the tip,
@@ -349,15 +365,31 @@ function drawFisherman(c, cfg, pose, t, still) {
   const bx = hx - Math.cos(a) * 4, by = hy + Math.sin(a) * 4;                                  // butt, behind the hands
   const cx = hx + Math.cos(a) * ROD_LEN * .55, cy = hy - Math.sin(a) * ROD_LEN * .55;
   const tx = hx + Math.cos(b) * ROD_LEN, ty = hy - Math.sin(b) * ROD_LEN;
-  let lc = 1e9, lr = 1e9;
+  let lc = 1e9, lr = 1e9, n = 0, mark = false;
+  const pr = Math.round(p);
   for (let i = 0; i <= 64; i++) {
     const k = i / 64, m = 1 - k;
     const col = Math.floor(m * m * bx + 2 * m * k * cx + k * k * tx), row = Math.floor(m * m * by + 2 * m * k * cy + k * k * ty);
-    if (col === lc && row === lr) continue; lc = col; lr = row;
+    if (col === lc && row === lr) continue; lc = col; lr = row; n++;
     const x0 = Math.round(cfg.x + col * p), y0 = Math.round(cfg.y + row * p), w = Math.round(cfg.x + (col + 1) * p) - x0, h = Math.round(cfg.y + (row + 1) * p) - y0;
-    c.fillStyle = k < .2 ? "#c9a26a" : k < .7 ? "#5a3518" : "#3a2210"; c.fillRect(x0, y0, w, h);       // cork grip, cane, thin tip
-    if (k < .5) { c.fillStyle = "#2b1a10"; c.fillRect(x0, y0 + h, w, Math.round(p)); }                     // thicker butt
+    c.fillStyle = k < .2 ? rs.grip : k < .7 ? rs.cane : rs.tip; c.fillRect(x0, y0, w, h);               // grip, cane, thin tip
+    if (rs.node && k >= .2 && k < .7 && n % 4 === 0) { c.fillStyle = rs.node; c.fillRect(x0, y0, w, h); }   // bamboo joints
+    if (k < .5 && rs.butt) { c.fillStyle = rs.shade; c.fillRect(x0, y0 + h, w, pr * rs.butt); }          // thicker butt
+    if (!mark && k >= .2) {                                                                              // where the grip ends
+      mark = true;
+      if (rs.ring) { c.fillStyle = rs.ring; c.fillRect(x0, y0, w, h); c.fillRect(x0, y0 + h, w, pr); }      // metal ring across the rod
+      if (rs.reel) { c.fillStyle = rs.reel; c.fillRect(x0, y0 + h, w, pr * 2); c.fillStyle = rs.reelHi; c.fillRect(x0, y0 + h, pr, pr); }   // reel dot
+    }
     FISHER.tipX = x0 + w / 2; FISHER.tipY = y0 + h / 2;
+  }
+  if (rs.charm) {                                                                                       // lucky charm: a star sitting on the tip
+    const sx = Math.round(FISHER.tipX), sy = Math.round(FISHER.tipY - 2 * p), alt = !still && Math.floor(t / 500) % 2 === 1, u = pr, h2 = Math.round(u / 2);
+    c.fillStyle = CHARM[0];
+    c.fillRect(sx - h2, sy - u - h2, u, u); c.fillRect(sx - h2, sy + h2, u, u); c.fillRect(sx - u - h2, sy - h2, u, u); c.fillRect(sx + h2, sy - h2, u, u);
+    c.fillStyle = CHARM[1]; c.fillRect(sx - h2, sy - h2, u, u);                                          // bright centre
+    if (alt) { const d = Math.max(1, Math.round(u / 2)); c.fillStyle = CHARM[1];                           // sparkle frame: four tiny glints
+      c.fillRect(sx - u - h2 - d, sy - u - h2 - d, d, d); c.fillRect(sx + u + h2, sy - u - h2 - d, d, d);
+      c.fillRect(sx - u - h2 - d, sy + u + h2, d, d); c.fillRect(sx + u + h2, sy + u + h2, d, d); }
   }
   // hands on top of the rod
   const gx = Math.round(cfg.x + (fr.hand[0] - 1) * p), gy = Math.round(cfg.y + (fr.hand[1] - 1) * p), gs = Math.round(3 * p);
@@ -367,3 +399,4 @@ function drawFisherman(c, cfg, pose, t, still) {
 function fisherPose() { return FISHER.pose; }
 function fisherTip() { return { x: FISHER.tipX, y: FISHER.tipY }; }   // for tests
 function fisherOutfit() { return FISHER.outfit; }                      // for tests: the outfit drawn last
+function fisherRodStyle() { return FISHER.rod; }                         // for tests: the rod style drawn last (a key of ROD_STYLES)

@@ -246,7 +246,7 @@ const baitName = id => BAITS[id] ? BAITS[id].name : "No bait";
 // equip a rod you own / select a bait you have (or "none"); used by the Tackle Box and the fishing HUD
 function equipRod(id) {
   if (!S.rods.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
-  S.rodEq = id; save(); toast(`Equipped ${RODS[id].name}: ${rodFx(id)}`); render();
+  S.rodEq = id; save(); toast(`Equipped: ${RODS[id].name}`); render();
 }
 function selectBait(id) {
   if ((id !== "none" && !(S.baits[id] > 0)) || (typeof F !== "undefined" && F.phase !== "idle")) return;
