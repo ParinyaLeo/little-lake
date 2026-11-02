@@ -86,8 +86,9 @@ screen name. On windows 900px and wider it sits in the middle of the header (LIT
 wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
 visible while a phone page scrolls; it is in the normal flow, so it never covers content.
 `go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
-the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback. The Bag's BACK button and **Esc** use
-`goBack()`; Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
+the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback. **Esc** also uses
+`goBack()` (the Bag has no separate BACK button any more: the bar's BACK does the same, including Result > OPEN BAG > BACK to the
+waiting catch); Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
 Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
 
 **Laptop / desktop fit (don't break this):** on windows 900px and wider, every screen fits the window without page scrolling, down to
@@ -96,11 +97,13 @@ Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing 
 Bag, Shop and Tackle Box (`FIT_SCREENS` → `body.fit`) are exactly one window tall and only their `.scroll-list` scrolls inside the panel
 (thin gold scrollbar, sticky fade at the bottom); the header and bottom buttons stay visible. Phones (below 900px) scroll the page.
 Anything new on these screens must keep fitting: the tests check 1920x915, 1536x730, 1366x625 and 1280x600.
-Home, Town Map, Bag and Collection (`CENTER_SCREENS` → `body.center`, wide windows only) use the whole window: `.app` is at least
+Home, Town Map and Collection (`CENTER_SCREENS` → `body.center`, wide windows only) use the whole window: `.app` is at least
 `100dvh` tall and up to 1100px wide, the header stays at the top, and the panel + buttons are centred below it with a slight upward
 bias (`::before` / `::after` spacers, flex-grow 45 / 55). Tiles, fonts and buttons grow with the window height up to a maximum (stat tiles
-<= 120px, map cards <= 220px) and shrink on short windows. On Home, TOWN MAP is the main action: a big button two rows tall beside the
+<= 120px, island cards <= 250px high) and shrink on short windows. On Home, TOWN MAP is the main action: a big button two rows tall beside the
 other four (2x2). Shop, Tackle Box, Fishing and phones don't use this.
+The **Bag** is not centred: it is anchored at the top and its list has a fixed area of about 5 rows (`#bag .scroll-list`, 380px, it only
+shrinks on a too-short window), so the panel and SELL ALL / HOME stay in the same place at every fish count; more fish scroll inside it.
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all
@@ -141,7 +144,7 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
-**Bag:** sell fish one at a time or **SELL ALL** for coins.
+**Bag:** sell fish one at a time or **SELL ALL** for coins. Bottom buttons: SELL ALL and HOME (BACK is in the top bar).
 
 **Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a trade-off):
 
@@ -219,12 +222,15 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   scenes (pixel art painted on a small canvas, 1 art pixel = 3 screen pixels, cached; only snow, heat shimmer,
   waterfall, stars and water glints are redrawn each frame). To use an artist's picture later, replace the PNG (same
   name) and adjust `anchor` and `fisher`; `CROP` holds the part of the picture currently shown.
-- **Town Map cards:** every card shows only the place (no figure). Harbor uses `assets/harbor_clean.jpg` (the photo after
-  `cleanPlate()`, made by `tools/make_harbor_clean.py`) with `harbor.jpg` behind it as the fallback layer; the Title screen keeps
-  `harbor.jpg` with its fisherman as cover art. Name and "x / 10 found" sit bottom-right.
-  `.bg-<island>` = `--card-shade` (dark radial shade in the bottom-right corner, so the name stays readable), the island picture
-  (`cover`, positioned on its best part), then the old gradient as a fallback if the picture can't load. The secret
-  card shows `secret.png` only when unlocked (`.bg-secret:not(.locked)`); the locked "???" card keeps its gradient.
+- **Town Map** (`renderMap()`): the 4 islands are equal cards in one row on wide windows (2x2 below 900px; about 250px wide on
+  desktop). Each card is the island picture with a dark progress plate at the bottom (`.isl-plate`): name + gold star (`i-star`) when
+  mastered, a bar with "x / 10" (gold when mastered) and the reward name with its icon (padlock until mastered). The secret island is a
+  separate wide strip below (`.secret-strip`): locked = padlock, "???", "Master all 4 islands to unlock" and "x / 4 mastered" on its
+  dark night gradient (small moon, no picture); unlocked = `secret.png`, "Little Lake" and "x / 1 found". One HOME button below the panel.
+  Every card shows only the place (no figure). Harbor uses `assets/harbor_clean.jpg` (the photo after `cleanPlate()`, made by
+  `tools/make_harbor_clean.py`) with `harbor.jpg` behind it as the fallback layer; the Title screen keeps `harbor.jpg` with its
+  fisherman as cover art. `.bg-<island>` = `--card-shade`, the island picture (`cover`, positioned on its best part), then the old
+  gradient as a fallback if the picture can't load.
 - **Fisherman** (`js/fisherman.js`, `SCENES.<island>.fisher`; on Harbor): the man baked into `harbor.jpg` is hidden by
   `cleanPlate()`, which copies water, chest and dock pixels from beside him (`patch` rects and the `rodClear` band, in
   photo pixels) into an offscreen canvas built once. A new 28x36 pixel-art fisherman is drawn at `x, y` with `scale`

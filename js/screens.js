@@ -32,8 +32,8 @@ function go(id, back = false) {
 // on Home it goes back to the Title screen, where the player came from
 // wide windows: these screens are exactly one window tall and their list scrolls inside the panel (css: body.fit)
 const FIT_SCREENS = ["bag", "shop", "tackle"];
-// wide windows: the panel + buttons of these short screens are centred (slightly high) below the header and grow with the window (css: body.center)
-const CENTER_SCREENS = ["home", "map", "bag", "collection"];
+// wide windows: the panel + buttons of these screens are centred (slightly high) below the header and grow with the window (css: body.center)
+const CENTER_SCREENS = ["home", "map", "collection"];   // the Bag is anchored at the top so its buttons never move
 function goBack() {
   if (current === "home") return go("titleScreen");
   let id; do { id = navStack.pop(); } while (id && (id === current || (id === "result" && !S.pending)));
@@ -131,17 +131,28 @@ document.addEventListener("keydown", e => {
 });
 
 /* ===================== MAP ===================== */
+// 4 island cards: picture, name (+ gold star when mastered), progress bar "x / 10" and the Mastery reward;
+// the secret island is a separate wide strip below them (locked: padlock + "???")
 function renderMap() {
   const box = $("islands"); box.innerHTML = "";
-  [...ISLAND_IDS, "secret"].forEach(id => {
-    const I = ISLANDS[id], locked = id === "secret" && !secretOpen();
-    const b = document.createElement("button");
-    b.className = `island ${I.bg}` + (locked ? " locked" : "");
-    b.innerHTML = locked ? `???<small>Master all 4 islands</small>` :
-      `${I.name}${S.mastery[id] ? " ★" : ""}<small>${id === "secret" ? "Mythical fish" : discCount(id) + " / 10 found"}</small>`;
-    b.onclick = () => { if (locked) { toast("Master all four islands first."); return; } island = id; go("fishing"); };
+  ISLAND_IDS.forEach(id => {
+    const I = ISLANDS[id], n = discCount(id), done = !!S.mastery[id], b = document.createElement("button");
+    b.className = `island ${I.bg}` + (done ? " mastered" : "");
+    b.setAttribute("aria-label", `${I.name}: ${n} of 10 fish found${done ? ", mastered" : ""}. Go fishing here.`);
+    b.innerHTML = `<span class="isl-plate"><span class="isl-name">${I.name}${done ? `<span class="ico i-star" title="Mastered"></span>` : ""}</span>` +
+      `<span class="isl-prog"><span class="isl-bar"><span style="width:${n * 10}%"></span></span><span class="isl-count">${n} / 10</span></span>` +
+      `<small class="isl-reward"><span class="ico i-${done ? I.icon : "lock"}"></span>${I.reward}</small></span>`;
+    b.onclick = () => { island = id; go("fishing"); };
     box.append(b);
   });
+  const locked = !secretOpen(), n = discCount("secret"), s = document.createElement("button");
+  s.className = "island secret-strip bg-secret" + (locked ? " locked" : "") + (n ? " mastered" : "");
+  s.innerHTML = locked
+    ? `<span class="ico i-lock"></span><span class="isl-name">???</span><small>Master all 4 islands to unlock</small><span class="isl-count">${masteredCount()} / 4 mastered</span>`
+    : `<span class="ico ${n ? "i-star" : "i-fish"}"></span><span class="isl-name">Little Lake</span><small>Secret island · Mythical fish</small><span class="isl-count">${n} / 1 found</span>`;
+  s.setAttribute("aria-label", locked ? "Secret island, locked: master all 4 islands to unlock" : "Little Lake, the secret island. Go fishing here.");
+  s.onclick = () => { if (locked) { toast("Master all four islands first."); return; } island = "secret"; go("fishing"); };
+  box.append(s);
 }
 
 /* ===================== BAG ===================== */
@@ -164,7 +175,6 @@ function sell(idx) {
   S.coins += total; save(); sfx.coin(); toast(`Sold for ${fmt(total)} coins!`); render();
 }
 $("sellAll").onclick = () => sell(S.bag.map((_, i) => i));
-$("bagBack").onclick = goBack;
 
 /* ===================== SHOP ===================== */
 // every item says exactly what it does, whether you own / use it, and why it can't be bought

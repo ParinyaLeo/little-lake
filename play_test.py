@@ -330,7 +330,7 @@ with sync_playwright() as p:
           and q.evaluate("S.pending") is None and "Striped Mullet added to bag" in toast_text(q), toast_text(q))
     fake_catch(q, "harbor_3"); q.click("#resBagBtn"); q.wait_for_timeout(200)
     check("OPEN BAG from a full Result opens the bag", q.is_visible("#bag"))
-    q.click("#bagList .row .btn"); q.wait_for_timeout(100); q.click("#bagBack"); q.wait_for_timeout(200)
+    q.click("#bagList .row .btn"); q.wait_for_timeout(100); q.click("#navBack"); q.wait_for_timeout(200)
     check("after selling in the bag, BACK returns to the catch with KEEP available", q.is_visible("#result") and q.is_visible("#keepBtn") and not q.is_visible("#fullBag"))
     q.click("#keepBtn"); q.wait_for_timeout(100)
     fake_catch(q, "harbor_0"); bag0 = q.evaluate("JSON.stringify(S.bag)"); q.click("#fullRelease"); q.wait_for_timeout(150)
@@ -829,7 +829,9 @@ with sync_playwright() as p:
     # background 20% 40% / cover inside the 4px border) with the clean picture vs the same card showing the old photo
     SPOT = """() => { const c = document.querySelector('.island.bg-harbor'), w = c.clientWidth, h = c.clientHeight, k = Math.max(w / 1373, h / 455);
         const ox = 4 + (w - 1373 * k) * .2, oy = 4 + (h - 455 * k) * .4;
-        return [Math.round(ox + 190 * k), Math.round(oy + 174 * k), Math.round(100 * k), Math.round(81 * k)]; }"""
+        // clipped to inside the card's 4px border + 3px gold frame, so the frame's gold never counts as straw-hat pixels
+        const x0 = Math.max(8, ox + 190 * k), y0 = Math.max(8, oy + 174 * k), x1 = Math.min(w, ox + 290 * k), y1 = Math.min(h, oy + 255 * k);
+        return [Math.round(x0), Math.round(y0), Math.round(x1 - x0), Math.round(y1 - y0)]; }"""
     FIG = """async ([src, r]) => { const im = new Image(); im.src = src; await im.decode();
         const c = document.createElement('canvas'), g = c.getContext('2d'); c.width = im.width; c.height = im.height; g.drawImage(im, 0, 0);
         const d = g.getImageData(r[0], r[1], r[2], r[3]).data; let n = 0;
@@ -982,9 +984,9 @@ with sync_playwright() as p:
     fp.evaluate("() => stopFishing()")
     for vw, vh in [(1280, 720), (360, 640)]:
         fp.set_viewport_size({"width": vw, "height": vh}); fp.evaluate("() => go('map')"); fp.wait_for_timeout(200)
-        mp = fp.evaluate("""(() => { const c = document.querySelector('.island.bg-harbor'), r = c.getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(c);
-            const t = rg.getBoundingClientRect(); return [Math.round((t.left - r.left) / r.width * 100), Math.round((t.top - r.top) / r.height * 100), getComputedStyle(c).textAlign]; })()""")
-        check(f"{vw}x{vh}: Harbor card text sits bottom-right, clear of the fisherman (left part of the card)", mp[0] >= 40 and mp[1] >= 50 and mp[2] == "right", str(mp))
+        mp = fp.evaluate("""(() => { const c = document.querySelector('.island.bg-harbor'), r = c.getBoundingClientRect(), t = c.querySelector('.isl-plate').getBoundingClientRect();
+            return [Math.round((t.top - r.top) / r.height * 100), t.left >= r.left && t.right <= r.right + .5 && t.bottom <= r.bottom + .5]; })()""")
+        check(f"{vw}x{vh}: Harbor card: the progress plate sits in the lower part, the picture shows above it", mp[0] >= 35 and mp[1], str(mp))
         fp.screenshot(path=str(SHOTS / f"48_map_text_{vw}.png"))
     fp.close()
 
@@ -1282,7 +1284,7 @@ with sync_playwright() as p:
         cp.evaluate("() => { S.coins = 1500; S.discovered = { harbor_0: true, harbor_4: true, frost_2: true }; S.bag = [{ fishId: 'harbor_0', weight: .4, price: 18, time: 1 }, { fishId: 'frost_2', weight: 1.1, price: 40, time: 2 }]; save(); }")
         cp.add_style_tag(content="#toast { display: none !important; }")
         blocks = {}
-        for sc in ["home", "map", "bag", "collection"]:
+        for sc in ["home", "map", "collection"]:
             cp.evaluate(f"() => {{ collTab = 'harbor'; go('{sc}'); }}"); cp.wait_for_timeout(450)
             blocks[sc] = r = cp.evaluate(BLOCK, sc)
             check(f"{vw}x{vh} {sc}: centred layout, no page scroll, every main button fully on screen",
@@ -1292,8 +1294,8 @@ with sync_playwright() as p:
         if vw == 1920:
             check("1920x915: Home panel + buttons are vertically centred (within 10% of the window) and use at least 55% of its height",
                   abs(mid - vh / 2) <= vh * .10 and (h["bottom"] - h["top"]) >= vh * .55, f"centre {mid:.0f} vs {vh / 2:.0f}, block {h['bottom'] - h['top']:.0f}px = {(h['bottom'] - h['top']) / vh:.0%}")
-            check("1920x915: Map, Bag and Collection are centred below the header too (within 10%)",
-                  all(abs((blocks[k]["top"] + blocks[k]["bottom"]) / 2 - vh / 2) <= vh * .10 for k in ("map", "bag", "collection")),
+            check("1920x915: Map and Collection are centred below the header too (within 10%)",
+                  all(abs((blocks[k]["top"] + blocks[k]["bottom"]) / 2 - vh / 2) <= vh * .10 for k in ("map", "collection")),
                   str({k: round((v["top"] + v["bottom"]) / 2) for k, v in blocks.items()}))
             check("1920x915: the content is at most about 1100px wide", blocks["home"]["appW"] <= 1100)
         cp.evaluate("() => go('home')"); cp.wait_for_timeout(300); big = cp.evaluate(BIG)
@@ -1314,6 +1316,86 @@ with sync_playwright() as p:
         check(f"{vw}x{vh}: phones keep the current Home layout (no centring spacers, TOWN MAP a normal button), no side scroll",
               r[0] in ("none", "normal") and r[1] == "auto" and r[2], str(r))
         ph.close()
+
+    # ---------- BUG-25: Bag anchored at the top, buttons never move; BUG-26: Town Map redesign ----------
+    FILL = "n => { S.bagMax = 15; S.bag = []; while (S.bag.length < n) S.bag.push({ fishId: 'harbor_' + (S.bag.length % 10), weight: .5, price: 20, time: 1 }); save(); go('home'); go('bag'); }"
+    BAGPOS = """() => { const p = document.querySelector('#bag .panel').getBoundingClientRect(), l = document.getElementById('bagList'),
+        q = id => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), r.bottom <= innerHeight]; };
+        return { panel: Math.round(p.top), sell: q('sellAll'), home: q('bagHome'), scrolls: l.scrollHeight > l.clientHeight + 4, ov: getComputedStyle(l).overflowY,
+                 thin: getComputedStyle(l).scrollbarWidth, page: document.documentElement.scrollHeight, vh: innerHeight, rows: l.querySelectorAll('.row').length,
+                 text: l.innerText, back: !!document.getElementById('bagBack'), center: document.body.classList.contains('center') }; }"""
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600)]:
+        gc = b.new_context(viewport={"width": vw, "height": vh}); gp = gc.new_page()
+        gp.on("pageerror", lambda e: errs.append(str(e))); gp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        gp.goto(URL); gp.evaluate("localStorage.clear()"); gp.reload(); gp.wait_for_timeout(200); start_new(gp, "BagTop")
+        gp.add_style_tag(content="#toast { display: none !important; }")
+        bp_ = {}
+        for n in (0, 5, 10, 15):
+            gp.evaluate(FILL, n); gp.wait_for_timeout(400); bp_[n] = gp.evaluate(BAGPOS)
+            if vw == 1536 and n in (0, 5, 15): gp.screenshot(path=str(SHOTS / f"90_bag_{n}_fish_{vw}x{vh}.png"))
+        same = all(v["panel"] == bp_[0]["panel"] and v["sell"] == bp_[0]["sell"] and v["home"] == bp_[0]["home"] for v in bp_.values())
+        check(f"{vw}x{vh}: Bag with 0, 5, 10, 15 fish: panel top and SELL ALL / HOME stay in the same place, on screen, no page scroll",
+              same and all(v["sell"][2] and v["home"][2] and v["page"] <= v["vh"] + 1 for v in bp_.values()),
+              str({n: (v["panel"], v["sell"][:2], v["home"][:2], v["page"]) for n, v in bp_.items()}))
+        check(f"{vw}x{vh}: Bag is anchored at the top (not centred): panel right under the header", not bp_[5]["center"] and bp_[5]["panel"] < 120, str(bp_[5]["panel"]))
+        check(f"{vw}x{vh}: a full Bag scrolls inside its list (overflow-y auto, thin scrollbar); 5 fish fit without scrolling",
+              bp_[15]["scrolls"] and bp_[15]["ov"] == "auto" and bp_[15]["thin"] == "thin" and bp_[15]["rows"] == 15 and (not bp_[5]["scrolls"] or vh < 700),
+              f"15: {bp_[15]['scrolls']} 5: {bp_[5]['scrolls']}")
+        if vw == 1920:
+            check("empty Bag still says 'Your bag is empty. Go fishing!'; no duplicate bottom BACK button",
+                  "Your bag is empty. Go fishing!" in bp_[0]["text"] and not bp_[0]["back"], bp_[0]["text"][:40])
+        gc.close()
+    # Town Map
+    MAPS = """() => { const cards = [...document.querySelectorAll('#islands .island:not(.secret-strip)')], strip = document.querySelector('#islands .secret-strip');
+        const r = cards.map(c => c.getBoundingClientRect()), sr = strip.getBoundingClientRect();
+        return { n: cards.length, ids: cards.map(c => [...c.classList].find(k => k.startsWith('bg-'))), w: r.map(x => Math.round(x.width)), h: r.map(x => Math.round(x.height)),
+                 row: r.every(x => Math.abs(x.top - r[0].top) < 1), stripBelow: sr.top >= Math.max(...r.map(x => x.bottom)), stripWide: sr.width > r[0].width * 3,
+                 bars: cards.map(c => parseFloat(c.querySelector('.isl-bar > span').style.width)), counts: cards.map(c => c.querySelector('.isl-count').textContent),
+                 stars: cards.map(c => !!c.querySelector('.isl-name .i-star')), rewards: cards.map(c => c.querySelector('.isl-reward').textContent),
+                 strip: strip.innerText.replace(/\\s+/g, ' '), locked: strip.classList.contains('locked'), stripPic: getComputedStyle(strip).backgroundImage.includes('secret.png'),
+                 homes: document.querySelectorAll('#map [data-go="home"]').length, bars2: document.querySelectorAll('#map .btns').length,
+                 page: document.documentElement.scrollHeight, vh: innerHeight, sw: document.documentElement.scrollWidth, vw: innerWidth }; }"""
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (360, 640), (390, 844)]:
+        mc = b.new_context(viewport={"width": vw, "height": vh}); mpg = mc.new_page()
+        mpg.on("pageerror", lambda e: errs.append(str(e))); mpg.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        mpg.goto(URL); mpg.evaluate("localStorage.clear()"); mpg.reload(); mpg.wait_for_timeout(200); start_new(mpg, "Mapper")
+        mpg.add_style_tag(content="#toast { display: none !important; }")
+        states = {"fresh": "() => {}",
+                  "harbor8": "() => { for (let i = 0; i < 8; i++) S.discovered['harbor_' + i] = true; S.discovered.frost_0 = true; S.discovered.frost_1 = true; S.discovered.desert_3 = true; save(); }",
+                  "all": "() => { ['harbor','frost','desert','forest'].forEach(i => { S.mastery[i] = true; FISH.filter(f => f.island === i).forEach(f => S.discovered[f.id] = true); }); save(); }"}
+        got = {}
+        for tag, js in states.items():
+            mpg.evaluate(js); mpg.evaluate("() => { go('home'); go('map'); }"); mpg.wait_for_timeout(400); got[tag] = mpg.evaluate(MAPS)
+            if vw == 1536: mpg.screenshot(path=str(SHOTS / f"91_map_{tag}_{vw}x{vh}.png"))
+            if vw == 360 and tag == "fresh": mpg.screenshot(path=str(SHOTS / f"91_map_{tag}_{vw}x{vh}.png"), full_page=True)
+        f, h8, al = got["fresh"], got["harbor8"], got["all"]
+        phone = vw < 900
+        if phone:
+            check(f"{vw}x{vh}: Town Map island cards 2x2 + secret strip, no side scroll", f["n"] == 4 and f["sw"] <= vw and f["stripBelow"], str(f["w"]))
+        else:
+            check(f"{vw}x{vh}: Town Map = 4 equal island cards in one row (220-260px) + a separate wide secret strip below, one HOME button, no page scroll",
+                  f["n"] == 4 and f["ids"] == ["bg-harbor", "bg-frost", "bg-desert", "bg-forest"] and f["row"] and len(set(f["w"])) == 1
+                  and (220 <= f["w"][0] <= 260 or vw < 1366) and f["stripBelow"] and f["stripWide"] and f["homes"] == 1 and f["bars2"] == 1 and f["page"] <= f["vh"] + 1,
+                  f"w {f['w']} h {f['h']} page {f['page']}")
+        check(f"{vw}x{vh}: progress bars and counts match the save (Harbor 8/10, Frost 2/10, Desert 1/10, Forest 0/10)",
+              h8["bars"] == [80, 20, 10, 0] and h8["counts"] == ["8 / 10", "2 / 10", "1 / 10", "0 / 10"] and h8["rewards"] == ["Golden Hook", "Steady Hands", "Lucky Lure", "Master's Charm"],
+              f"{h8['bars']} {h8['counts']}")
+        check(f"{vw}x{vh}: gold star only on mastered islands",
+              f["stars"] == [False] * 4 and h8["stars"] == [False] * 4 and al["stars"] == [True] * 4 and al["bars"] == [100] * 4)
+        check(f"{vw}x{vh}: secret strip: locked '??? Master all 4 islands to unlock' with a padlock; unlocked 'Little Lake' with its night picture",
+              f["locked"] and "???" in f["strip"] and "Master all 4 islands to unlock" in f["strip"] and not f["stripPic"]
+              and not al["locked"] and "Little Lake" in al["strip"] and al["stripPic"], f"{f['strip']} | {al['strip']}")
+        if vw == 1536:
+            opened = {}
+            for isl in ["harbor", "frost", "desert", "forest", "secret"]:
+                mpg.evaluate("() => go('map')"); mpg.wait_for_timeout(250); mpg.click(f"#islands .bg-{isl}"); mpg.wait_for_timeout(300)
+                opened[isl] = [mpg.evaluate("current"), mpg.evaluate("island")]
+            mpg.evaluate("() => stopFishing()")
+            check("clicking each island card (and the unlocked strip) opens the fishing screen of that island",
+                  all(v == ["fishing", k] for k, v in opened.items()), str(opened))
+            mpg.evaluate("() => { S.mastery = {}; save(); go('home'); go('map'); }"); mpg.wait_for_timeout(250); mpg.click("#islands .secret-strip"); mpg.wait_for_timeout(200)
+            check("the locked strip doesn't open fishing (explains how to unlock it)", mpg.evaluate("current") == "map" and "Master all four islands" in mpg.inner_text("#toast"))
+        mc.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

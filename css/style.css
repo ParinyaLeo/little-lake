@@ -85,13 +85,32 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
 @keyframes glow { 50% { filter: brightness(1.3); } }
 
 /* map */
-.islands { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-/* name and "x / 10 found" sit in the bottom-right corner, over a dark corner shade (--card-shade), so they never cover
-   the fisherman on the dock in the lower-left of the Harbor picture */
-.island { height: 130px; border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold); color: #fff; font-family: inherit;
-  font-size: 20px; font-weight: bold; text-shadow: 2px 2px 0 #000; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end;
-  align-items: flex-end; padding: 10px 12px; text-align: right; }
-.island small { font-size: 13px; }
+/* Town Map: 4 island cards in one row (2x2 below 900px), each = the island picture with a dark progress plate at the bottom
+   (name + gold star when mastered, bar "x / 10", reward); the secret island is a separate wide strip below the row */
+.islands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.island { position: relative; height: 200px; border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold); color: var(--cream); font-family: inherit;
+  text-shadow: 2px 2px 0 #000; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch;
+  padding: 0; text-align: left; min-width: 0; overflow: hidden; }
+.isl-plate { display: flex; flex-direction: column; gap: 4px; margin: 7px; padding: 6px 8px; min-width: 0;
+  background: rgba(13,52,70,.9); border: 2px solid var(--gold); text-shadow: 1px 1px 0 #1a0d04; }
+.isl-name { display: flex; align-items: center; justify-content: space-between; gap: 6px; font: 700 20px var(--pixel); color: #fff;
+  font-variant-ligatures: none; white-space: nowrap; }
+.isl-name .ico { width: 20px; height: 20px; }
+.isl-prog { display: flex; align-items: center; gap: 8px; }
+.isl-bar { flex: 1 1 auto; min-width: 30px; height: 12px; background: #1a0d04; border: 2px solid var(--gold); }
+.isl-bar > span { display: block; height: 100%; background: repeating-linear-gradient(90deg, #7ad957 0 8px, #62c43f 8px 16px); }
+.island.mastered .isl-bar > span { background: repeating-linear-gradient(90deg, #ffd54f 0 8px, #f0b92c 8px 16px); }
+.isl-count { font: 700 13px "Courier New", monospace; white-space: nowrap; }
+.isl-reward { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #d8eef8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.isl-reward .ico { width: 14px; height: 14px; margin: 0; }
+.island:not(.mastered) .isl-reward { opacity: .8; }
+.secret-strip { grid-column: 1 / -1; height: 84px; flex-direction: row; align-items: center; justify-content: flex-start; gap: 14px; padding: 0 22px; }
+.secret-strip > .ico { width: 34px; height: 34px; }
+.secret-strip .isl-name { font-size: 24px; }
+.secret-strip small { font-size: 13px; color: #d8eef8; }
+.secret-strip .isl-count { margin-left: auto; padding: 4px 10px; background: rgba(13,52,70,.9); border: 2px solid var(--gold); }
+.map-hint { font: 13px "Courier New", monospace; color: var(--cream); margin-left: 8px; text-shadow: none; }
+.map-btns { grid-template-columns: minmax(0, 300px); justify-content: center; }   /* one HOME button, not a full-width bar */
 :root { --card-shade: radial-gradient(ellipse 75% 70% at 100% 100%, rgba(0,0,0,.72), rgba(0,0,0,.4) 55%, rgba(0,0,0,0)); }
 /* harbor_clean.jpg = the photo with the baked-in fisherman patched out (tools/make_harbor_clean.py), so the card shows only
    the place like the others; the original photo stays behind it as the fallback layer */
@@ -109,6 +128,8 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
   radial-gradient(circle at 70% 25%, #fff6c2 0 6%, transparent 7%), linear-gradient(#1b1440 0 45%, #3b2a7a 45% 52%, #12325e 52% 100%); }
 .bg-frost, .bg-desert, .bg-forest, .bg-secret { image-rendering: pixelated; }
 .island.locked { filter: grayscale(1) brightness(.5); cursor: not-allowed; }
+.secret-strip.locked { filter: none;          /* locked: the same night colours as before (small moon), no picture; text stays readable */
+  background: radial-gradient(circle at 86% 30%, #fff6c2 0 9px, transparent 10px), linear-gradient(90deg, #1b1440, #3b2a7a 55%, #12325e); }
 
 /* fishing */
 .scene { position: relative; width: 100%; aspect-ratio: 3 / 1.25; border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold); overflow: hidden; }
@@ -559,9 +580,35 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   #home > .btns > [data-go="map"] { grid-row: span 2; font-size: clamp(19px, 3.8vh, 32px); letter-spacing: 2px; }
   #home > .btns > [data-go="map"] .ico { width: 1.5em; height: 1.5em; }
   /* Town Map cards and Collection cards grow too */
-  body.center .island { height: clamp(86px, 24vh, 220px); font-size: clamp(20px, 2.8vh, 26px); }
-  body.center .island small { font-size: clamp(13px, 1.7vh, 16px); }
+  body.center .islands { grid-template-columns: repeat(4, minmax(0, 260px)); justify-content: center; }
+  body.center .island { height: clamp(150px, calc(31vh - 30px), 250px); }
+  body.center .secret-strip { height: clamp(56px, 9vh, 88px); }
+  body.center .isl-name { font-size: clamp(18px, 2.6vh, 24px); }
+  body.center .isl-count { font-size: clamp(13px, 1.6vh, 15px); }
+  body.center .isl-reward { font-size: clamp(12px, 1.5vh, 14px); }
   body.center .cell { font-size: clamp(12px, 1.8vh, 15px); }
   body.center .cell canvas { height: clamp(36px, calc(13vh - 40px), 80px); }
-  body.center .row canvas { width: clamp(72px, 9vh, 96px); height: auto; aspect-ratio: 3 / 2; }
+  /* Bag: anchored at the top (not centred); the list has a fixed area of about 5 rows (it shrinks only if the window is too short),
+     so the panel and the SELL ALL / HOME buttons stay in the same place at every fish count; more fish scroll inside it */
+  body.fit #bag .panel > .scroll-list { height: 380px; }
+}
+/* Town Map below 900px: island cards 2x2, the secret strip full width under them */
+@media (max-width: 899.98px) {
+  .islands { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .island { height: 160px; }
+  .secret-strip { height: 72px; gap: 10px; padding: 0 12px; }
+}
+@media (max-width: 700px) {
+  .island { height: 140px; }
+  .isl-plate { margin: 5px; padding: 5px 6px; gap: 3px; }
+  .isl-name { font-size: 17px; }
+  .isl-name .ico { width: 16px; height: 16px; }
+  .isl-count { font-size: 12px; }
+  .isl-prog { gap: 6px; }
+  .secret-strip { flex-wrap: wrap; align-content: center; row-gap: 2px; height: 84px; }
+  .secret-strip > .ico { width: 26px; height: 26px; }
+  .secret-strip .isl-name { font-size: 20px; }
+  .secret-strip small { flex-basis: 100%; order: 3; font-size: 12px; }
+  .map-hint { display: none; }
+  .map-btns { grid-template-columns: 1fr; }
 }
