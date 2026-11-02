@@ -19,19 +19,19 @@ A pixel-art fishing game (version 0.1). Final project for **1305311 Low-Code App
 index.html        Page markup (all screens) + <link>/<script> tags
 css/style.css     All styles
 js/data.js        Static data: ISLANDS, ISLAND_IDS, RAW fish table → FISH, fishById, DIFF, RODS, BAITS, odds constants
-js/state.js       Save/load (S, load, cleanSave, save), save codes (exportCode, readCode), helpers ($, fmt, toast, sfx, confetti, banner),
+js/state.js       Save/load (S, load, cleanSave, save), helpers ($, fmt, toast, sfx, confetti, banner),
                   drawFish/silhouette, derived values (discCount, secretOpen, allowedMiss, bagFull),
                   rarityWeights/rarePlus, checkMastery, multi-tab "storage" sync
 js/fisherman.js   Animated fisherman: cleanPlate() (patches the figure out of the photo), sprite parts, OUTFITS (one per island), poses,
                   drawFisherman(), fisherPoseFor(), fisherEvent()/fisherTug(), fisherPose()/fisherTip()/fisherOutfit() for tests
 js/fishing.js     Fishing screen: canvas scene, cast → bite → hook → reel minigame, caught/escape,
                   result screen KEEP/RELEASE
-js/screens.js     Navigation (go, render) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens,
-                  Export / Import Save popups;
+js/screens.js     Navigation (go, goBack, navStack, render), the sticky BACK bar, the full-screen backdrop (setBackdrop,
+                  preloadBackdrops) and the Title, Map, Bag, Shop, Tackle Box, Collection and Demo screens;
                   calls render() last to start the game
 assets/harbor.jpg Harbor background image (Title cover art, fishing scene under cleanPlate())
 assets/harbor_clean.jpg
-                  harbor.jpg with the baked-in fisherman patched out (Town Map card), written by tools/make_harbor_clean.py
+                  harbor.jpg with the baked-in fisherman patched out (Town Map card, menu backdrop), written by tools/make_harbor_clean.py
 assets/frost.png, desert.png, forest.png, secret.png
                   Island backgrounds painted by tools/make_backgrounds.py (1920x800 = 480x200 art pixels x4)
 tools/make_backgrounds.py
@@ -62,7 +62,6 @@ them with `go(id)` or with any element that has `data-go="<screen id>"`.
   ("This will delete your current progress"). Nothing is reset until START is pressed with a valid name.
 - **CONTINUE** loads the save and goes to Home. It is disabled when `hasSave()` is false.
 - **HOW TO PLAY** opens a short help panel. **SOUND** toggles `S.sound`.
-- A small **IMPORT SAVE** link under the 4 buttons (`#titleImport`) opens the Import popup, so a new device can load a code first.
 - The **☰ MENU** button on Home returns to the Title screen.
 
 **Sound:** `S.sound` (default `true`; old saves without it load as on). Every sound effect goes through
@@ -75,14 +74,19 @@ any game was started) does not count as a game, so CONTINUE stays disabled.
 level 1 → Bamboo; level 2+ → also owns and equips the Sturdy Rod, and each level above 2 is refunded 200 coins; the old
 bait count becomes Shrimp, selected unless `useBait` was false. A selected bait with 0 left loads as `"none"`.
 If another tab saves, the `storage` listener reloads `S` so tabs don't overwrite each other.
-`load()` = parse localStorage + `cleanSave(raw)`; IMPORT SAVE uses the same `cleanSave()`.
+`load()` = parse localStorage + `cleanSave(raw)`.
 
-**Export / Import Save** (Tackle Box `#exportBtn` / `#importBtn`; popups `#exportBox` / `#importBox`, `.banner.modal`): saves live in one
-browser, so a player moves them with a text code. `exportCode()` = base64 of the UTF-8 save JSON; EXPORT shows it read-only with
-COPY and DOWNLOAD .TXT. IMPORT takes a pasted code or a .txt (LOAD FILE). `readCode(code)` returns `{ save }` or `{ error }`:
-whitespace is ignored; broken base64/JSON, arrays, `{ sound }`-only or unknown objects are rejected with a message and nothing
-changes. With an existing game it asks "This will replace your current progress" (REPLACE SAVE / CANCEL; the code box is hidden
-in that step so it fits at 360x640); with no game it loads straight away. Then `go("home")`. Esc / tap outside close both popups.
+**Saving:** automatic, in this browser only (HOW TO PLAY: "Your progress is saved automatically in this browser on this device.
+A different browser, device or home-screen app has its own separate save."). **Export / Import Save was removed on purpose**
+(owner decision, see `docs/bug_log.md` BUG-17 / BUG-19): don't add save codes, copy/download or import UI back.
+
+**Navigation / BACK bar** (`#navbar`, hidden on Title, Fishing and Result): a sticky bar (`position: sticky`, in the normal flow so it
+never covers content) on Home, Map, Bag, Shop, Collection and Tackle Box with **< BACK** (`#navBack`) and the screen name (`NAV_SCREENS`).
+`go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
+the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback, Title when on Home. The Bag's BACK
+button and **Esc** use `goBack()`; Esc first closes an open popup and then does nothing else, and never acts on Home. Fishing > GO TO
+SHOP > BACK returns to Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing screen TOWN MAP and OPEN BAG stay
+next to CAST (no bar there).
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all
@@ -176,10 +180,18 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
 - **Rarity colours:** Common `#cfd8dc`, Rare `#64b5f6`, Epic `#ce93d8`, Legendary `#ffd54f`, Mythical `#ff80ab`.
   The Result screen reads them from `#result[data-rarity]`, Collection cards from `.cell.r-<Rarity>`.
 - **Title screen:** `assets/harbor.jpg` as a full-screen `<img class="title-bg">` (fixed, `object-fit: cover`,
-  pixelated, `object-position` keeps the fisherman in view; a different position below 700px). No frame. The sign floats
+  pixelated, `object-position` keeps the fisherman in view; a different position below 700px). No frame. The screen is exactly
+  `100dvh` tall (`100vh` fallback, no page scroll) and its padding uses `env(safe-area-inset-top / bottom)` (`viewport-fit=cover`), so the
+  sign stays at least 12px from the top on iPhones, even at the top of its bob. The sign floats
   near the top and the 4 buttons sit at the bottom (2x2 on phones) over a dark gradient (`.title-shade`). The only
   effect is `.title-shimmer`, a soft blurred light band. Its fade-in is opacity-only, because a transform on the screen would
-  detach the fixed picture. The pixel clouds and water dashes (`.bgfx`) are used only on Home.
+  detach the fixed picture.
+- **Backdrop** (`#backdrop` in `index.html`, `.bd-*` layers in CSS, `setBackdrop()` / `preloadBackdrops()` in `js/screens.js`): one
+  `position: fixed; inset: 0` layer behind `.app` (never `background-attachment: fixed`, which iOS ignores). Menu screens show
+  `assets/harbor_clean.jpg` (no fisherman) with ~35% dark shade; the Fishing screen shows the current island's picture with ~55% shade.
+  Layers crossfade in 300 ms (no transition with reduced motion). `cover`, `pixelated`, never blurred. Pictures load after the Title
+  appears and are applied only once loaded; until then, or on failure, each layer shows its matching gradient. The body keeps only a
+  fallback colour. All text must sit on solid panels/buttons (the tests check this on every screen).
 - **Island scenes** (`js/fishing.js`, `SCENES`): every island is a picture: Harbor uses `assets/harbor.jpg`, the
   others `assets/<island>.png` from `tools/make_backgrounds.py` (run `pip install pillow`, then
   `python tools/make_backgrounds.py`; same output every run). Pictures are cover-cropped to the canvas; `anchor: [x, y]`
@@ -232,6 +244,7 @@ refresh. Use the same number on every link, and add it to any new CSS/JS file yo
 ```
 pip install playwright
 python -m playwright install chromium
+python -m playwright install webkit     # optional: iPhone-profile Title checks (skipped with a NOTE if WebKit is missing)
 python play_test.py
 ```
 

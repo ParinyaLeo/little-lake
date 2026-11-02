@@ -1,20 +1,55 @@
 // Screen navigation and the Title, Home, Map, Bag, Shop, Tackle Box, Collection and Demo screens. Loaded last; starts the game.
-/* ===================== NAVIGATION ===================== */
-let current = "titleScreen", prevScreen = "home";
-function go(id) {
+/* ===================== NAVIGATION =====================
+   navStack = the screens behind the current one, so BACK (sticky bar, the Bag's BACK button and Esc) returns to
+   where the player came from, like a browser's back button. Home and Title start a fresh history. A Result screen
+   is only remembered on the way to the Bag (to make room for the waiting fish), and the same screen is never stored
+   twice in a row, so catching fish over and over doesn't grow the history. */
+const NAV_SCREENS = { home: "HOME", map: "TOWN MAP", bag: "BAG", shop: "SHOP", collection: "COLLECTION", tackle: "TACKLE BOX" };
+let current = "titleScreen", navStack = [];
+function go(id, back = false) {
   // a caught fish is waiting for KEEP / RELEASE: only the Result screen (and the Bag, to make room) can be opened
   if (S.pending && !["result", "bag", "titleScreen"].includes(id)) {
     if (current === "result") return;
     id = "result"; setTimeout(() => toast(`Your ${fishById(S.pending.fishId).name} is waiting: keep it or release it.`), 50);
   }
   if (current === "fishing" && id !== "fishing") stopFishing();
-  if (id === "bag") prevScreen = current;
+  if (!back && id !== current) {
+    if (id === "home" || id === "titleScreen") navStack = [];
+    else if (current !== "titleScreen" && !(current === "result" && id !== "bag") && navStack[navStack.length - 1] !== current) {
+      navStack.push(current); if (navStack.length > 20) navStack.shift();
+    }
+  }
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   current = id; document.body.classList.toggle("plain", id === "fishing"); document.body.classList.toggle("on-title", id === "titleScreen");
-  document.body.classList.toggle("on-home", id === "home");
+  document.body.classList.toggle("has-nav", !!NAV_SCREENS[id]); $("navName").textContent = NAV_SCREENS[id] || "";
+  setBackdrop();
   render(); window.scrollTo(0, 0);
 }
+// BACK: the previous screen (skipping a Result screen whose fish was already kept or released), else Home;
+// on Home it goes back to the Title screen, where the player came from
+function goBack() {
+  if (current === "home") return go("titleScreen");
+  let id; do { id = navStack.pop(); } while (id && (id === current || (id === "result" && !S.pending)));
+  go(id || "home", true);
+}
 document.addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b) go(b.dataset.go); });
+$("navBack").onclick = goBack;
+
+/* full-screen backdrop: harbor_clean.jpg (no fisherman) on menu screens, the current island while fishing.
+   Layers crossfade with opacity; each picture is applied only after it loaded, so a missing file leaves the gradient. */
+const BACKDROPS = { harbor: "assets/harbor_clean.jpg", frost: "assets/frost.png", desert: "assets/desert.png", forest: "assets/forest.png", secret: "assets/secret.png" };
+function setBackdrop() {
+  const k = current === "fishing" && BACKDROPS[island] ? island : "harbor";
+  document.querySelectorAll("#backdrop .bd").forEach(el => el.classList.toggle("on", el.dataset.isle === k));
+}
+function preloadBackdrops() {
+  for (const k in BACKDROPS) {
+    const im = new Image(), el = document.querySelector(`#backdrop .bd-${k}`);
+    im.onload = () => { el.style.backgroundImage = `url("${BACKDROPS[k]}")`; el.classList.add("loaded"); };
+    im.onerror = () => el.classList.add("failed");
+    im.src = BACKDROPS[k];
+  }
+}
 
 function render() {
   $("coinTop").textContent = fmt(S.coins);
@@ -69,14 +104,20 @@ $("contBtn").onclick = () => { if (!hasSave()) return; S = load(); go("home"); }
 $("howBtn").onclick = () => openModal("howBox", "howPanel");
 $("howOk").onclick = () => closeModal("howBox");
 $("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); renderTitle(); sfx.coin(); };
+// Esc closes an open popup and does nothing else; with no popup open it works as BACK on the screens with the
+// sticky bar (not on Home, where BACK would leave the game for the Title screen)
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  ["confirmBox", "nameBox", "howBox", "pickBox", "exportBox", "importBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
+  if (document.querySelector(".banner.show")) {
+    ["confirmBox", "nameBox", "howBox", "pickBox"].forEach(id => $(id).classList.contains("show") && closeModal(id));
+    return;
+  }
+  if (NAV_SCREENS[current] && current !== "home") goBack();
 });
 // keep Tab inside an open dialog (wraps from the last button to the first and back)
 document.addEventListener("keydown", e => {
   const m = e.key === "Tab" && document.querySelector(".banner.modal.show"); if (!m) return;
-  const f = [...m.querySelectorAll("button:not(:disabled), input:not([type=file]), textarea:not(:disabled)")].filter(x => x.offsetParent); if (!f.length) return;
+  const f = [...m.querySelectorAll("button:not(:disabled), input")].filter(x => x.offsetParent); if (!f.length) return;
   const i = f.indexOf(document.activeElement);
   if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
   else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
@@ -116,7 +157,7 @@ function sell(idx) {
   S.coins += total; save(); sfx.coin(); toast(`Sold for ${fmt(total)} coins!`); render();
 }
 $("sellAll").onclick = () => sell(S.bag.map((_, i) => i));
-$("bagBack").onclick = () => go(prevScreen === "bag" ? "home" : prevScreen);
+$("bagBack").onclick = goBack;
 
 /* ===================== SHOP ===================== */
 // every item says exactly what it does, whether you own / use it, and why it can't be bought
@@ -191,73 +232,6 @@ $("gearList").addEventListener("click", e => {
   if (b.dataset.equip) equipRod(b.dataset.equip); else if (b.dataset.bait) selectBait(b.dataset.bait);
 });
 
-/* ===================== EXPORT / IMPORT SAVE =====================
-   Saves live in one browser's localStorage. EXPORT shows the save as a text code (copy or download .txt);
-   IMPORT checks a pasted code or .txt file with the same rules as load(), asks before replacing a game,
-   and changes nothing if the code is broken. */
-function openExport() {
-  save(); $("exportCode").value = exportCode(); $("exportMsg").textContent = "";
-  openModal("exportBox", "exportCopy");
-}
-$("exportBtn").onclick = openExport;
-$("exportClose").onclick = () => closeModal("exportBox");
-$("exportCopy").onclick = async () => {
-  const box = $("exportCode"), msg = $("exportMsg");
-  try { await navigator.clipboard.writeText(box.value); msg.textContent = "Copied! Now paste it into IMPORT SAVE on the other device."; return; } catch (e) {}
-  box.focus(); box.select();                                   // older browsers / blocked clipboard: select and copy
-  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
-  msg.textContent = ok ? "Copied! Now paste it into IMPORT SAVE on the other device." : "The code is selected: press Copy (Ctrl+C or long-press) to copy it.";
-};
-$("exportDl").onclick = () => {
-  const a = document.createElement("a"), url = URL.createObjectURL(new Blob([$("exportCode").value], { type: "text/plain" }));
-  a.href = url; a.download = `little-lake-save-${S.name.replace(/[^\w-]+/g, "_")}.txt`;
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  $("exportMsg").textContent = "Saved as a .txt file. Load it with IMPORT SAVE → LOAD FILE.";
-};
-
-let importing = null;                                           // the checked save waiting for REPLACE SAVE
-function importStep(confirm) {
-  $("importBtns").hidden = confirm; $("importConfirm").hidden = !confirm; $("importCode").hidden = confirm;
-  $("importTitle").textContent = confirm ? "Replace your save?" : "Import Save";
-}
-function openImport() {
-  importing = null; importStep(false); $("importCode").value = ""; $("importErr").textContent = "";
-  $("importSub").textContent = "Paste a save code from EXPORT SAVE, or load the .txt file.";
-  openModal("importBox", "importCode");
-}
-function tryImport(code) {
-  const r = readCode(code);
-  if (r.error) { importing = null; $("importErr").textContent = r.error; $("importCode").focus(); return; }
-  importing = r.save; $("importErr").textContent = "";
-  if (!hasSave()) return finishImport();                        // nothing to lose: load it straight away
-  const disc = FISH.filter(f => importing.discovered[f.id]).length;
-  $("importSub").textContent = `This will replace your current progress (${S.name}) with ${importing.name}: ${fmt(importing.coins)} coins, ${disc} fish found.`;
-  importStep(true); $("importNo").focus();
-}
-function finishImport() {
-  if (!importing) return;
-  S = importing; importing = null; save();
-  $("importBox").classList.remove("show"); modalReturn = null;
-  island = "harbor"; collTab = "harbor";
-  go("home"); sfx.coin(); toast(`Save loaded. Welcome back, ${S.name}!`);
-}
-$("importBtn").onclick = openImport;
-$("titleImport").onclick = openImport;
-$("importLoad").onclick = () => tryImport($("importCode").value);
-$("importFileBtn").onclick = () => { $("importFile").value = ""; $("importFile").click(); };
-$("importFile").onchange = () => {
-  const file = $("importFile").files[0]; if (!file) return;
-  if (file.size > 200000) { $("importErr").textContent = "That file is too big to be a save code."; return; }
-  const rd = new FileReader();
-  rd.onload = () => { $("importCode").value = String(rd.result).trim(); tryImport(rd.result); };
-  rd.onerror = () => { $("importErr").textContent = "That file could not be read."; };
-  rd.readAsText(file);
-};
-$("importYes").onclick = finishImport;
-$("importNo").onclick = () => { importing = null; importStep(false); $("importSub").textContent = "Nothing was changed."; $("importCode").focus(); };
-$("importClose").onclick = () => closeModal("importBox");
-["exportBox", "importBox"].forEach(id => $(id).addEventListener("click", e => { if (e.target === e.currentTarget) closeModal(id); }));   // tap outside
-
 /* ===================== COLLECTION ===================== */
 let collTab = "harbor";
 function renderCollection() {
@@ -291,4 +265,4 @@ $("dFill").onclick = () => { while (!bagFull()) { const f = FISH[Math.floor(Math
 $("dReset").onclick = () => { localStorage.removeItem(SAVE_KEY); S = load(); render(); toast("Save reset"); };
 
 render();
-setTimeout(preloadScenes, 0);   // island pictures load after the Title screen is up
+setTimeout(() => { preloadScenes(); preloadBackdrops(); }, 0);   // island pictures and backdrops load after the Title screen is up

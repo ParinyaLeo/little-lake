@@ -1,4 +1,4 @@
-import base64, json, sys
+import base64, json, re, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 sys.stdout.reconfigure(errors="replace")   # Windows consoles can't print every character in the details
@@ -238,8 +238,8 @@ with sync_playwright() as p:
           and "Pixelify Sans" in t.evaluate("getComputedStyle(document.querySelector('.btn')).fontFamily"))
     check("Home stat cards and buttons have pixel icons",
           t.evaluate("document.querySelectorAll('#home .stat > .ico').length") == 6 and t.evaluate("document.querySelectorAll('#home .btns .ico').length") == 5)
-    check("Home shows drifting clouds + water shimmer", t.is_visible(".bgfx")
-          and t.evaluate("getComputedStyle(document.querySelector('.bgfx .clouds'), '::before').animationName") == "drift-x")
+    check("Home shows the full-screen harbor backdrop (no pixel clouds or dashes)", t.evaluate("document.querySelector('#backdrop .bd.on').dataset.isle") == "harbor"
+          and t.evaluate("!document.querySelector('.bgfx, .clouds, .water')"))
     t.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_9') }; caught(); }"); t.wait_for_timeout(400)
     check("Legendary result: gold frame + sparkles", t.evaluate("document.getElementById('result').dataset.rarity") == "Legendary"
           and t.is_visible("#result .sparkles") and t.evaluate("getComputedStyle(document.querySelector('.portrait')).borderTopColor") == "rgb(255, 213, 79)")
@@ -283,15 +283,14 @@ with sync_playwright() as p:
           and "255, 235, 59" in t.evaluate("getComputedStyle(document.getElementById('marker')).boxShadow"))
     t.screenshot(path=str(SHOTS / "27_reel_gauge.png"))
     t.evaluate("() => stopFishing()"); t.evaluate("() => go('home')")
-    check("page background continues as water down to a sea floor",
-          t.evaluate("getComputedStyle(document.body).backgroundImage.split('url(').length - 1") >= 2
-          and t.evaluate("getComputedStyle(document.body).backgroundImage.includes('svg')"))
+    check("page background is the fixed backdrop layer (body keeps only a fallback colour)",
+          t.evaluate("getComputedStyle(document.body).backgroundImage") == "none" and t.evaluate("getComputedStyle(document.getElementById('backdrop')).position") == "fixed")
 
     rm = b.new_page(viewport={"width": 360, "height": 780}, reduced_motion="reduce")
     rm.goto(URL); rm.wait_for_timeout(300)
     check("prefers-reduced-motion stops the background animations",
           rm.evaluate("getComputedStyle(document.querySelector('.title-shimmer')).animationName === 'none'")
-          and rm.evaluate("['.bgfx .clouds', '.bgfx .water'].every(s => getComputedStyle(document.querySelector(s), '::before').animationName === 'none')")
+          and rm.evaluate("getComputedStyle(document.querySelector('#backdrop .bd')).transitionDuration") == "0s"
           and rm.evaluate("getComputedStyle(document.querySelector('.screen.active')).animationName") == "none")
 
     # ---------- playtest fixes: missing fish, Tackle Box, bait toggle, hearts, shop effects (see docs/bug_log.md) ----------
@@ -395,7 +394,7 @@ with sync_playwright() as p:
     q.click("section.active >> text=HOME"); q.click("#menuBtn"); q.click("#howBtn"); q.wait_for_timeout(200)
     how = q.inner_text("#howBox")
     check("HOW TO PLAY explains rods, bait choice, hearts, Tackle Box and Master's Charm",
-          all(w in how for w in ["Rods", "Sturdy", "Precision", "Lucky", "Worm", "Golden Lure", "heart", "Tackle Box", "Master's Charm", "separate saves"]))
+          all(w in how for w in ["Rods", "Sturdy", "Precision", "Lucky", "Worm", "Golden Lure", "heart", "Tackle Box", "Master's Charm", "separate save"]))
     q.click("#howOk")
 
     # phones
@@ -925,7 +924,7 @@ with sync_playwright() as p:
         tp.click("#contBtn"); tp.wait_for_timeout(300)
         check(f"{vw}x{vh}: Title buttons still work (HOW TO PLAY, SOUND, CONTINUE)", ok_how and ok_sound and tp.is_visible("#home"))
         check(f"{vw}x{vh}: Home keeps its framed layout (top bar, no full-screen picture)",
-              tp.is_visible("#title") and not tp.is_visible(".title-bg") and tp.is_visible(".bgfx"))
+              tp.is_visible("#title") and not tp.is_visible(".title-bg") and tp.is_visible("#navBack"))
         tp.close()
 
     # ---------- polish: Forest picture, island progress line, Town Map text (see docs/bug_log.md BUG-14..16) ----------
@@ -989,93 +988,202 @@ with sync_playwright() as p:
         fp.screenshot(path=str(SHOTS / f"48_map_text_{vw}.png"))
     fp.close()
 
-    # ---------- EXPORT / IMPORT SAVE (BUG-17) ----------
-    xc = b.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True); x = xc.new_page()
+    # ---------- cleanup round (see docs/bug_log.md BUG-19..22) ----------
+    # BUG-19: Export / Import Save was removed on purpose (owner decision: saving in this browser is enough)
+    xc = b.new_context(viewport={"width": 1280, "height": 800}); x = xc.new_page()
     x.on("pageerror", lambda e: errs.append(str(e))); x.on("console", lambda m: m.type == "error" and errs.append(m.text))
-    x.goto(URL); x.evaluate("localStorage.clear()"); x.reload(); x.wait_for_timeout(200); start_new(x, "Señor 🎣")
-    x.evaluate("""() => { S.coins = 1234; S.rods.push('sturdy'); S.rodEq = 'sturdy'; S.baits.worm = 4; S.baitSel = 'worm'; S.bagMax = 10; S.totalCaught = 9;
-        S.bag = [{ fishId: 'frost_3', weight: 1.25, price: 88, time: 5 }]; S.discovered = { harbor_0: true, frost_3: true }; S.records = { frost_3: 1.25 };
-        S.mastery = { harbor: true }; save(); go('tackle'); }""")
-    orig = x.evaluate("localStorage.getItem('littleLakeSave')")
-    x.click("#exportBtn"); x.wait_for_timeout(150)
-    code = x.input_value("#exportCode")
-    check("EXPORT SAVE (Tackle Box) shows the save as a base64 code in a read-only box",
-          x.is_visible("#exportBox") and x.evaluate("document.getElementById('exportCode').readOnly")
-          and json.loads(base64.b64decode(code).decode("utf-8")) == json.loads(orig), code[:40])
-    with x.expect_download() as dl: x.click("#exportDl")
-    dl_path = SHOTS / "export_save.txt"; dl.value.save_as(str(dl_path))
-    check("download .txt holds the same code", dl_path.read_text(encoding="utf-8") == code and dl.value.suggested_filename.endswith(".txt"), dl.value.suggested_filename)
-    x.click("#exportCopy"); x.wait_for_timeout(150)
-    check("COPY confirms (or selects the code)", x.inner_text("#exportMsg") != "", x.inner_text("#exportMsg"))
-    x.keyboard.press("Escape"); x.wait_for_timeout(100)
-    check("Esc closes the Export popup", not x.is_visible("#exportBox"))
-
-    x.evaluate("() => { S.coins = 1; S.bag = []; S.discovered = {}; S.name = 'Other'; save(); render(); }")
-    changed = x.evaluate("localStorage.getItem('littleLakeSave')")
-    x.click("#importBtn"); x.wait_for_timeout(150)
-    b64 = lambda s: base64.b64encode(s.encode()).decode()
-    bad = {"garbage": "%%% not a code %%%", "cut off": code[: len(code) // 2], "not a save": b64('{"foo": 1}'), "array": b64("[1,2,3]"),
-           "sound only": b64('{"sound": false}'), "empty": "   "}
-    rej = {}
-    for k, v in bad.items():
-        x.fill("#importCode", v); x.click("#importLoad"); x.wait_for_timeout(80)
-        rej[k] = [x.inner_text("#importErr") != "", x.is_visible("#importBox"), not x.is_visible("#importYes"), x.evaluate("localStorage.getItem('littleLakeSave')") == changed]
-    check("broken or wrong codes show a clear message and change nothing", all(all(v) for v in rej.values()), str({k: v for k, v in rej.items() if not all(v)}))
-    x.fill("#importCode", code); x.click("#importLoad"); x.wait_for_timeout(100)
-    check("a valid code asks first: 'This will replace your current progress'",
-          x.is_visible("#importYes") and "This will replace your current progress" in x.inner_text("#importBox")
-          and x.evaluate("localStorage.getItem('littleLakeSave')") == changed)
-    x.click("#importNo"); x.wait_for_timeout(100)
-    check("CANCEL on the confirm keeps the current save", x.evaluate("localStorage.getItem('littleLakeSave')") == changed and x.evaluate("S.name") == "Other"
-          and x.is_visible("#importLoad"))
-    x.keyboard.press("Escape"); x.wait_for_timeout(100)
-    check("Esc closes the Import popup", not x.is_visible("#importBox") and x.evaluate("S.name") == "Other")
-    x.click("#importBtn"); x.fill("#importCode", "\n" + code[:30] + "\n" + code[30:] + "  "); x.click("#importLoad"); x.click("#importYes"); x.wait_for_timeout(200)
-    check("export then import gives an identical save (line breaks in the pasted code are ignored)",
-          x.evaluate("localStorage.getItem('littleLakeSave')") == orig and x.evaluate("S.name") == "Señor 🎣" and x.is_visible("#home")
-          and x.inner_text("#hCoins") == "1,234" and not x.is_visible("#importBox"))
-    x.evaluate("() => { S.coins = 5; save(); go('tackle'); }"); x.click("#importBtn")
-    x.set_input_files("#importFile", str(dl_path)); x.wait_for_timeout(200)
-    check("LOAD FILE reads the .txt and asks before replacing", x.is_visible("#importYes") and x.evaluate("S.coins") == 5)
-    x.click("#importYes"); x.wait_for_timeout(200)
-    check("the loaded file restores the save", x.evaluate("localStorage.getItem('littleLakeSave')") == orig)
-    old = b64(json.dumps({"name": "Legacy", "coins": 50, "rod": 3, "bait": 2, "bag": [None, {"fishId": "x"}]}))
-    x.evaluate("() => go('tackle')"); x.click("#importBtn"); x.fill("#importCode", old); x.click("#importLoad"); x.click("#importYes"); x.wait_for_timeout(200)
-    check("an old or partly broken save code goes through the same checks as load()",
-          x.evaluate("[S.name, S.coins, S.rodEq, S.baits.shrimp, S.bag.length]") == ["Legacy", 250, "sturdy", 2, 0], str(x.evaluate("[S.name, S.coins, S.rodEq, S.baits.shrimp, S.bag.length]")))
+    x.goto(URL); x.evaluate("localStorage.clear()"); x.reload(); x.wait_for_timeout(200)
+    WORDS = re.compile(r"\bexport\b|\bimport\b|save code|savecode", re.I)
+    seen = {}
+    for sc in ["titleScreen", "home", "map", "bag", "shop", "tackle", "collection"]:
+        if sc == "home": start_new(x, "Clean")
+        else: x.evaluate(f"() => go('{sc}')")
+        x.wait_for_timeout(120)
+        txt = x.evaluate("document.documentElement.textContent")        # includes hidden popups and HOW TO PLAY
+        seen[sc] = WORDS.findall(txt)
+    ids = x.evaluate("['exportBtn', 'importBtn', 'titleImport', 'exportBox', 'importBox', 'exportCode', 'importCode'].filter(id => document.getElementById(id))")
+    fns = x.evaluate("['exportCode', 'readCode', 'openExport', 'openImport'].filter(n => typeof window[n] !== 'undefined')")
+    src = {f: WORDS.findall((Path(__file__).parent / f).read_text(encoding="utf-8")) for f in ["index.html", "css/style.css", "js/data.js", "js/state.js", "js/fisherman.js", "js/fishing.js", "js/screens.js"]}
+    check("no Export / Import / save code anywhere (every screen, popups, HOW TO PLAY, the game files)",
+          not any(seen.values()) and not ids and not fns and not any(src.values()), f"{ {k: v for k, v in seen.items() if v} } {ids} {fns} { {k: v for k, v in src.items() if v} }")
+    x.evaluate("() => go('titleScreen')"); x.click("#howBtn"); x.wait_for_timeout(150)
+    check("HOW TO PLAY (Saving): saved automatically in this browser, other browsers / devices / home-screen app have their own save",
+          "Your progress is saved automatically in this browser on this device. A different browser, device or home-screen app has its own separate save."
+          in x.inner_text("#howBox"))
+    x.keyboard.press("Escape")
+    check("normal saving still works (key littleLakeSave, CONTINUE)", x.evaluate(SAVED + ".name") == "Clean" and x.is_enabled("#contBtn"))
     xc.close()
 
-    # a new device (no save yet): IMPORT SAVE on the Title screen loads the code without a confirm
-    nc = b.new_context(viewport={"width": 360, "height": 640}); nd = nc.new_page()
-    nd.on("pageerror", lambda e: errs.append(str(e)))
-    nd.goto(URL); nd.wait_for_timeout(300)
-    check("360x640: Title shows IMPORT SAVE with no page scroll", nd.is_visible("#titleImport") and no_side_scroll(nd)
-          and nd.evaluate("document.documentElement.scrollHeight") <= 640)
-    nd.click("#titleImport"); nd.fill("#importCode", code); nd.click("#importLoad"); nd.wait_for_timeout(200)
-    check("on a new device the code loads straight from the Title screen (2 taps after pasting)",
-          nd.is_visible("#home") and nd.evaluate("localStorage.getItem('littleLakeSave')") == orig and nd.inner_text("#homeName") == "Señor 🎣")
-    POP = """id => { const p = document.querySelector('#' + id + ' .panel').getBoundingClientRect(), vh = innerHeight,
-        btns = [...document.querySelectorAll('#' + id + ' .btn')].filter(b => b.offsetParent).map(b => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= vh && r.right <= innerWidth; });
-        return [p.top >= 0 && p.bottom <= vh && p.left >= 0 && p.right <= innerWidth, btns.length >= 2 && btns.every(Boolean)]; }"""
-    nd.evaluate("() => go('tackle')"); nd.wait_for_timeout(200)
-    check("360px: Tackle Box with EXPORT / IMPORT SAVE has no side scroll", nd.is_visible("#exportBtn") and nd.is_visible("#importBtn") and no_side_scroll(nd))
-    nd.click("#exportBtn"); nd.wait_for_timeout(300)
-    fe = nd.evaluate(POP, "exportBox"); nd.screenshot(path=str(SHOTS / "49_mobile_export.png"))
-    check("360x640: Export popup fits with COPY / DOWNLOAD / CLOSE visible, no side scroll", all(fe) and no_side_scroll(nd), str(fe))
-    nd.click("#exportClose"); nd.click("#importBtn"); nd.wait_for_timeout(300)
-    fi = nd.evaluate(POP, "importBox")
-    nd.fill("#importCode", code); nd.click("#importLoad"); nd.wait_for_timeout(200)
-    fc = nd.evaluate(POP, "importBox"); nd.screenshot(path=str(SHOTS / "50_mobile_import_confirm.png"))
-    check("360x640: Import popup and its confirm step fit with every button visible, no side scroll", all(fi) and all(fc) and no_side_scroll(nd), f"{fi} {fc}")
-    for _ in range(6): nd.keyboard.press("Tab")
-    check("Tab stays inside the Import popup", nd.evaluate("!!document.activeElement.closest('#importBox')"))
-    nd.mouse.click(5, 5); nd.wait_for_timeout(100)
-    check("tapping outside closes the Import popup without importing", not nd.is_visible("#importBox"))
-    nd.evaluate("() => go('titleScreen')")
-    nd.click("#howBtn"); nd.wait_for_timeout(150)
-    check("HOW TO PLAY: 'Saves stay in this browser. Use Export / Import to move progress.'",
-          "Saves stay in this browser. Use Export / Import to move progress." in nd.inner_text("#howBox"))
-    nc.close()
+    # BUG-20: Title sign fully visible on phones (100dvh, safe areas, no page scroll), at least 12px from the top edge
+    SIGN = """(() => { const l = document.querySelector('#titleScreen .logo'), r = l.getBoundingClientRect(), m = new DOMMatrix(getComputedStyle(l).transform);
+        const btns = ['newBtn', 'contBtn', 'howBtn', 'soundBtn'].map(id => { const b = document.getElementById(id).getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; });
+        return { top: r.top - m.m42 - 6, now: r.top, left: r.left, right: r.right, btns, vw: innerWidth, vh: innerHeight,
+                 sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, viewport: document.querySelector('meta[name=viewport]').content }; })()"""
+    def sign_ok(r): return r["top"] >= 12 and r["left"] >= 0 and r["right"] <= r["vw"] and all(r["btns"]) and r["sw"] <= r["vw"] and r["sh"] <= r["vh"]
+    for vw, vh in [(390, 844), (375, 667), (360, 640), (390, 700)]:
+        tp = b.new_page(viewport={"width": vw, "height": vh}); tp.on("pageerror", lambda e: errs.append(str(e)))
+        tp.goto(URL); tp.wait_for_timeout(500); r = tp.evaluate(SIGN)
+        tp.screenshot(path=str(SHOTS / f"52_title_sign_{vw}x{vh}.png"))
+        check(f"{vw}x{vh}: Title sign >= 12px from the top (even at the top of its bob), 4 buttons on screen, no page scroll",
+              sign_ok(r), f"top {r['top']:.1f} page {r['sw']}x{r['sh']}")
+        tp.close()
+    check("viewport-fit=cover is set (safe-area padding on iPhone)", "viewport-fit=cover" in r["viewport"])
+    css = (Path(__file__).parent / "css" / "style.css").read_text(encoding="utf-8")
+    check("Title uses 100dvh (100vh fallback) and env(safe-area-inset-top / bottom)",
+          "height: 100vh; height: 100dvh" in css and "env(safe-area-inset-top)" in css and "env(safe-area-inset-bottom)" in css)
+    # Playwright's WebKit with iPhone profiles (WebKit engine on this PC, not a real iPhone: no notch / toolbar)
+    webkit = None
+    try: webkit = p.webkit.launch()
+    except Exception as e: print("NOTE WebKit not available:", str(e)[:120])
+    if webkit:
+        for dev in ["iPhone 13", "iPhone SE"]:
+            wc = webkit.new_context(**p.devices[dev]); wp = wc.new_page(); werr = []
+            wp.on("pageerror", lambda e: werr.append(str(e)))
+            wp.goto(URL); wp.wait_for_timeout(700); r = wp.evaluate(SIGN)
+            wp.screenshot(path=str(SHOTS / f"53_webkit_{dev.replace(' ', '_')}_title.png"))
+            check(f"WebKit {dev} ({r['vw']}x{r['vh']}): Title sign >= 12px from the top, buttons on screen, no page scroll, no errors",
+                  sign_ok(r) and not werr, f"top {r['top']:.1f} page {r['sw']}x{r['sh']} {werr[:1]}")
+            wc.close()
+        webkit.close()
+
+    # BUG-21: sticky BACK bar on Home, Map, Bag, Shop, Collection, Tackle Box
+    NAV = {"home": "HOME", "map": "TOWN MAP", "bag": "BAG", "shop": "SHOP", "collection": "COLLECTION", "tackle": "TACKLE BOX"}
+    BAR = """(() => { const b = document.getElementById('navBack').getBoundingClientRect(), bar = document.getElementById('navbar').getBoundingClientRect(),
+        hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2), first = document.querySelector('.screen.active').firstElementChild;
+        const nb = document.getElementById('navbar'), f = first && first.getBoundingClientRect();
+        return { vis: b.width > 0 && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth, hit: !!hit && hit.closest('button') === document.getElementById('navBack'),
+                 name: document.getElementById('navName').textContent, y: scrollY, sticky: getComputedStyle(nb).position, barBottom: bar.bottom, firstTop: f ? f.top : 9999,
+                 sw: document.documentElement.scrollWidth, vw: innerWidth, max: document.documentElement.scrollHeight - innerHeight }; })()"""
+    for vw, vh in [(360, 640), (1366, 768)]:
+        nc = b.new_context(viewport={"width": vw, "height": vh}); nv = nc.new_page()
+        nv.on("pageerror", lambda e: errs.append(str(e))); nv.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        nv.goto(URL); nv.evaluate("localStorage.clear()"); nv.reload(); nv.wait_for_timeout(200); start_new(nv, "Nav")
+        nv.evaluate("() => { S.coins = 5000; S.bagMax = 15; while (S.bag.length < 15) S.bag.push({ fishId: 'harbor_' + (S.bag.length % 10), weight: .5, price: 20, time: 1 }); save(); }")
+        nv.add_style_tag(content="#toast { display: none !important; }")
+        res = {}
+        for sc, name in NAV.items():
+            nv.evaluate(f"() => go('{sc}')"); nv.wait_for_timeout(350)
+            top = nv.evaluate(BAR)
+            nv.evaluate("window.scrollTo(0, 1500)"); nv.wait_for_timeout(150)
+            down = nv.evaluate(BAR); res[sc] = (top, down)
+            check(f"{vw}x{vh} {sc}: BACK + '{name}' visible at the top, still visible and clickable after scrolling 1500px down (scrolled {down['y']:.0f}px)",
+                  top["vis"] and down["vis"] and down["hit"] and top["name"] == name and down["sticky"] == "sticky", f"{top['vis']} {down['vis']} {down['hit']} {top['name']}")
+            check(f"{vw}x{vh} {sc}: the bar doesn't cover the screen's content, no side scroll",
+                  top["barBottom"] <= top["firstTop"] and top["sw"] <= vw and down["sw"] <= vw, f"bar {top['barBottom']:.0f} content {top['firstTop']:.0f} sw {down['sw']}")
+            if vw == 360 and sc in ("shop", "tackle"): nv.screenshot(path=str(SHOTS / f"54_back_scrolled_{sc}_{vw}.png"))
+        check(f"{vw}x{vh}: Shop and Tackle Box really scrolled (to the bottom, or 1500px) while BACK stayed in view",
+              all(res[k][1]["y"] > 300 and res[k][1]["y"] >= min(1500, res[k][1]["max"]) - 1 for k in ("shop", "tackle")),
+              f"shop {res['shop'][1]['y']} tackle {res['tackle'][1]['y']}")
+        if vw == 360:
+            # BACK returns to the screen the player came from
+            nv.evaluate("() => { S.bag = []; S.bagMax = 5; save(); go('home'); }"); nv.click("section.active >> text=OPEN BAG"); nv.wait_for_timeout(200)
+            nv.click("#navBack"); nv.wait_for_timeout(200)
+            ok1 = nv.is_visible("#home")
+            nv.click("section.active >> text=TOWN MAP"); nv.click(".island.bg-frost"); nv.wait_for_timeout(300)
+            nav_on_fishing = nv.is_visible("#navBack")
+            acts = nv.evaluate("[...document.querySelectorAll('#fishing .actions .btn')].map(b => b.id || b.dataset.go)")
+            nv.click("#rodChip"); nv.wait_for_timeout(150); nv.click("#pickShop"); nv.wait_for_timeout(250)
+            ok2a = nv.is_visible("#shop") and nv.inner_text("#navName") == "SHOP"
+            nv.click("#navBack"); nv.wait_for_timeout(300)
+            check("Fishing (Frost) > GO TO SHOP > BACK returns to the Fishing screen on the same island",
+                  ok2a and nv.is_visible("#fishing") and nv.evaluate("island") == "frost" and "Frost" in nv.inner_text("#fMsg") and nv.is_enabled("#actBtn"), nv.inner_text("#fMsg"))
+            check("Home > Bag > BACK returns to Home", ok1)
+            check("no BACK bar on the Fishing screen; TOWN MAP and OPEN BAG stay next to CAST", not nav_on_fishing and acts == ["actBtn", "fBagBtn", "map"], str(acts))
+            nv.click("#fishing [data-go=map]"); nv.wait_for_timeout(200); nv.click("#navBack"); nv.wait_for_timeout(200)
+            check("Map > Fishing > TOWN MAP > BACK goes back to where the map was opened from (Fishing)", nv.is_visible("#fishing"), nv.evaluate("current"))
+            nv.evaluate("() => go('home')"); nv.click("#home [data-go=shop]"); nv.click("#shop [data-go=tackle]"); nv.wait_for_timeout(150)
+            nv.click("#navBack"); nv.wait_for_timeout(150); a = nv.evaluate("current")
+            nv.click("#shop [data-go=tackle]"); nv.click("#tackle [data-go=shop]"); nv.wait_for_timeout(150)
+            trail = []
+            for _ in range(3): nv.click("#navBack"); nv.wait_for_timeout(150); trail.append(nv.evaluate("current"))
+            check("Shop > Tackle Box > BACK = Shop; Shop > Tackle > Shop then BACK x3 = Tackle, Shop, Home", a == "shop" and trail == ["tackle", "shop", "home"], f"{a} {trail}")
+            check("BACK on Home returns to the Title screen", (nv.click("#navBack") or True) and nv.is_visible("#titleScreen") and not nv.is_visible("#navBack"))
+            nv.click("#contBtn"); nv.wait_for_timeout(200)
+            nv.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_0') }; caught(); }"); nv.wait_for_timeout(200)
+            on_result = [nv.is_visible("#result"), nv.is_visible("#navbar")]; nv.click("#releaseBtn"); nv.wait_for_timeout(200)
+            check("no BACK bar on the Result screen", on_result == [True, False], str(on_result))
+            # Esc closes a popup first and never leaves the screen while one is open; then Esc = BACK
+            nv.evaluate("() => { stopFishing(); go('home'); go('shop'); openModal('howBox', 'howPanel'); }"); nv.wait_for_timeout(150)
+            nv.keyboard.press("Escape"); nv.wait_for_timeout(150)
+            e1 = [nv.is_visible("#howBox"), nv.evaluate("current")]
+            nv.keyboard.press("Escape"); nv.wait_for_timeout(150)
+            e2 = nv.evaluate("current"); nv.keyboard.press("Escape"); nv.wait_for_timeout(150)
+            check("Esc with a popup open only closes the popup; then Esc works as BACK (but never leaves Home)",
+                  e1 == [False, "shop"] and e2 == "home" and nv.evaluate("current") == "home", f"{e1} {e2} {nv.evaluate('current')}")
+            nv.evaluate("() => go('collection')"); nv.evaluate("document.activeElement.blur()"); nv.keyboard.press("Tab")
+            check("Tab order: BACK is the first control on a screen", nv.evaluate("document.activeElement.id") == "navBack", nv.evaluate("document.activeElement.id"))
+        nc.close()
+
+    # BUG-22: one fixed full-viewport backdrop behind every screen
+    BD = """(() => { const bd = document.getElementById('backdrop'), r = bd.getBoundingClientRect(), on = document.querySelector('#backdrop .bd.on'), cs = getComputedStyle(on);
+        const app = document.querySelector('.app');
+        return { cover: r.left <= 0 && r.top <= 0 && r.right >= innerWidth && r.bottom >= innerHeight, pos: getComputedStyle(bd).position, top: r.top,
+                 behind: +getComputedStyle(bd).zIndex < +getComputedStyle(app).zIndex, isle: on.dataset.isle, img: cs.backgroundImage, size: cs.backgroundSize,
+                 pix: cs.imageRendering, ons: document.querySelectorAll('#backdrop .bd.on').length, shade: +getComputedStyle(document.querySelector('.bd-shade'), '::after').opacity,
+                 att: getComputedStyle(document.body).backgroundAttachment, body: getComputedStyle(document.body).backgroundImage, y: scrollY }; })()"""
+    # every visible text must sit on an opaque panel / button / card, never straight on the picture
+    READ = """(() => { const bad = [];
+        const solid = el => { const s = getComputedStyle(el); if (s.backgroundImage !== 'none') return true; const m = s.backgroundColor.match(/[\\d.]+/g); return m && (m.length < 4 || +m[3] >= .6); };
+        for (const el of document.querySelectorAll('.app *, .toast')) {
+            if (!el.offsetParent || ![...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+            let a = el; while (a && a !== document.body && !solid(a)) a = a.parentElement;
+            if (!a || a === document.body) bad.push(el.className || el.tagName);
+        } return bad; })()"""
+    for vw, vh in [(1600, 900), (1366, 768), (360, 640), (390, 844)]:
+        dc = b.new_context(viewport={"width": vw, "height": vh}); d = dc.new_page()
+        d.on("pageerror", lambda e: errs.append(str(e))); d.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        d.goto(URL); d.evaluate("localStorage.clear()"); d.reload(); d.wait_for_timeout(200)
+        if vw in (1600, 390): d.screenshot(path=str(SHOTS / f"60_title_{vw}x{vh}.png"))
+        start_new(d, "Backdrop")
+        d.evaluate("() => { S.coins = 2000; ['harbor','frost','desert','forest'].forEach(i => { S.mastery[i] = true; FISH.filter(f => f.island === i).forEach(f => S.discovered[f.id] = true); });"
+                   " S.bag = [{ fishId: 'frost_3', weight: 1.2, price: 80, time: 1 }]; save(); }")
+        d.add_style_tag(content="#toast { display: none !important; }")
+        d.wait_for_function("[...document.querySelectorAll('#backdrop .bd')].every(e => e.classList.contains('loaded') || e.classList.contains('failed'))", timeout=8000)
+        loaded = d.evaluate("[...document.querySelectorAll('#backdrop .bd.loaded')].map(e => e.dataset.isle)")
+        menu = {}
+        for sc in NAV:
+            d.evaluate(f"() => go('{sc}')"); d.wait_for_timeout(400)
+            menu[sc] = d.evaluate(BD); unread = d.evaluate(READ)
+            d.evaluate("window.scrollTo(0, 1500)"); d.wait_for_timeout(100); menu[sc + "_down"] = d.evaluate(BD); d.evaluate("window.scrollTo(0, 0)")
+            check(f"{vw}x{vh} {sc}: all text sits on solid panels (readable over the backdrop)", not unread, str(unread[:4]))
+            if vw in (1600, 390): d.screenshot(path=str(SHOTS / f"60_{sc}_{vw}x{vh}.png"))
+        mv = list(menu.values())
+        check(f"{vw}x{vh}: menu screens show harbor_clean.jpg (no fisherman) full-viewport, fixed while scrolling, cover + pixelated, ~35% shade",
+              all(v["cover"] and v["pos"] == "fixed" and v["top"] == 0 and v["behind"] and v["isle"] == "harbor" and "harbor_clean.jpg" in v["img"] and "/harbor.jpg" not in v["img"]
+                  and v["size"] == "cover" and v["pix"] == "pixelated" and v["ons"] == 1 and v["shade"] == 0 for v in mv)
+              and any(v["y"] > 0 for v in mv) and all(v["att"] != "fixed" and "url(" not in v["body"] for v in mv), str({k: (v["isle"], v["cover"], v["top"], v["y"]) for k, v in menu.items() if not v["cover"] or v["top"]}))
+        isl_bd = {}
+        for isl in ["harbor", "frost", "desert", "forest", "secret"]:
+            d.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); d.wait_for_timeout(450)
+            isl_bd[isl] = d.evaluate(BD)
+            if vw in (1600, 390): d.screenshot(path=str(SHOTS / f"60_fishing_{isl}_{vw}x{vh}.png"))
+        files = {"harbor": "harbor_clean.jpg", "frost": "frost.png", "desert": "desert.png", "forest": "forest.png", "secret": "secret.png"}
+        check(f"{vw}x{vh}: Fishing backdrop changes with the island (5 pictures), full viewport, ~55% shade",
+              all(v["isle"] == k and files[k] in v["img"] and v["cover"] and v["shade"] == 1 and v["ons"] == 1 for k, v in isl_bd.items()) and len(loaded) == 5,
+              str({k: (v["isle"], v["img"][-30:]) for k, v in isl_bd.items()}) + f" loaded {loaded}")
+        if vw in (1600, 390):
+            d.evaluate("() => { F = { phase: 'idle', fish: fishById('desert_9') }; caught(); }"); d.wait_for_timeout(900)
+            d.screenshot(path=str(SHOTS / f"60_result_{vw}x{vh}.png")); d.click("#releaseBtn")
+        if vw == 1366:
+            d.evaluate("() => { stopFishing(); island = 'harbor'; go('fishing'); }"); d.wait_for_timeout(400)
+            fade = d.evaluate("""() => new Promise(r => { island = 'desert'; go('map'); go('fishing');  // harbor -> desert: both layers mid-fade after ~120 ms
+                const t = getComputedStyle(document.querySelector('.bd')).transitionDuration;
+                setTimeout(() => r([t, +getComputedStyle(document.querySelector('.bd-desert')).opacity, +getComputedStyle(document.querySelector('.bd-harbor')).opacity]), 120); })""")
+            check("changing island crossfades the backdrop in about 300 ms", fade[0] == "0.3s" and 0 < fade[1] < 1 and 0 < fade[2] < 1, str(fade))
+            check("old pixel clouds and water dashes are gone", d.evaluate("!document.querySelector('.bgfx, .clouds, .water')"))
+        dc.close()
+    rm2 = b.new_page(viewport={"width": 360, "height": 640}, reduced_motion="reduce"); rm2.goto(URL); rm2.wait_for_timeout(200)
+    check("prefers-reduced-motion: no backdrop crossfade", rm2.evaluate("getComputedStyle(document.querySelector('.bd')).transitionDuration") == "0s")
+    rm2.close()
+    # a backdrop picture that can't load: its gradient stays, no JavaScript errors
+    fc = b.new_context(viewport={"width": 1366, "height": 768}); fpg = fc.new_page(); f_errs = []
+    fpg.on("pageerror", lambda e: f_errs.append(str(e))); fpg.route("**/assets/desert.png", lambda r: r.abort())
+    fpg.goto(URL); fpg.evaluate("localStorage.clear()"); fpg.reload(); fpg.wait_for_timeout(200); start_new(fpg, "NoPic")
+    fpg.wait_for_function("document.querySelector('.bd-desert').classList.contains('failed')", timeout=5000)
+    fpg.evaluate("() => { island = 'desert'; go('fishing'); }"); fpg.wait_for_timeout(400)
+    bgd = fpg.evaluate("getComputedStyle(document.querySelector('.bd-desert')).backgroundImage")
+    check("a backdrop that fails to load keeps its gradient colour, no JavaScript errors", "linear-gradient" in bgd and "url(" not in bgd and not f_errs, f"{bgd[:60]} {f_errs[:1]}")
+    fc.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
