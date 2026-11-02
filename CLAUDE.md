@@ -82,7 +82,9 @@ A different browser, device or home-screen app has its own separate save."). **E
 
 **Navigation / BACK bar** (`#navbar`, inside the header row `.app > .top`): shown on Map, Bag, Shop, Collection and Tackle Box
 (`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) on the
-left, the screen name in the middle and a small **HOME** button (`#navHome`, `data-go="home"`) on the right. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
+left, the screen name in the middle and a small **HOME** button (`#navHome`, `data-go="home"`) on the right — except on the Bag, where
+`go()` hides it (`hidden`): BACK is the Bag's one way out (to Home, Fishing or the waiting catch), and the empty third column keeps
+"BAG" centred. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
 wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
 visible while a phone page scrolls; it is in the normal flow, so it never covers content.
 `go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
@@ -147,7 +149,7 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
-**Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL (BACK and HOME are in the top bar).
+**Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL; the top bar has only BACK (no HOME on the Bag).
 
 **Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a trade-off):
 

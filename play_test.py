@@ -90,7 +90,7 @@ with sync_playwright() as p:
     check("sell all adds coins and empties bag", pg.evaluate("S.coins") == coins0 + 100 and pg.evaluate("S.bag.length") == 0)
 
     # shop
-    pg.evaluate("S.coins = 120; save()"); pg.click("#navHome"); pg.click("section.active >> text=SHOP"); pg.wait_for_timeout(200)
+    pg.evaluate("S.coins = 120; save(); go('home')"); pg.click("section.active >> text=SHOP"); pg.wait_for_timeout(200)
     check("rod blocked with insufficient coins", pg.is_disabled('[data-buy="rod:sturdy"]'))
     pg.click('[data-buy="bait:shrimp"]'); check("buy bait works", pg.evaluate("S.baits.shrimp") == 5 and pg.evaluate("S.coins") == 20)
     pg.screenshot(path=str(SHOTS / "09_shop.png"))
@@ -1325,7 +1325,7 @@ with sync_playwright() as p:
     BAGPOS = """() => { const p = document.querySelector('#bag .panel').getBoundingClientRect(), l = document.getElementById('bagList'),
         q = id => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), r.bottom <= innerHeight]; };
         const rows = [...l.querySelectorAll('.row')], rr = rows.map(r => r.getBoundingClientRect());
-        return { panel: Math.round(p.top), sell: q('sellAll'), home: q('navHome'), scrolls: l.scrollHeight > l.clientHeight + 4, ov: getComputedStyle(l).overflowY,
+        return { panel: Math.round(p.top), sell: q('sellAll'), home: q('navBack'), scrolls: l.scrollHeight > l.clientHeight + 4, ov: getComputedStyle(l).overflowY,
                  thin: getComputedStyle(l).scrollbarWidth, page: document.documentElement.scrollHeight, vh: innerHeight, rows: rows.length,
                  heights: rr.map(r => +r.height.toFixed(1)), first: rr.length ? +rr[0].top.toFixed(1) : null,
                  names: rows.map(r => (r.querySelector('b') || {}).textContent || ''), want: S.bag.map(x => fishById(x.fishId).name),
@@ -1349,7 +1349,7 @@ with sync_playwright() as p:
               len({v["first"] for v in bp_.values()}) == 1 and all(v["names"] == v["want"] for k, v in bp_.items() if k), str({k: v["first"] for k, v in bp_.items()}))
         if not phone:
             same = all(v["panel"] == bp_[0]["panel"] and v["sell"] == bp_[0]["sell"] and v["home"] == bp_[0]["home"] for v in bp_.values())
-            check(f"{vw}x{vh}: Bag with 0, 1, 5, 10, 15 fish: panel top, SELL ALL and the top HOME stay in the same place, on screen, no page scroll",
+            check(f"{vw}x{vh}: Bag with 0, 1, 5, 10, 15 fish: panel top, SELL ALL and the top BACK stay in the same place, on screen, no page scroll",
                   same and all(v["sell"][2] and v["home"][2] and v["page"] <= v["vh"] + 1 for v in bp_.values()),
                   str({n: (v["panel"], v["sell"][:2], v["home"][:2], v["page"]) for n, v in bp_.items()}))
             check(f"{vw}x{vh}: Bag is anchored at the top (not centred): panel right under the header", not bp_[5]["center"] and bp_[5]["panel"] < 120, str(bp_[5]["panel"]))
@@ -1361,14 +1361,26 @@ with sync_playwright() as p:
         if vw == 1920:
             check("empty Bag still says 'Your bag is empty. Go fishing!'; no bottom BACK or HOME button in the Bag (they are in the top bar)",
                   "Your bag is empty. Go fishing!" in bp_[0]["text"] and not bp_[0]["back"] and not bp_[0]["bottomHome"], bp_[0]["text"][:40])
-            # the top HOME button works on every inner screen
+            # the top HOME button works on every inner screen except the Bag (BACK is its one way out)
             homes = {}
-            for sc in ["map", "bag", "shop", "collection", "tackle"]:
+            for sc in ["map", "shop", "collection", "tackle"]:
                 gp.evaluate(f"() => {{ go('home'); go('{sc}'); }}"); gp.wait_for_timeout(250)
                 vis = gp.is_visible("#navHome"); gp.click("#navHome"); gp.wait_for_timeout(250)
                 homes[sc] = [vis, gp.evaluate("current")]
-            check("top bar HOME button is shown and goes Home on Map, Bag, Shop, Collection and Tackle Box",
+            check("top bar HOME button is shown and goes Home on Town Map, Shop, Collection and Tackle Box",
                   all(v == [True, "home"] for v in homes.values()) and not gp.is_visible("#navHome"), str(homes))
+            gp.evaluate("() => { go('home'); go('bag'); }"); gp.wait_for_timeout(250)
+            bagbar = gp.evaluate("""() => { const bar = document.getElementById('navbar').getBoundingClientRect(), t = document.getElementById('navName').getBoundingClientRect();
+                return [!!document.getElementById('navHome').offsetParent, !!document.querySelector('#bag [data-go="home"]'), !!document.getElementById('navBack').offsetParent,
+                        document.getElementById('navName').textContent, Math.abs((t.left + t.right) / 2 - (bar.left + bar.right) / 2)]; }""")
+            check("Bag: no HOME button anywhere (top bar or bottom); BACK on the left, 'BAG' title still centred in the bar",
+                  bagbar[:4] == [False, False, True, "BAG"] and bagbar[4] <= 2, str(bagbar))
+            gp.evaluate("() => { go('home'); island = 'desert'; go('fishing'); }"); gp.wait_for_timeout(300)
+            gp.click("#fBagBtn"); gp.wait_for_timeout(250); on_bag = gp.evaluate("current")
+            gp.click("#navBack"); gp.wait_for_timeout(300)
+            check("Fishing (Desert) > OPEN BAG > BACK returns to the Fishing screen on the same island",
+                  on_bag == "bag" and gp.evaluate("current") == "fishing" and gp.evaluate("island") == "desert" and "Desert:" in gp.inner_text("#isleProg"), gp.inner_text("#isleProg")[:30])
+            gp.evaluate("() => stopFishing()")
             keep = gp.evaluate("['map', 'shop', 'collection', 'tackle'].every(s => !!document.querySelector('#' + s + ' > .btns [data-go=\"home\"]'))")
             check("Map, Shop, Collection and Tackle Box keep their bottom HOME button", keep)
         gc.close()
