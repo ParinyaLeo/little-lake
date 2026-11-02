@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=20">
+<link rel="stylesheet" href="css/style.css?v=21">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -20,12 +20,12 @@
 <div class="app">
   <div class="top">
     <div class="title wood" id="title">LITTLE LAKE</div>
-    <!-- BACK bar on Map, Bag, Shop, Collection and Tackle Box (not Home): BACK (screen history, Home as fallback) + screen name.
+    <!-- BACK bar on Map, Bag, Shop, Collection and Tackle Box (not Home): BACK (screen history, Home as fallback), screen name, HOME.
          Wide screens: in the middle of this header row. Below 900px: its own row under the sign, sticky while scrolling. -->
     <nav class="navbar" id="navbar" aria-label="Screen navigation">
       <button class="btn small nav-back" id="navBack" title="Back to the previous screen (Esc)">&lt; BACK</button>
       <div class="nav-name" id="navName" aria-live="polite"></div>
-      <span class="nav-end" aria-hidden="true"></span>
+      <button class="btn small nav-home" id="navHome" data-go="home" title="Back to Home">HOME</button>
     </nav>
     <div class="sign wood"><span class="coins" id="coinTop">0</span></div>
   </div>
@@ -156,7 +156,6 @@
     </div>
     <div class="btns">
       <button class="btn green" id="sellAll"><span class="ico i-coin"></span>SELL ALL</button>
-      <button class="btn" id="bagHome" data-go="home">HOME</button>
     </div>
   </section>
 
@@ -253,10 +252,10 @@
 </div>
 
 
-<script src="js/data.js?v=20"></script>
-<script src="js/state.js?v=20"></script>
-<script src="js/fisherman.js?v=20"></script>
-<script src="js/fishing.js?v=20"></script>
-<script src="js/screens.js?v=20"></script>
+<script src="js/data.js?v=21"></script>
+<script src="js/state.js?v=21"></script>
+<script src="js/fisherman.js?v=21"></script>
+<script src="js/fishing.js?v=21"></script>
+<script src="js/screens.js?v=21"></script>
 </body>
 </html>

@@ -90,7 +90,7 @@ with sync_playwright() as p:
     check("sell all adds coins and empties bag", pg.evaluate("S.coins") == coins0 + 100 and pg.evaluate("S.bag.length") == 0)
 
     # shop
-    pg.evaluate("S.coins = 120; save()"); pg.click("section.active >> text=HOME"); pg.click("section.active >> text=SHOP"); pg.wait_for_timeout(200)
+    pg.evaluate("S.coins = 120; save()"); pg.click("#navHome"); pg.click("section.active >> text=SHOP"); pg.wait_for_timeout(200)
     check("rod blocked with insufficient coins", pg.is_disabled('[data-buy="rod:sturdy"]'))
     pg.click('[data-buy="bait:shrimp"]'); check("buy bait works", pg.evaluate("S.baits.shrimp") == 5 and pg.evaluate("S.coins") == 20)
     pg.screenshot(path=str(SHOTS / "09_shop.png"))
@@ -1317,34 +1317,63 @@ with sync_playwright() as p:
               r[0] in ("none", "normal") and r[1] == "auto" and r[2], str(r))
         ph.close()
 
-    # ---------- BUG-25: Bag anchored at the top, buttons never move; BUG-26: Town Map redesign ----------
-    FILL = "n => { S.bagMax = 15; S.bag = []; while (S.bag.length < n) S.bag.push({ fishId: 'harbor_' + (S.bag.length % 10), weight: .5, price: 20, time: 1 }); save(); go('home'); go('bag'); }"
+    # ---------- BUG-25 / BUG-27: Bag anchored at the top, compact fixed-height rows added downward, buttons never move; BUG-26: Town Map ----------
+    # fish in catch order: a different fish each time (harbor_0, frost_1, desert_2, ...), so the order on screen can be checked
+    FILL = """n => { S.bagMax = 15; S.bag = []; const isl = ['harbor', 'frost', 'desert', 'forest'];
+        while (S.bag.length < n) { const i = S.bag.length; S.bag.push({ fishId: isl[i % 4] + '_' + (i % 10), weight: .5, price: 20 + i, time: 1000 + i }); }
+        save(); go('home'); go('bag'); }"""
     BAGPOS = """() => { const p = document.querySelector('#bag .panel').getBoundingClientRect(), l = document.getElementById('bagList'),
         q = id => { const r = document.getElementById(id).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left), r.bottom <= innerHeight]; };
-        return { panel: Math.round(p.top), sell: q('sellAll'), home: q('bagHome'), scrolls: l.scrollHeight > l.clientHeight + 4, ov: getComputedStyle(l).overflowY,
-                 thin: getComputedStyle(l).scrollbarWidth, page: document.documentElement.scrollHeight, vh: innerHeight, rows: l.querySelectorAll('.row').length,
-                 text: l.innerText, back: !!document.getElementById('bagBack'), center: document.body.classList.contains('center') }; }"""
-    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600)]:
+        const rows = [...l.querySelectorAll('.row')], rr = rows.map(r => r.getBoundingClientRect());
+        return { panel: Math.round(p.top), sell: q('sellAll'), home: q('navHome'), scrolls: l.scrollHeight > l.clientHeight + 4, ov: getComputedStyle(l).overflowY,
+                 thin: getComputedStyle(l).scrollbarWidth, page: document.documentElement.scrollHeight, vh: innerHeight, rows: rows.length,
+                 heights: rr.map(r => +r.height.toFixed(1)), first: rr.length ? +rr[0].top.toFixed(1) : null,
+                 names: rows.map(r => (r.querySelector('b') || {}).textContent || ''), want: S.bag.map(x => fishById(x.fishId).name),
+                 text: l.innerText, back: !!document.getElementById('bagBack'), bottomHome: !!document.querySelector('#bag > .btns [data-go="home"]'),
+                 center: document.body.classList.contains('center') }; }"""
+    row_h = {}
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (390, 844), (360, 640)]:
+        phone = vw < 900
         gc = b.new_context(viewport={"width": vw, "height": vh}); gp = gc.new_page()
         gp.on("pageerror", lambda e: errs.append(str(e))); gp.on("console", lambda m: m.type == "error" and errs.append(m.text))
         gp.goto(URL); gp.evaluate("localStorage.clear()"); gp.reload(); gp.wait_for_timeout(200); start_new(gp, "BagTop")
         gp.add_style_tag(content="#toast { display: none !important; }")
         bp_ = {}
-        for n in (0, 5, 10, 15):
+        for n in (0, 1, 5, 10, 15):
             gp.evaluate(FILL, n); gp.wait_for_timeout(400); bp_[n] = gp.evaluate(BAGPOS)
-            if vw == 1536 and n in (0, 5, 15): gp.screenshot(path=str(SHOTS / f"90_bag_{n}_fish_{vw}x{vh}.png"))
-        same = all(v["panel"] == bp_[0]["panel"] and v["sell"] == bp_[0]["sell"] and v["home"] == bp_[0]["home"] for v in bp_.values())
-        check(f"{vw}x{vh}: Bag with 0, 5, 10, 15 fish: panel top and SELL ALL / HOME stay in the same place, on screen, no page scroll",
-              same and all(v["sell"][2] and v["home"][2] and v["page"] <= v["vh"] + 1 for v in bp_.values()),
-              str({n: (v["panel"], v["sell"][:2], v["home"][:2], v["page"]) for n, v in bp_.items()}))
-        check(f"{vw}x{vh}: Bag is anchored at the top (not centred): panel right under the header", not bp_[5]["center"] and bp_[5]["panel"] < 120, str(bp_[5]["panel"]))
-        check(f"{vw}x{vh}: a full Bag scrolls inside its list (overflow-y auto, thin scrollbar); 5 fish fit without scrolling",
-              bp_[15]["scrolls"] and bp_[15]["ov"] == "auto" and bp_[15]["thin"] == "thin" and bp_[15]["rows"] == 15 and (not bp_[5]["scrolls"] or vh < 700),
-              f"15: {bp_[15]['scrolls']} 5: {bp_[5]['scrolls']}")
+            if (vw, vh) in ((1536, 730), (390, 844)) and n in (0, 1, 5, 15): gp.screenshot(path=str(SHOTS / f"92_bag_{n}_fish_{vw}x{vh}.png"))
+        hs = [h for v in bp_.values() for h in v["heights"]]; row_h[(vw, vh)] = hs[0]
+        check(f"{vw}x{vh}: every Bag row has the same compact height with 0, 1, 5, 10 and 15 fish (empty message included), never stretched",
+              max(hs) - min(hs) <= 1 and (52 <= hs[0] <= 66), f"{min(hs)}..{max(hs)}")
+        check(f"{vw}x{vh}: the first row starts at the same y with 0, 1, 5, 10, 15 fish; rows are in catch order",
+              len({v["first"] for v in bp_.values()}) == 1 and all(v["names"] == v["want"] for k, v in bp_.items() if k), str({k: v["first"] for k, v in bp_.items()}))
+        if not phone:
+            same = all(v["panel"] == bp_[0]["panel"] and v["sell"] == bp_[0]["sell"] and v["home"] == bp_[0]["home"] for v in bp_.values())
+            check(f"{vw}x{vh}: Bag with 0, 1, 5, 10, 15 fish: panel top, SELL ALL and the top HOME stay in the same place, on screen, no page scroll",
+                  same and all(v["sell"][2] and v["home"][2] and v["page"] <= v["vh"] + 1 for v in bp_.values()),
+                  str({n: (v["panel"], v["sell"][:2], v["home"][:2], v["page"]) for n, v in bp_.items()}))
+            check(f"{vw}x{vh}: Bag is anchored at the top (not centred): panel right under the header", not bp_[5]["center"] and bp_[5]["panel"] < 120, str(bp_[5]["panel"]))
+            check(f"{vw}x{vh}: a full Bag scrolls inside its list (overflow-y auto, thin scrollbar); 5 fish fit without scrolling",
+                  bp_[15]["scrolls"] and bp_[15]["ov"] == "auto" and bp_[15]["thin"] == "thin" and bp_[15]["rows"] == 15 and not bp_[5]["scrolls"],
+                  f"15: {bp_[15]['scrolls']} 5: {bp_[5]['scrolls']}")
+        else:
+            check(f"{vw}x{vh}: phone Bag has no side scroll", gp.evaluate("document.documentElement.scrollWidth") <= vw)
         if vw == 1920:
-            check("empty Bag still says 'Your bag is empty. Go fishing!'; no duplicate bottom BACK button",
-                  "Your bag is empty. Go fishing!" in bp_[0]["text"] and not bp_[0]["back"], bp_[0]["text"][:40])
+            check("empty Bag still says 'Your bag is empty. Go fishing!'; no bottom BACK or HOME button in the Bag (they are in the top bar)",
+                  "Your bag is empty. Go fishing!" in bp_[0]["text"] and not bp_[0]["back"] and not bp_[0]["bottomHome"], bp_[0]["text"][:40])
+            # the top HOME button works on every inner screen
+            homes = {}
+            for sc in ["map", "bag", "shop", "collection", "tackle"]:
+                gp.evaluate(f"() => {{ go('home'); go('{sc}'); }}"); gp.wait_for_timeout(250)
+                vis = gp.is_visible("#navHome"); gp.click("#navHome"); gp.wait_for_timeout(250)
+                homes[sc] = [vis, gp.evaluate("current")]
+            check("top bar HOME button is shown and goes Home on Map, Bag, Shop, Collection and Tackle Box",
+                  all(v == [True, "home"] for v in homes.values()) and not gp.is_visible("#navHome"), str(homes))
+            keep = gp.evaluate("['map', 'shop', 'collection', 'tackle'].every(s => !!document.querySelector('#' + s + ' > .btns [data-go=\"home\"]'))")
+            check("Map, Shop, Collection and Tackle Box keep their bottom HOME button", keep)
         gc.close()
+    check("Bag rows: about 64px on tall desktop windows and phones, about 56px on windows under 760px high",
+          row_h[(1920, 915)] == 64 and row_h[(390, 844)] == 64 and row_h[(360, 640)] == 64 and row_h[(1536, 730)] == 56 and row_h[(1280, 600)] == 56, str(row_h))
     # Town Map
     MAPS = """() => { const cards = [...document.querySelectorAll('#islands .island:not(.secret-strip)')], strip = document.querySelector('#islands .secret-strip');
         const r = cards.map(c => c.getBoundingClientRect()), sr = strip.getBoundingClientRect();
@@ -1386,6 +1415,14 @@ with sync_playwright() as p:
               f["locked"] and "???" in f["strip"] and "Master all 4 islands to unlock" in f["strip"] and not f["stripPic"]
               and not al["locked"] and "Little Lake" in al["strip"] and al["stripPic"], f"{f['strip']} | {al['strip']}")
         if vw == 1536:
+            mpg.evaluate("() => { S.mastery = {}; save(); go('home'); go('map'); }"); mpg.wait_for_timeout(300)
+            mpg.locator("#islands .secret-strip").screenshot(path=str(SHOTS / "92_map_locked_strip_1536x730.png"))
+            moon = mpg.evaluate("""() => { const s = document.querySelector('#islands .secret-strip'), bg = getComputedStyle(s).backgroundImage, r = s.getBoundingClientRect();
+                const kids = [...s.children].every(c => { const q = c.getBoundingClientRect(); return q.top >= r.top && q.bottom <= r.bottom; });
+                return [bg.includes('radial-gradient'), bg.includes('url('), getComputedStyle(s).overflow, kids]; }""")
+            check("locked secret strip: no moon circle (no picture, no radial moon), everything clipped inside the strip",
+                  moon == [False, False, "hidden", True], str(moon))
+            mpg.evaluate("() => { ['harbor','frost','desert','forest'].forEach(i => S.mastery[i] = true); save(); go('home'); go('map'); }"); mpg.wait_for_timeout(300)
             opened = {}
             for isl in ["harbor", "frost", "desert", "forest", "secret"]:
                 mpg.evaluate("() => go('map')"); mpg.wait_for_timeout(250); mpg.click(f"#islands .bg-{isl}"); mpg.wait_for_timeout(300)

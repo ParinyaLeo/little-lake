@@ -169,7 +169,11 @@ function renderBag() {
     s.onclick = () => sell([i]); row.append(s); L.append(row);
   });
   $("sellAll").disabled = !S.bag.length;
+  bagFade();
 }
+// the Bag list's bottom fade shows only while more fish are hidden below
+function bagFade() { const l = $("bagList"); l.classList.toggle("has-more", l.scrollHeight > l.clientHeight + 4); }
+window.addEventListener("resize", () => { if (current === "bag") bagFade(); });
 function sell(idx) {
   let total = 0; idx.sort((a, b) => b - a).forEach(i => { total += S.bag[i].price; S.bag.splice(i, 1); });
   S.coins += total; save(); sfx.coin(); toast(`Sold for ${fmt(total)} coins!`); render();

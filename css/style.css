@@ -48,7 +48,9 @@ button { font-family: inherit; }
   border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold), 0 5px 0 rgba(0,0,0,.35);
   background: repeating-linear-gradient(0deg, #74431f 0 20px, #5c3415 20px 22px), #6b3d1b; text-shadow: 2px 2px 0 #2a1608; }
 body.has-nav .navbar { display: grid; }
-.navbar .nav-back { justify-self: start; padding: 8px 14px; font-size: 16px; white-space: nowrap;
+.navbar .nav-back { justify-self: start; }
+.navbar .nav-home { justify-self: end; }
+.navbar .nav-back, .navbar .nav-home { padding: 8px 14px; font-size: 16px; white-space: nowrap;
   box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 4px var(--wood-dark), 0 3px 0 rgba(0,0,0,.35); background: repeating-linear-gradient(0deg, #8a5428 0 18px, #74431f 18px 20px); }
 .nav-name { font: 700 clamp(16px, 4.4vw, 24px) var(--pixel); letter-spacing: 2px; white-space: nowrap; text-align: center; font-variant-ligatures: none; }
 
@@ -128,8 +130,8 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
   radial-gradient(circle at 70% 25%, #fff6c2 0 6%, transparent 7%), linear-gradient(#1b1440 0 45%, #3b2a7a 45% 52%, #12325e 52% 100%); }
 .bg-frost, .bg-desert, .bg-forest, .bg-secret { image-rendering: pixelated; }
 .island.locked { filter: grayscale(1) brightness(.5); cursor: not-allowed; }
-.secret-strip.locked { filter: none;          /* locked: the same night colours as before (small moon), no picture; text stays readable */
-  background: radial-gradient(circle at 86% 30%, #fff6c2 0 9px, transparent 10px), linear-gradient(90deg, #1b1440, #3b2a7a 55%, #12325e); }
+.secret-strip.locked { filter: none;          /* locked: the same night colours, no picture and no moon; text stays readable */
+  background: linear-gradient(90deg, #1b1440, #3b2a7a 55%, #12325e); }
 
 /* fishing */
 .scene { position: relative; width: 100%; aspect-ratio: 3 / 1.25; border: 4px solid var(--wood-dark); box-shadow: inset 0 0 0 3px var(--gold); overflow: hidden; }
@@ -209,6 +211,13 @@ h2 { margin: 0 0 12px; font-size: clamp(18px, 4vw, 26px); }
 .rar-Common { color: #cfd8dc; } .rar-Rare { color: #64b5f6; } .rar-Epic { color: #ce93d8; } .rar-Legendary { color: #ffd54f; } .rar-Mythical { color: #ff80ab; }
 .record { color: #ffeb3b; font-size: 22px; font-weight: bold; animation: glow .6s infinite; }
 .list { display: grid; gap: 8px; max-height: 420px; overflow-y: auto; }
+/* Bag rows: one fixed compact height whatever the number of fish (never stretched to fill the list); the list is aligned to the top,
+   so fish are added downward in the order they were caught. The empty-bag message uses the same row. */
+:root { --bag-row: 64px; }
+#bagList { align-content: start; }
+#bagList .row { height: var(--bag-row); min-height: 0; flex: none; overflow: hidden; }
+#bagList .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }   /* name / rarity lines never wrap */
+body.fit #bagList:not(.has-more)::after { display: none; }   /* bottom fade only when the list really scrolls */
 /* lists that scroll inside their panel (Bag, Shop, Tackle Box on wide windows): thin pixel-style scrollbar */
 .scroll-list { scrollbar-width: thin; scrollbar-color: var(--gold) var(--wood-dark); }
 .scroll-list::-webkit-scrollbar { width: 10px; }
@@ -450,7 +459,7 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   #actBtn.red.glow { animation: hookflash .5s steps(1) infinite; }
   /* toast sits below the top bar so it doesn't cover the LITTLE LAKE sign */
   .toast { top: calc(80px + env(safe-area-inset-top)); }
-  .navbar .nav-back { padding: 8px 10px; font-size: 14px; letter-spacing: 0; }
+  .navbar .nav-back, .navbar .nav-home { padding: 8px 10px; font-size: 14px; letter-spacing: 0; }
   .nav-name { letter-spacing: 1px; }
   /* narrow cards: icon moves to the top-right corner so the value keeps the full width */
   .stat { display: block; position: relative; padding: 10px; }
@@ -611,4 +620,20 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   .secret-strip small { flex-basis: 100%; order: 3; font-size: 12px; }
   .map-hint { display: none; }
   .map-btns { grid-template-columns: 1fr; }
+}
+/* Bag on short desktop windows: 56px rows (fish drawn at 2x so it stays pixel-exact) */
+@media (min-width: 900px) and (max-height: 759.98px) {
+  :root { --bag-row: 56px; }
+  #bagList .row canvas { width: 48px; height: 32px; }
+}
+/* the Bag's only bottom button (SELL ALL) is a normal-width button, not a full-width bar */
+#bag > .btns { grid-template-columns: minmax(0, 320px); justify-content: center; }
+@media (max-width: 700px) { #bag > .btns { grid-template-columns: 1fr; } }
+/* Bag on phones: fish drawn at 2x (48x32, pixel-exact) and tighter spacing, so names and "Rarity · kg" fit on their lines */
+@media (max-width: 700px) {
+  #bagList .row { gap: 8px; padding: 6px 8px; }
+  #bagList .row canvas { width: 48px; height: 32px; }
+  #bagList .grow { font-size: 13px; }
+  #bag > .panel { padding: 16px 12px; }
+  #bagList .row .btn { padding: 8px 20px; }
 }

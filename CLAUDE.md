@@ -81,15 +81,15 @@ A different browser, device or home-screen app has its own separate save."). **E
 (owner decision, see `docs/bug_log.md` BUG-17 / BUG-19): don't add save codes, copy/download or import UI back.
 
 **Navigation / BACK bar** (`#navbar`, inside the header row `.app > .top`): shown on Map, Bag, Shop, Collection and Tackle Box
-(`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) and the
-screen name. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
+(`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) on the
+left, the screen name in the middle and a small **HOME** button (`#navHome`, `data-go="home"`) on the right. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
 wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
 visible while a phone page scrolls; it is in the normal flow, so it never covers content.
 `go(id)` keeps a small history (`navStack`, max 20; Home and Title clear it; a Result screen is only stored on the way to the Bag; never
 the same screen twice in a row); `goBack()` returns to the previous screen, Home as the fallback. **Esc** also uses
 `goBack()` (the Bag has no separate BACK button any more: the bar's BACK does the same, including Result > OPEN BAG > BACK to the
 waiting catch); Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
-Fishing on the same island. The HOME buttons at the bottom stay. On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
+Fishing on the same island. The bottom HOME buttons stay on Map, Shop, Collection and Tackle Box; the Bag has none (only SELL ALL). On the Fishing screen TOWN MAP and OPEN BAG stay next to CAST.
 
 **Laptop / desktop fit (don't break this):** on windows 900px and wider, every screen fits the window without page scrolling, down to
 1280x600 (e.g. 1536x730 = a 1920x1080 laptop at 125%). Sizes inside `@media (min-width: 900px)` follow the window height with
@@ -103,7 +103,10 @@ bias (`::before` / `::after` spacers, flex-grow 45 / 55). Tiles, fonts and butto
 <= 120px, island cards <= 250px high) and shrink on short windows. On Home, TOWN MAP is the main action: a big button two rows tall beside the
 other four (2x2). Shop, Tackle Box, Fishing and phones don't use this.
 The **Bag** is not centred: it is anchored at the top and its list has a fixed area of about 5 rows (`#bag .scroll-list`, 380px, it only
-shrinks on a too-short window), so the panel and SELL ALL / HOME stay in the same place at every fish count; more fish scroll inside it.
+shrinks on a too-short window), so the panel and SELL ALL stay in the same place at every fish count; more fish scroll inside it. Every row
+(and the empty-bag message) has one fixed height, `--bag-row`: 64px (56px on desktop windows under 760px high, fish drawn at 2x), never
+stretched (`#bagList { align-content: start }`); rows are listed top-down in catch order and their text lines never wrap (ellipsis).
+The bottom fade shows only while more fish are hidden below (`bagFade()` sets `.has-more`).
 
 **Islands:** Harbor, Frost, Desert and Forest each have 10 fish (4 Common, 3 Rare, 2 Epic, 1 Legendary).
 The secret island **Little Lake** has one Mythical fish, the *Lake Guardian*. It unlocks only after all
@@ -144,7 +147,7 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
-**Bag:** sell fish one at a time or **SELL ALL** for coins. Bottom buttons: SELL ALL and HOME (BACK is in the top bar).
+**Bag:** sell fish one at a time or **SELL ALL** for coins. Its only bottom button is SELL ALL (BACK and HOME are in the top bar).
 
 **Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a trade-off):
 
@@ -226,7 +229,7 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   desktop). Each card is the island picture with a dark progress plate at the bottom (`.isl-plate`): name + gold star (`i-star`) when
   mastered, a bar with "x / 10" (gold when mastered) and the reward name with its icon (padlock until mastered). The secret island is a
   separate wide strip below (`.secret-strip`): locked = padlock, "???", "Master all 4 islands to unlock" and "x / 4 mastered" on its
-  dark night gradient (small moon, no picture); unlocked = `secret.png`, "Little Lake" and "x / 1 found". One HOME button below the panel.
+  dark night gradient (no picture, no moon); unlocked = `secret.png`, "Little Lake" and "x / 1 found". One HOME button below the panel.
   Every card shows only the place (no figure). Harbor uses `assets/harbor_clean.jpg` (the photo after `cleanPlate()`, made by
   `tools/make_harbor_clean.py`) with `harbor.jpg` behind it as the fallback layer; the Title screen keeps `harbor.jpg` with its
   fisherman as cover art. `.bg-<island>` = `--card-shade`, the island picture (`cover`, positioned on its best part), then the old
