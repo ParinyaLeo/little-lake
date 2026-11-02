@@ -42,6 +42,9 @@ button { font-family: inherit; }
 .app > .top > .title, .app > .top > .sign { height: var(--hdr-h); display: flex; align-items: center; }
 .title { padding: 0 28px; font-size: clamp(20px, 5vw, 36px); font-weight: bold; letter-spacing: 4px; white-space: nowrap; cursor: pointer; user-select: none; }
 .sign { padding: 0 22px; font-size: clamp(14px, 3vw, 20px); font-weight: bold; white-space: nowrap; }
+/* SELL (opens the Bag): Fishing screen only, directly left of the coin sign and just as tall; margin-left: auto keeps it beside the coins */
+.top-sell { display: none; height: var(--hdr-h); margin-left: auto; padding: 0 24px; font-size: clamp(14px, 3vw, 20px); white-space: nowrap; flex-shrink: 0; }
+body.plain .app > .top > .top-sell { display: flex; align-items: center; }
 
 /* BACK bar (Map, Bag, Shop, Collection, Tackle Box): part of the header row, in the normal flow, so it never covers content */
 .navbar { display: none; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; padding: 6px 8px;
@@ -433,8 +436,8 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
 .ip-reward b.done { color: #ffd54f; }
 .ip-reward .ico { width: 16px; height: 16px; margin-right: 6px; }
 .hearts { white-space: nowrap; }
-/* CAST | SELL FISH | SHOP | TOWN MAP: four equal-height buttons in one row (CAST a bit wider); labels never wrap */
-#fishing .actions { margin-top: 6px; grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); }
+/* CAST | SHOP | TOWN MAP: three equal buttons in one row; labels never wrap */
+#fishing .actions { margin-top: 6px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #fishing .actions .btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -496,14 +499,13 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   #fishing .panel { padding: 12px 14px; }
   #fMsg { height: 2.6em; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   #fishing .msg { font-size: 15px; }
-  /* phones: CAST full width on top (same place in every phase), SELL FISH / SHOP / TOWN MAP as three smaller buttons below */
-  #fishing .actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  /* phones: CAST full width on top (same place in every phase), SHOP / TOWN MAP as two smaller buttons below */
+  #fishing .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   #fishing #actBtn { grid-column: 1 / -1; padding: 12px 4px; font-size: 15px; }
   /* icon above a one-line label; no corner rivets on these narrow buttons, so the label has the full width */
   #fishing .actions .btn:not(#actBtn) { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
     padding: 7px 2px 6px; font-size: 13px; letter-spacing: 0; text-overflow: clip;
     background: repeating-linear-gradient(0deg, #8a5428 0 18px, #74431f 18px 20px); }
-  #fishing .actions #fBagBtn:not(#actBtn) { background: repeating-linear-gradient(0deg, #2e5fae 0 18px, #264f93 18px 20px); }
   #fishing .actions .btn .ico { width: 16px; height: 16px; margin: 0; }
   .isle-prog { padding: 4px 8px; gap: 4px; }
   .ip-top { gap: 8px; }
@@ -531,6 +533,15 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
 @media (max-width: 899.98px) {
   .app > .top { position: sticky; top: calc(env(safe-area-inset-top) - var(--hdr-h) - var(--hdr-gap)); z-index: 40; }
   .navbar { order: 3; flex: 1 0 100%; }
+}
+/* phones, Fishing screen: LITTLE LAKE, SELL and the coins on one line (smaller title, no corner rivets on SELL so it can be narrow) */
+@media (max-width: 700px) {
+  body.plain .app > .top { flex-wrap: nowrap; column-gap: 6px; }
+  body.plain .app > .top > .title { min-width: 0; padding: 0 12px; font-size: clamp(14px, 4.2vw, 16px); letter-spacing: .5px; overflow: hidden; }
+  body.plain .app > .top > .sign { padding: 0 11px; flex-shrink: 0; }
+  body.plain .app > .top > .top-sell { padding: 0 9px; font-size: 15px; letter-spacing: 0; min-width: 44px;
+    background: repeating-linear-gradient(0deg, #2e5fae 0 18px, #264f93 18px 20px); }
+  body.plain .app > .top > .top-sell .ico { width: 16px; height: 16px; margin-right: 5px; }
 }
 /* ---- wide windows (laptops / desktops): every screen fits the window. Sizes follow the window height (vh, clamp()),
    so a short window (e.g. 1280x600 or 1536x730 at 125% scaling) gets tighter paddings, smaller tiles and shorter buttons.

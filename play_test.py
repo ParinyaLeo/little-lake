@@ -83,8 +83,8 @@ with sync_playwright() as p:
     pg.evaluate("S.bag = []; while (S.bag.length < S.bagMax) S.bag.push({fishId:'harbor_0',weight:.2,price:20,time:1}); save(); render()")
     pg.wait_for_timeout(200); pg.screenshot(path=str(SHOTS / "07_fullbag.png"))
     check("full bag blocks CAST", pg.is_disabled("#actBtn"))
-    pg.click("#fBagBtn"); pg.wait_for_timeout(200)
-    check("SELL FISH (fishing screen) opens the Bag when the bag is full", pg.is_visible("#bag"))
+    pg.click("#sellTop"); pg.wait_for_timeout(200)
+    check("SELL (fishing screen top bar) opens the Bag when the bag is full", pg.is_visible("#bag"))
     pg.screenshot(path=str(SHOTS / "08_bag.png"))
     coins0 = pg.evaluate("S.coins"); pg.click("#sellAll"); pg.wait_for_timeout(200)
     check("sell all adds coins and empties bag", pg.evaluate("S.coins") == coins0 + 100 and pg.evaluate("S.bag.length") == 0)
@@ -1094,7 +1094,7 @@ with sync_playwright() as p:
             check("Fishing (Frost) > GO TO SHOP > BACK returns to the Fishing screen on the same island",
                   ok2a and nv.is_visible("#fishing") and nv.evaluate("island") == "frost" and "Frost" in nv.inner_text("#fMsg") and nv.is_enabled("#actBtn"), nv.inner_text("#fMsg"))
             check("Home > Bag > BACK returns to Home", ok1)
-            check("no BACK bar on the Fishing screen; SELL FISH, SHOP and TOWN MAP stay next to CAST", not nav_on_fishing and acts == ["actBtn", "fBagBtn", "fShopBtn", "map"], str(acts))
+            check("no BACK bar on the Fishing screen; SHOP and TOWN MAP stay next to CAST", not nav_on_fishing and acts == ["actBtn", "fShopBtn", "map"], str(acts))
             nv.click("#fishing [data-go=map]"); nv.wait_for_timeout(200); nv.click("#navBack"); nv.wait_for_timeout(200)
             check("Map > Fishing > TOWN MAP > BACK goes back to where the map was opened from (Fishing)", nv.is_visible("#fishing"), nv.evaluate("current"))
             nv.evaluate("() => go('home')"); nv.click("#home [data-go=shop]"); nv.click("#shop [data-go=tackle]"); nv.wait_for_timeout(150)
@@ -1380,9 +1380,9 @@ with sync_playwright() as p:
             gp.click("#home [data-go=collection]"); gp.wait_for_timeout(250); gp.click("#navBack"); gp.wait_for_timeout(250)
             check("Home > Collection > BACK returns to Home", gp.evaluate("current") == "home")
             gp.evaluate("() => { go('home'); island = 'desert'; go('fishing'); }"); gp.wait_for_timeout(300)
-            gp.click("#fBagBtn"); gp.wait_for_timeout(250); on_bag = gp.evaluate("current")
+            gp.click("#sellTop"); gp.wait_for_timeout(250); on_bag = gp.evaluate("current")
             gp.click("#navBack"); gp.wait_for_timeout(300)
-            check("Fishing (Desert) > OPEN BAG > BACK returns to the Fishing screen on the same island",
+            check("Fishing (Desert) > SELL > BACK returns to the Fishing screen on the same island",
                   on_bag == "bag" and gp.evaluate("current") == "fishing" and gp.evaluate("island") == "desert" and "Desert:" in gp.inner_text("#isleProg"), gp.inner_text("#isleProg")[:30])
             gp.evaluate("() => stopFishing()")
             keep = gp.evaluate("['shop', 'tackle'].every(s => !!document.querySelector('#' + s + ' > .btns [data-go=\"home\"]'))")
@@ -1556,7 +1556,17 @@ with sync_playwright() as p:
     check("an existing save with Precision / Lucky equipped loads unchanged and gets 3 / 5 misses", a1 == 3 and a2 == 5 and cp6.evaluate(SAVED + ".rodEq") == "precision", f"{a1} {a2}")
     cp6.close()
 
-    # ---------- BUG-32 (Playtest 1): a friend could not find the Shop from the fishing screen ----------
+    # ---------- BUG-32 / BUG-33 (Playtest 1): SHOP on the fishing screen; SELL moved next to the coins in the top bar ----------
+    SELLTOP = """() => { const s = document.getElementById('sellTop'), g = document.querySelector('.app > .top > .sign'), t = document.getElementById('title'),
+            rs = s.getBoundingClientRect(), rg = g.getBoundingClientRect(), rt = t.getBoundingClientRect(), i = s.querySelector('.ico'), lbl = [...s.childNodes].find(n => n.nodeType === 3);
+        const rg2 = document.createRange(); rg2.selectNodeContents(lbl); const lr = rg2.getBoundingClientRect();
+        return { vis: !!s.offsetParent && getComputedStyle(s).display !== 'none', label: s.textContent.trim(), icon: !!i && i.classList.contains('i-bag') && getComputedStyle(i).display !== 'none',
+                 title: s.title, aria: s.getAttribute('aria-label'), go: s.dataset.go, tag: s.tagName,
+                 gapToCoins: Math.round(rg.left - rs.right), sameTop: Math.abs(rs.top - rg.top) < 1 && Math.abs(rt.top - rg.top) < 1, sameH: Math.abs(rs.height - rg.height) < 1,
+                 w: Math.round(rs.width), h: Math.round(rs.height), titleFits: t.scrollWidth <= t.clientWidth + 1, signFits: g.scrollWidth <= g.clientWidth + 1,
+                 labelIn: lr.left >= rs.left + 4 && lr.right <= rs.right - 4, order: rt.right <= rs.left && rs.right <= rg.left,
+                 inWin: rg.right <= innerWidth - 10, sw: document.documentElement.scrollWidth, vw: innerWidth,
+                 bottomSell: [...document.querySelectorAll('#fishing .btn')].filter(b => /SELL/.test(b.textContent)).length }; }"""
     ACTS = """() => { const bs = [...document.querySelectorAll('#fishing .actions .btn')], de = document.documentElement;
         return { labels: bs.map(b => b.textContent.trim()), ids: bs.map(b => b.id || b.dataset.go),
                  icons: bs.map(b => { const i = b.querySelector('.ico'); return i ? [...i.classList].find(c => c.startsWith('i-')) + (getComputedStyle(i).display !== 'none' ? '' : ':hidden') : null; }),
@@ -1571,18 +1581,29 @@ with sync_playwright() as p:
         sp.evaluate("() => { island = 'desert'; go('fishing'); }"); sp.wait_for_timeout(400)
         a = sp.evaluate(ACTS)
         if (vw, vh) in ((1366, 625), (360, 640)): sp.screenshot(path=str(SHOTS / f"96_fishing_actions_{vw}x{vh}.png"))
-        check(f"{vw}x{vh}: fishing screen buttons are CAST | SELL FISH | SHOP | TOWN MAP (bag, shop and map icons)",
-              a["labels"] == ["CAST", "SELL FISH", "SHOP", "TOWN MAP"] and a["ids"] == ["actBtn", "fBagBtn", "fShopBtn", "map"]
-              and a["icons"] == [None, "i-bag", "i-shop", "i-map"], f"{a['labels']} {a['icons']}")
+        check(f"{vw}x{vh}: the fishing bottom row is exactly CAST | SHOP | TOWN MAP (shop and map icons), no SELL FISH",
+              a["labels"] == ["CAST", "SHOP", "TOWN MAP"] and a["ids"] == ["actBtn", "fShopBtn", "map"]
+              and a["icons"] == [None, "i-shop", "i-map"], f"{a['labels']} {a['icons']}")
+        for coins in (300, 999999):
+            sp.evaluate(f"() => {{ S.coins = {coins}; save(); render(); }}"); sp.wait_for_timeout(150)
+            t = sp.evaluate(SELLTOP)
+            if coins == 300 and (vw, vh) in ((1366, 625), (360, 640)): sp.screenshot(path=str(SHOTS / f"97_sell_top_{vw}x{vh}.png"))
+            check(f"{vw}x{vh} ({coins} coins): SELL (bag icon, 'Sell your fish') sits directly left of the coin counter, same height, on one line with LITTLE LAKE; nothing cut off or overflowing",
+                  t["vis"] and t["label"] == "SELL" and t["icon"] and t["title"] == "Sell your fish" and t["aria"] == "Sell your fish" and t["go"] == "bag" and t["tag"] == "BUTTON"
+                  and 0 <= t["gapToCoins"] <= 12 and t["sameTop"] and t["sameH"] and t["order"] and t["titleFits"] and t["signFits"] and t["labelIn"]
+                  and t["inWin"] and t["sw"] <= t["vw"] and t["bottomSell"] == 0, str(t))
+            check(f"{vw}x{vh} ({coins} coins): SELL tap size >= 40x40px", t["w"] >= 40 and t["h"] >= 40, f"{t['w']}x{t['h']}")
+        sp.evaluate("() => { S.coins = 300; save(); render(); }")
         R = a["rects"]
         if vw >= 900:
             layout = len({round(r[1]) for r in R}) == 1 and len({round(r[3] - r[1]) for r in R}) == 1
-            check(f"{vw}x{vh}: all four fishing buttons on one row with the same height", layout, str([[round(v) for v in r] for r in R]))
+            layout = layout and len({round(r[2] - r[0]) for r in R}) == 1
+            check(f"{vw}x{vh}: CAST, SHOP and TOWN MAP are three equal buttons on one row", layout, str([[round(v) for v in r] for r in R]))
         else:
             cast, rest = R[0], R[1:]
             layout = (len({round(r[1]) for r in rest}) == 1 and len({round(r[3] - r[1]) for r in rest}) == 1 and all(r[1] >= cast[3] for r in rest)
-                      and cast[2] - cast[0] > 2.5 * (rest[0][2] - rest[0][0]) and min(r[3] - r[1] for r in rest) >= 40)
-            check(f"{vw}x{vh}: CAST full width on top, SELL FISH / SHOP / TOWN MAP as three equal smaller buttons in one row below (tap size >= 40px)",
+                      and len({round(r[2] - r[0]) for r in rest}) == 1 and cast[2] - cast[0] > 1.8 * (rest[0][2] - rest[0][0]) and min(r[3] - r[1] for r in rest) >= 40)
+            check(f"{vw}x{vh}: CAST full width on top, SHOP / TOWN MAP as two equal smaller buttons in one row below (tap size >= 40px)",
                   layout, str([[round(v) for v in r] for r in R]))
         check(f"{vw}x{vh}: fishing buttons' labels fit (not cut off), no page or side scroll",
               not a["clipped"] and a["page"] <= a["vh"] + 1 and a["sw"] <= a["vw"], f"clipped {a['clipped']} page {a['page']}/{a['vh']} sw {a['sw']}")
@@ -1592,7 +1613,7 @@ with sync_playwright() as p:
         sp.wait_for_function("F.phase === 'bite'", timeout=8000); tops.append(sp.evaluate(ACT_POS)["top"])
         sp.click("#actBtn"); sp.wait_for_timeout(120); tops.append(sp.evaluate(ACT_POS)["top"])
         sp.evaluate("() => stopFishing()"); sp.wait_for_timeout(100); tops.append(sp.evaluate(ACT_POS)["top"])
-        check(f"{vw}x{vh}: CAST/HOOK/REEL stays put in every phase with the 4-button row (<= 1px)", max(tops) - min(tops) <= 1, str([round(t, 1) for t in tops]))
+        check(f"{vw}x{vh}: CAST/HOOK/REEL stays put in every phase with SELL in the top bar (<= 1px)", max(tops) - min(tops) <= 1, str([round(t, 1) for t in tops]))
         if vw in (1366, 360):
             sp.click("#fShopBtn"); sp.wait_for_timeout(300)
             on_shop = [sp.evaluate("current"), sp.inner_text("#navName")]
@@ -1601,18 +1622,27 @@ with sync_playwright() as p:
             back = [sp.evaluate("current"), sp.evaluate("island"), sp.is_enabled("#actBtn"), "Desert" in sp.inner_text("#fMsg")]
             check(f"{vw}x{vh}: Fishing (Desert) > SHOP opens the Shop; BACK returns to the Fishing screen on the same island",
                   on_shop == ["shop", "SHOP"] and shop_fit and back == ["fishing", "desert", True, True], f"{on_shop} {back}")
-            sp.click("#fBagBtn"); sp.wait_for_timeout(300)
+            sp.click("#sellTop"); sp.wait_for_timeout(300)
             on_bag = [sp.evaluate("current"), sp.inner_text("#navName")]
             sp.click("#navBack"); sp.wait_for_timeout(300)
-            check(f"{vw}x{vh}: SELL FISH opens the Bag; BACK returns to the Fishing screen", on_bag == ["bag", "BAG"] and sp.evaluate("current") == "fishing", str(on_bag))
+            check(f"{vw}x{vh}: SELL (top bar) opens the Bag; BACK returns to the Fishing screen on the same island",
+                  on_bag == ["bag", "BAG"] and sp.evaluate("current") == "fishing" and sp.evaluate("island") == "desert", str(on_bag))
+            hidden = {}
+            for scr in ["home", "map", "bag", "shop", "collection", "tackle"]:
+                sp.evaluate(f"() => go('{scr}')"); sp.wait_for_timeout(120); hidden[scr] = sp.is_visible("#sellTop")
+            sp.evaluate("() => { S.pending = { fishId: 'harbor_0', weight: .3, price: 20, time: 1 }; save(); go('result'); }"); sp.wait_for_timeout(150)
+            hidden["result"] = [sp.evaluate("current"), sp.is_visible("#sellTop")]
+            sp.evaluate("() => { S.pending = null; save(); island = 'desert'; go('fishing'); }"); sp.wait_for_timeout(200)
+            check(f"{vw}x{vh}: SELL is only in the Fishing screen's top bar (not on Home, Map, Bag, Shop, Collection, Tackle Box or Result)",
+                  not any(v for k, v in hidden.items() if k != "result") and hidden["result"] == ["result", False], str(hidden))
             sp.click("#rodChip"); sp.wait_for_timeout(200)
             check(f"{vw}x{vh}: the Choose Rod popup keeps its GO TO SHOP link", sp.is_visible("#pickShop") and "SHOP" in sp.inner_text("#pickShop"))
             sp.keyboard.press("Escape"); sp.wait_for_timeout(100)
         sp.close()
     hw = b.new_page(viewport={"width": 1280, "height": 720}); hw.goto(URL); hw.wait_for_timeout(200); hw.click("#howBtn"); hw.wait_for_timeout(150)
     how = hw.inner_text("#howBox")
-    check("HOW TO PLAY: no 'OPEN BAG' on the fishing screen; mentions SELL FISH and SHOP on the fishing screen",
-          "While fishing, SELL FISH opens the bag." in how and "with SHOP on the fishing screen" in how and "OPEN BAG" not in how, how[:80])
+    check("HOW TO PLAY: no 'OPEN BAG' / 'SELL FISH'; says SELL is next to your coins and mentions SHOP on the fishing screen",
+          "While fishing, SELL (next to your coins at the top) opens the bag." in how and "SELL FISH" not in how and "with SHOP on the fishing screen" in how and "OPEN BAG" not in how, how[:80])
     hw.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))

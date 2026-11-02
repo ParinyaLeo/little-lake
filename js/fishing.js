@@ -361,7 +361,7 @@ function renderFishingHud() {
   $("bonuses").innerHTML = ISLAND_IDS.filter(i => S.mastery[i]).map(i => { const I = ISLANDS[i], tip = `${I.reward}: ${I.effect}`;
     return `<button class="bonus" data-tip="${tip}" title="${tip}" aria-label="${tip}"><span class="ico i-${I.icon}"></span></button>`; }).join("")
     || `<span class="hint">Tap ROD or BAIT to change</span>`;
-  $("fBagBtn").classList.toggle("glow", bagFull());
+  $("sellTop").classList.toggle("glow", bagFull());   // SELL beside the coins glows when the bag is full
   const a = $("actBtn");
   if (F.phase === "idle") {
     a.disabled = bagFull(); a.textContent = bagFull() ? "BAG FULL" : "CAST"; a.className = "btn green";
