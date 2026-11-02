@@ -83,7 +83,7 @@ A different browser, device or home-screen app has its own separate save."). **E
 **Navigation / BACK bar** (`#navbar`, inside the header row `.app > .top`): shown on Map, Bag, Shop, Collection and Tackle Box
 (`NAV_SCREENS`), **not on Home** (root screen, it has the ☰ MENU button), Title, Fishing or Result. It has **< BACK** (`#navBack`) on the
 left and the screen name in the middle; the empty third column (`.nav-end`) keeps the name centred. **No HOME button in the top bar**
-(one navigation rule: BACK is the way back). HOME buttons: the Town Map has one as a tab on its panel frame, top right (`#mapHome`, house icon `i-home`,
+(one navigation rule: BACK is the way back). HOME buttons: the Town Map has one fully above its panel frame, right-aligned (`#mapHome`, house icon `i-home`,
 aria-label "Home"; it is the only way Home from Fishing: Fishing > TOWN MAP > HOME); Shop and Tackle Box keep their bottom HOME;
 the Bag and the Collection have none. On windows 900px and wider it sits in the middle of the header (LITTLE LAKE | < BACK + name | coins). Below 900px it
 wraps to its own row and the whole header is `position: sticky` with a negative `top` (header height + gap), so only the BACK row stays
@@ -243,12 +243,13 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   desktop). Each card is the island picture with a dark progress plate at the bottom (`.isl-plate`): name + gold star (`i-star`) when
   mastered, a bar with "x / 10" (gold when mastered) and the reward name with its icon (padlock until mastered). The secret island is a
   separate wide strip below (`.secret-strip`): locked = padlock, "???", "Master all 4 islands to unlock" and "x / 4 mastered" on its
-  dark night gradient (no picture, no moon); unlocked = `secret.png`, "Little Lake" and "x / 1 found". HOME (`#mapHome`, BUG-34) is a tab on
-  the panel's top border, top right: a direct child of `.map-panel` (`position: relative`), `position: absolute; top: 0; right: 16px`
-  (10px on phones) moved up by half its height, so half sits above the border line and half inside. It is `--tab-h` tall (48px; 46px on
-  phones) with a 22px (20px) house icon and 20px (18px) label. The panel has `margin-top: calc(var(--tab-h) / 2 - 6px)` so the tab never
-  reaches the top bar, and `.head` has right padding so the title never runs under it. No button row below the panel. On short phones
-  (max-height 700px) the island cards are 130px high so the Map fits 360x640 without page scroll.
+  dark night gradient (no picture, no moon); unlocked = `secret.png`, "Little Lake" and "x / 1 found". HOME (`#mapHome`, BUG-35) is fully above the panel frame,
+  right-aligned: a direct child of `.map-panel` (`position: relative`), `position: absolute; right: -4px; bottom: calc(100% + 4px +
+  var(--tab-gap))` (the 4px = the panel border), so its right edge matches the panel's and its bottom is `--tab-gap` (10px: 5px drop shadow
+  + 5px clear) above the top border. It is `--tab-h` tall (48px; 46px on phones, 44px on short phones) with a 22px (20px) house icon and 20px
+  (18px) label. The panel has `margin-top: calc(var(--tab-h) + var(--tab-gap))`, so HOME sits in the gap between the top bar and the panel and
+  never touches either; the title row is a clean row with only the title. No button row below the panel. On short phones (max-width 700px and
+  max-height 700px) the island cards are 120px high, with a tighter panel padding and progress plate, so the Map fits 360x640 without page scroll.
   Every card shows only the place (no figure). Harbor uses `assets/harbor_clean.jpg` (the photo after `cleanPlate()`, made by
   `tools/make_harbor_clean.py`) with `harbor.jpg` behind it as the fallback layer; the Title screen keeps `harbor.jpg` with its
   fisherman as cover art. `.bg-<island>` = `--card-shade`, the island picture (`cover`, positioned on its best part), then the old

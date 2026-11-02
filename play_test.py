@@ -1461,15 +1461,15 @@ with sync_playwright() as p:
         sc_.screenshot(path=str(SHOTS / f"93_{sc}_1536x730.png"))
     sc_.close()
 
-    # ---------- BUG-30 / BUG-34: Town Map HOME (BUG-30: out of the bottom bar; BUG-34: a bigger tab on the panel's top border, top right) ----------
+    # ---------- BUG-30 / BUG-34 / BUG-35: Town Map HOME (BUG-30: out of the bottom bar; BUG-34: bigger; BUG-35: fully above the panel frame, right-aligned) ----------
     MH = """() => { const homes = [...document.querySelectorAll('[data-go="home"]')].filter(b => b.offsetParent), m = document.getElementById('mapHome'),
         panel = document.querySelector('#map .panel'), p = panel.getBoundingClientRect(), r = m.getBoundingClientRect(), h2 = panel.querySelector('h2').getBoundingClientRect(),
         bw = parseFloat(getComputedStyle(panel).borderTopWidth), ico = m.querySelector('.ico.i-home').getBoundingClientRect(),
         hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom,
-        others = [...document.querySelectorAll('.app > .top > *, #map .island, #map h2')].filter(e => e.offsetParent || getComputedStyle(e).position === 'fixed');
+        others = [...document.querySelectorAll('.app > .top > *, #map .island, #map h2, #map .panel')].filter(e => e.offsetParent || getComputedStyle(e).position === 'fixed');
         return { n: homes.length, inPanel: m.parentElement === panel, inBar: !!document.querySelector('#navbar [data-go="home"]'),
                  below: document.querySelectorAll('#map > .btns').length, right: Math.round(p.right - r.right),
-                 above: Math.round(p.top - r.top), inside: Math.round(r.bottom - (p.top + bw)), straddles: r.top < p.top && r.bottom > p.top + bw,
+                 gap: Math.round(p.top - r.bottom), panelHit: hit(r, p), bar: Math.round(r.top - document.querySelector('.app > .top').getBoundingClientRect().bottom),
                  overlaps: others.filter(e => hit(r, e.getBoundingClientRect())).map(e => e.id || e.className),
                  inView: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
                  topAt: document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2)?.closest('#mapHome') === m,
@@ -1484,17 +1484,17 @@ with sync_playwright() as p:
         hp.evaluate("() => { island = 'frost'; go('fishing'); }"); hp.wait_for_timeout(300)
         hp.click("#fishing [data-go=map]"); hp.wait_for_timeout(400)
         r = hp.evaluate(MH)
-        if (vw, vh) in ((1536, 730), (360, 640)): hp.screenshot(path=str(SHOTS / f"98_map_home_tab_{vw}x{vh}.png"))
-        check(f"{vw}x{vh}: Town Map has exactly one HOME, a real button (pixel house icon, 'HOME', aria-label 'Home') on the panel frame; none in the top bar or below the panel",
+        if (vw, vh) in ((1536, 730), (360, 640)): hp.screenshot(path=str(SHOTS / f"98_map_home_above_{vw}x{vh}.png"))
+        check(f"{vw}x{vh}: Town Map has exactly one HOME, a real button (pixel house icon, 'HOME', aria-label 'Home') placed from the panel; none in the top bar or below the panel",
               r["n"] == 1 and r["inPanel"] and not r["inBar"] and r["below"] == 0 and r["icon"] and r["label"] == "HOME" and r["aria"] == "Home" and r["tag"] == "BUTTON",
               str({k: r[k] for k in ("n", "inPanel", "inBar", "below", "icon", "label", "aria")}))
         check(f"{vw}x{vh}: Town Map HOME is >= 44px tall with a bigger icon (>= 20px) and label (>= 18px)", r["h"] >= 44 and r["iconPx"] >= 20 and r["font"] >= 18,
               f"h {r['h']} icon {r['iconPx']} font {r['font']}")
-        check(f"{vw}x{vh}: Town Map HOME sits on the panel's top border at the right edge (about half above, half inside; <= 20px from the right)",
-              r["straddles"] and abs(r["above"] - r["h"] / 2) <= 8 and 0 <= r["right"] <= 20, f"above {r['above']} inside {r['inside']} h {r['h']} right {r['right']}")
-        check(f"{vw}x{vh}: Town Map HOME doesn't overlap the title, the island cards or the top bar, is fully in view and on top (tappable)",
-              not r["overlaps"] and r["inView"] and r["topAt"], f"{r['overlaps']} inView {r['inView']} topAt {r['topAt']}")
-        check(f"{vw}x{vh}: Town Map header row is no taller than before (<= 44px) and the page has no page scroll or side scroll",
+        check(f"{vw}x{vh}: Town Map HOME is fully above the panel's top border (gap 4-14px) and right-aligned with the panel's right edge (within 2px)",
+              4 <= r["gap"] <= 14 and abs(r["right"]) <= 2 and not r["panelHit"], f"gap {r['gap']} right {r['right']} panelHit {r['panelHit']}")
+        check(f"{vw}x{vh}: Town Map HOME doesn't overlap the top bar, the panel, the title or the island cards, is fully in view and on top (tappable)",
+              not r["overlaps"] and r["bar"] >= 0 and r["inView"] and r["topAt"], f"{r['overlaps']} bar gap {r['bar']} inView {r['inView']} topAt {r['topAt']}")
+        check(f"{vw}x{vh}: Town Map title row is a clean row (<= 44px) and the page has no page scroll or side scroll",
               r["headH"] <= 44 and r["page"] <= r["vh"] + 1 and r["sw"] <= r["vw"], f"head {r['headH']} page {r['page']}/{r['vh']} sw {r['sw']}")
         if vw in (1536, 360):
             hp.click("#navBack"); hp.wait_for_timeout(300)
