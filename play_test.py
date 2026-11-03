@@ -2330,8 +2330,20 @@ with sync_playwright() as p:
     pp.locator("#shopFloats").screenshot(path=str(SHOTS / "105_frog_shop_cards_1536x730.png"))
     pp.evaluate("go('tackle')"); pp.wait_for_timeout(300)
     pv["tackle"] = pp.evaluate(f"{SZ}([...document.querySelectorAll('#gearList .gear-row')].filter(r => r.querySelector('.ico.fl'))[2].querySelector('.ico.fl'))")
-    pp.evaluate("() => { island = 'harbor'; go('fishing'); }"); pp.wait_for_timeout(300); pp.click("#floatChip"); pp.wait_for_timeout(300)
+    pp.evaluate("() => { S.floatEq = 'frog'; save(); island = 'harbor'; go('fishing'); }"); pp.wait_for_timeout(300); pp.click("#floatChip"); pp.wait_for_timeout(300)
     pv["pick"] = pp.evaluate(f"{SZ}(document.querySelector('#pickList .pick-card:nth-child(3) .ico.fl'))")
+    DESC = "A little frog riding a floating log."
+    d12g = {"popup": DESC in pp.inner_text("#pickList"), "chip": DESC in (pp.get_attribute("#floatChip", "title") or ""), "data": pp.evaluate("FLOATS.frog.blurb") == DESC}
+    pp.evaluate("closeModal('pickBox'); go('shop')"); pp.wait_for_timeout(250); d12g["shop"] = DESC in pp.inner_text("#shopFloats")
+    pp.evaluate("go('tackle')"); pp.wait_for_timeout(250); d12g["tackle"] = DESC in pp.inner_text("#gearList")
+    d12g["old"] = "two tiny eyes" not in pp.evaluate("document.body.innerHTML")
+    check("frog description (part 12g) is 'A little frog riding a floating log.' in the data, the Shop card, the Tackle Box row, the Choose Float popup and the chip tooltip", all(d12g.values()), str(d12g))
+    ic = pp.evaluate("""async () => { const px = url => new Promise(res => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0); res([im.width, im.height, g.getImageData(0, 0, im.width, im.height).data]); }; im.src = url; });
+        const f = await px(floatIconUrl('frog')); let gr = 0, br = 0, pk = 0; for (let i = 0; i < f[2].length; i += 4) { if (!f[2][i + 3]) continue; const r = f[2][i], g = f[2][i + 1], b = f[2][i + 2]; if (g > 110 && g > r + 30 && g > b + 30) gr++; if (r > g + 20 && g > b + 10 && r < 240) br++; if (r > 240 && g > 140 && g < 180) pk++; }
+        const same = {}; for (const id of ['classic', 'candy', 'duck', 'golden']) { const c = document.createElement('canvas'); c.width = 12; c.height = 19; const g = c.getContext('2d'); FLOAT_MAPS[id].forEach((row, y) => { for (let x = 0; x < 12; x++) if (row[x] !== '.') { g.fillStyle = FLOAT_LOOK[id][row[x]]; g.fillRect(x, y, 1, 1); } }); same[id] = c.toDataURL() === floatIconUrl(id); }
+        return { size: [f[0], f[1]], gr, br, pk, same }; }""")
+    check("frog preview icon (part 12g) is 16 x 16 art pixels with both green and brown (and pink cheek) pixels; the other four previews are still their on-water sprites",
+          ic["size"] == [16, 16] and ic["gr"] >= 30 and ic["br"] >= 20 and ic["pk"] >= 2 and all(ic["same"].values()) and len(ic["same"]) == 4, str(ic))
     pp.close()
     check("frog preview icon is bigger than before (at least 28 x 28 px) in the Shop, the Tackle Box and the Choose Float popup; the other floats' previews keep their size",
           all(pv[k][0] >= 28 and pv[k][1] >= 28 for k in ["shop", "tackle", "pick"]) and pv["shopOther"] == [24, 32], str(pv))

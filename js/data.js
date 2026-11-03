@@ -60,7 +60,7 @@ const BAIT_IDS = Object.keys(BAITS);
 const FLOATS = {
   classic: { name: "Classic Float", short: "Classic", price: 0,   blurb: "Red and white, the one every angler knows." },
   candy:   { name: "Candy Float",   short: "Candy",   price: 150, blurb: "A pink-and-white swirl, sweet as a lollipop." },
-  frog:    { name: "Frog Float",    short: "Frog",    price: 250, blurb: "A green float with two tiny eyes watching the water." },
+  frog:    { name: "Frog Float",    short: "Frog",    price: 250, blurb: "A little frog riding a floating log." },
   duck:    { name: "Duck Float",    short: "Duck",    price: 350, blurb: "A yellow float with an orange beak." },
   golden:  { name: "Golden Float",  short: "Golden",  price: 600, blurb: "Shiny gold with a slow sparkle." },
 };

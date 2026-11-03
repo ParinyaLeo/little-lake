@@ -60,9 +60,9 @@ def candy():
 # part 12e: a wide, squat head (full 12 px, eyes at the corners, smile) sitting on a narrow float body (6 px, light stripe); row 14 = the waterline
 FROG = ["....OOOO....", ".OOO.OO.OOO.", "OWWWOBBOWWWO", "OWKWOBBOWKWO", "OGGGBBBBGGGO", "OBBBBBBBBBBO", "OBDBBBBBBDBO", "OBBDDDDDDBBO", ".OBBBBBBBBO.", "..OOOOOOOO..", "..OMMMMMmO..", "..OMMMMMmO..", "..ONNNNNmO..", "..OMMMMMmO..", "..OMMMMMmO..", "..OMMMMMmO..", "...OMMMMO...", "....OMMO....", "....OOOO...."]
 FROG_BLINK = FROG[:2] + ["OGGGOBBOGGGO", "ODDDOBBODDDO"] + FROG[4:]       # eyes shut for ~120 ms every 3 s: a green lid and a dark lid line, same 12 x 19 box
+# part 12g: the preview is the same frog sitting on the same brown log as on the water.
 # the bigger, cuter frog for the UI previews (Shop, Tackle Box, Choose Float, FLOAT chip): 16 x 16 art pixels, shown at 2x: big eyes with a white highlight, pink cheeks, a wide smile
-FROG_ICON = ["..OOOO....OOOO..", ".OBBBBO..OBBBBO.", "OBWWWWBOOBWWWWBO", "OBWWKWBOOBWWKWBO", "OBWKKWBOOBWKKWBO", "OBBBBBBOOBBBBBBO", ".OBBBBBBBBBBBBO.", "OBBBBBBBBBBBBBBO",
-             "OBPPBBBBBBBBPPBO", "OBPPBDBBBBDBPPBO", "OBBBBBDDDDBBBBBO", "OBLLLLLLLLLLLLBO", "OBLLLLLLLLLLLLBO", ".OLLLLLLLLLLLLO.", "..OLLLLLLLLLLO..", "...OOOOOOOOOO..."]
+FROG_ICON = ["..OOOO....OOOO..", ".OBBBBO..OBBBBO.", "OBWWKWBOOBWWKWBO", "OBWKKWBOOBWKKWBO", "OBBBBBBOOBBBBBBO", "OBPPBBBBBBBBPPBO", "OBPPBDBBBBDBPPBO", "OBBBBBDDDDBBBBBO", ".OBBBBBBBBBBBBO.", "..OOOOOOOOOOOO..", "...OMMMMMMMmO...", "...ONNNNNNNmO...", "...OMMMMMMMmO...", "...OMMMMMMMmO...", "....OMMMMMMO....", "....OOOOOOOO...."]
 assert all(len(r) == 12 for r in FROG + FROG_BLINK) and len(FROG) == 19 and all(len(r) == 16 for r in FROG_ICON) and len(FROG_ICON) == 16
 
 def frog():
