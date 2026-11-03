@@ -56,8 +56,9 @@ def candy():
         if x >= 9: g.m[(x, y)] = "D" if s < 3 else "a"
     return g.rows()
 
+# part 12f: the head is bright green, the float below it a brown log (M, m shade, N light stripe) with a dark divider row between them.
 # part 12e: a wide, squat head (full 12 px, eyes at the corners, smile) sitting on a narrow float body (6 px, light stripe); row 14 = the waterline
-FROG = ["....OOOO....", ".OOO.OO.OOO.", "OWWWOBBOWWWO", "OWKWOBBOWKWO", "OGGGBBBBGGGO", "OBBBBBBBBBBO", "OBDBBBBBBDBO", "OBBDDDDDDBBO", ".OBBBBBBBBO.", "..OBBBBBDO..", "..OBBBBBDO..", "..OLLLLLDO..", "..OLLLLLDO..", "..OBBBBBDO..", "..OBBBBBDO..", "..OBBBBBDO..", "...OBBBBO...", "....OBBO....", "....OOOO...."]
+FROG = ["....OOOO....", ".OOO.OO.OOO.", "OWWWOBBOWWWO", "OWKWOBBOWKWO", "OGGGBBBBGGGO", "OBBBBBBBBBBO", "OBDBBBBBBDBO", "OBBDDDDDDBBO", ".OBBBBBBBBO.", "..OOOOOOOO..", "..OMMMMMmO..", "..OMMMMMmO..", "..ONNNNNmO..", "..OMMMMMmO..", "..OMMMMMmO..", "..OMMMMMmO..", "...OMMMMO...", "....OMMO....", "....OOOO...."]
 FROG_BLINK = FROG[:2] + ["OGGGOBBOGGGO", "ODDDOBBODDDO"] + FROG[4:]       # eyes shut for ~120 ms every 3 s: a green lid and a dark lid line, same 12 x 19 box
 # the bigger, cuter frog for the UI previews (Shop, Tackle Box, Choose Float, FLOAT chip): 16 x 16 art pixels, shown at 2x: big eyes with a white highlight, pink cheeks, a wide smile
 FROG_ICON = ["..OOOO....OOOO..", ".OBBBBO..OBBBBO.", "OBWWWWBOOBWWWWBO", "OBWWKWBOOBWWKWBO", "OBWKKWBOOBWKKWBO", "OBBBBBBOOBBBBBBO", ".OBBBBBBBBBBBBO.", "OBBBBBBBBBBBBBBO",
@@ -89,7 +90,7 @@ FLOATS = {"classic": classic, "candy": candy, "frog": frog, "duck": duck, "golde
 LOOK = {   # O outline, B body, L light, D shade, A second colour, a its shade, W white, K black
     "classic": dict(O="#3a0d0d", B="#e53935", L="#ff9e9e", D="#a32121", A="#ffffff", a="#b8c4cc", W="#ffffff", K="#111111"),
     "candy":   dict(O="#6a0f45", B="#ff4fa0", L="#ffffff", D="#c2185b", A="#ffffff", a="#f3b6d4", W="#ffffff", K="#111111"),
-    "frog":    dict(O="#0b3a12", B="#43c94f", L="#d4f58a", D="#2a8a30", G="#7fe06a", P="#ff9fb0", A="#ffffff", a="#c8e6c9", W="#ffffff", K="#0a0a0a"),
+    "frog":    dict(O="#0b3a12", B="#43c94f", L="#d4f58a", D="#2a8a30", G="#7fe06a", P="#ff9fb0", M="#a8612a", m="#6b3a17", N="#e3aa6a", A="#ffffff", a="#c8e6c9", W="#ffffff", K="#0a0a0a"),
     "duck":    dict(O="#5e3b00", B="#fff03a", L="#ffffb0", D="#e8c800", A="#ff8a00", a="#d46a00", W="#ffffff", K="#111111"),
     "golden":  dict(O="#5a3d00", B="#f7b000", L="#ffe27a", D="#c26a00", A="#e08a00", a="#9a5200", W="#ffffff", K="#111111"),
 }

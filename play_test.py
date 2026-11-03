@@ -2312,6 +2312,12 @@ with sync_playwright() as p:
     check("frog: differs from classic, candy, duck and golden in at least 10 pixels each", len(fr["others"]) == 4 and min(fr["others"]) >= 10, str(fr["others"]))
     check("frog: blinks every 3 s for about 120 ms (open until 2879 ms, closed 2880-2999, open again at 3000); the closed frame differs from the open one; static open eyes with reduced motion",
           fr["blink"] > 0 and fr["openAgain"] == 0 and fr["still"] == 0 and fr["openEq"] == 0 and fr["shutMs"] == [0, fr["blink"], fr["blink"], 0], str(fr))
+    cl = bp.evaluate("""() => { const W = 60, H = 70, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); drawFloat(g, 30, 44, 'frog', 0, true); const a = g.getImageData(0, 0, W, H).data;
+        const y0 = 44 - FLOAT_TOP, cnt = (ya, yb) => { let gr = 0, br = 0, n = 0; for (let y = y0 + ya; y <= y0 + yb; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; if (!a[i + 3]) continue; const r = a[i], gg = a[i + 1], b = a[i + 2]; if (gg > 110 && gg > r + 30 && gg > b + 30) gr++; if (r > gg + 20 && gg > b + 10) br++; n++; } return { gr, br, n }; };
+        const rowW = y => { let x0 = 99, x1 = -1; for (let x = 0; x < W; x++) if (a[((y0 + y) * W + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); } return x1 - x0 + 1; };
+        return { head: cnt(1, 8), body: cnt(10, 17), headW: rowW(5), bodyW: rowW(12) }; }""")
+    check("frog (part 12f): the head is mostly green, the float body below it is mostly brown, and the head is at least 2px wider than the body on each side",
+          cl["head"]["gr"] > cl["head"]["n"] * .5 and cl["head"]["br"] == 0 and cl["body"]["br"] > cl["body"]["n"] * .5 and cl["body"]["gr"] == 0 and cl["headW"] - cl["bodyW"] >= 4, str(cl))
     pp = b.new_page(viewport={"width": 1536, "height": 730})
     pp.on("pageerror", lambda e: errs.append(str(e))); pp.on("console", lambda m: m.type == "error" and errs.append(m.text))
     pp.goto(URL); pp.evaluate("localStorage.clear()"); pp.reload(); pp.wait_for_timeout(300); start_new(pp, "Froggy")
