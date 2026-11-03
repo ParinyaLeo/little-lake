@@ -264,6 +264,39 @@ function splash(bx, by, k, W) {
   }
 }
 
+/* Bobber styles (Playtest 1, part 12): the float's look follows the bait used by the cast (F.usedBait, fixed when the cast starts). Every style keeps the same body size
+   (12 x 15 px) and anchor (bx, by = the point on the water), so the line, the dip on a bite, the splash and the HOOK timing are unchanged. Colours per part:
+   [main, highlight, shade]. `tail` = rectangles [x, y, w, h, colour] relative to (bx, by + 5), drawn under the float in the water. */
+const BOBBERS = {
+  none:   { top: ["#e53935", "#ff8a80", "#b71c1c"], bot: ["#ffffff", "#ffffff", "#c8d0d6"], stick: "#3b2a1a", tail: [] },                      // classic red-and-white float
+  worm:   { top: ["#e8506e", "#ff9db0", "#a82846"], bot: ["#ffd9e0", "#ffffff", "#e0a4b2"], stick: "#5a2332",                                  // pink-red float + a curly worm tail
+            tail: [[-1, 0, 3, 3, "#d9657f"], [-1, 3, 3, 3, "#c94f6c"], [2, 6, 3, 3, "#d9657f"], [5, 6, 3, 3, "#c94f6c"], [8, 3, 3, 3, "#d9657f"], [8, 0, 3, 3, "#8f2f48"]] },
+  shrimp: { top: ["#ff8f1f", "#ffc166", "#cc6200"], bot: ["#fff0d6", "#ffffff", "#e8c9a0"], stick: "#6b3a12",                                  // orange float + a tiny shrimp tail
+            tail: [[-3, 0, 6, 3, "#ff7a3a"], [-2, 3, 6, 3, "#ff9a5c"], [1, 6, 6, 3, "#ff7a3a"], [5, 9, 3, 3, "#ffb347"], [8, 6, 3, 3, "#ffb347"], [8, 9, 3, 3, "#ffb347"]] },
+  golden: { top: ["#ffca28", "#fff6a8", "#d98e00"], bot: ["#ffe9a0", "#ffffff", "#e0b030"], stick: "#8a6200", tail: [], spark: true },        // shiny gold float with a slow 2-frame sparkle
+};
+const BOBBER_W = [4, 8, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 10, 8, 4];   // row widths of the round body (the first 8 rows are the top colour)
+let BOBBER_LAST = "none";                                                      // the style drawn last, for the tests (like fisherRodStyle())
+const bobberStyleKey = () => BOBBER_LAST;
+function drawBobber(c, bx, by, key, t, still) {
+  const B = BOBBERS[key] || BOBBERS.none; BOBBER_LAST = BOBBERS[key] ? key : "none"; bx = Math.round(bx); by = Math.round(by);
+  c.fillStyle = B.stick; c.fillRect(bx - 1, by - 14, 2, 4);                                       // antenna
+  for (let i = 0; i < BOBBER_W.length; i++) {
+    const w = BOBBER_W[i], x0 = bx - w / 2, y = by - 10 + i, P = i < 8 ? B.top : B.bot;
+    c.fillStyle = P[0]; c.fillRect(x0, y, w, 1);
+    c.fillStyle = P[2]; c.fillRect(x0 + w - 3, y, 3, 1);                                          // shaded right side
+    if (i === 1 || i === 2) { c.fillStyle = P[1]; c.fillRect(bx - 4, y, 3, 1); }                  // highlight
+  }
+  for (const [x, y, w, h, col] of B.tail) { c.fillStyle = col; c.fillRect(bx + x, by + 5 + y, w, h); }
+  if (B.spark) {                                                                                  // gold: extra shine + a slow sparkle (still with reduced motion: no sparkle)
+    c.fillStyle = "#ffffff"; c.fillRect(bx - 5, by + 1, 2, 1); c.fillRect(bx - 4, by + 2, 1, 2);
+    if (!still) {
+      const f = Math.floor(t / 500) % 2, sx = f ? bx - 9 : bx + 8, sy = f ? by - 3 : by - 11;
+      c.fillStyle = "#ffffff"; c.fillRect(sx, sy - 3, 1, 7); c.fillRect(sx - 3, sy, 7, 1); c.fillStyle = "#fff59d"; c.fillRect(sx - 1, sy - 1, 3, 3); c.fillStyle = "#ffffff"; c.fillRect(sx, sy, 1, 1);
+    }
+  }
+}
+
 function drawScene(t) {
   const W = cv.width, H = cv.height, sc = SCENES[island], still = !!(REDUCED && REDUCED.matches), ft = still ? 0 : t;
   ctx.imageSmoothingEnabled = false;
@@ -320,9 +353,7 @@ function drawScene(t) {
       ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 2;
       const r = 10 + ((t / 8) % 30); ctx.beginPath(); ctx.ellipse(bx, by + 6, r, r / 3, 0, 0, 7); ctx.stroke();
     }
-    ctx.fillStyle = "#3b2a1a"; ctx.fillRect(bx - 1, by - 14, 2, 4);                          // bobber
-    ctx.fillStyle = "#e53935"; ctx.fillRect(bx - 6, by - 10, 12, 8); ctx.fillStyle = "#ff8a80"; ctx.fillRect(bx - 4, by - 9, 3, 2);
-    ctx.fillStyle = "#fff"; ctx.fillRect(bx - 6, by - 2, 12, 7); ctx.fillStyle = "#c8d0d6"; ctx.fillRect(bx + 3, by - 2, 3, 7);
+    drawBobber(ctx, bx, by, F.usedBait && BOBBERS[F.usedBait] ? F.usedBait : "none", t, still);   // the float follows the bait used for THIS cast (F.usedBait)
     if (F.phase !== "casting" && !still && since >= 0 && since < 450) splash(bx, by, since / 450, W);
     F.bobPos = { x: bx / W, y: by / H };
   }

@@ -331,6 +331,12 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   larger `.i-rodlg-<id>` (16x16 art, 32px in the Shop and the Choose Rod popup, 48px in the Tackle Box: whole pixel multiples), same colours.
   If you change a colour, change it in `ROD_STYLES` and in `tools/make_rod_icons.py`, then run `--write`. Check `shots/99_rods_contact.png`
   (written by the tests: 4 rods x 5 outfits x 7 poses).
+- **Bobber styles** (`BOBBERS`, `drawBobber()` in `js/fishing.js`; Playtest 1 part 12): the float follows the bait used by the cast, i.e. `F.usedBait` (set in `cast()`, so the look
+  never changes mid-cast, even if the equipped bait does; no bait = `none`). `none` = classic red-and-white round float; `worm` = pink-red float with a curly worm tail below
+  the waterline; `shrimp` = orange float with a small segmented shrimp tail; `golden` = shiny gold float with a 2-frame sparkle (500 ms; no sparkle with reduced motion).
+  Every style has the same 12 x 15 px round body (`BOBBER_W`), antenna and anchor `(bx, by)` as before; only colours and the tail (drawn below `by + 5`) differ, so the line,
+  the bob / dip on a bite, the splash, the rings and the HOOK timing are untouched. `bobberStyleKey()` returns the style drawn last (like `fisherRodStyle()`). New bait = new
+  entry in `BOBBERS` keyed by the bait id.
 - **Fisherman outfits** (`OUTFITS` in `js/fisherman.js`, picked by `SCENES[island].fisher.outfit`, passed in `cfg.outfit`): each has its
   own palette, head/body/legs maps and arm colours (`arm` = sleeve, sleeve highlight, forearm, hand, hand shade as palette letters;
   optional `front` = a small map drawn over the arm, e.g. the Little Lake lantern). Maps must keep the grids (head 22x15, body

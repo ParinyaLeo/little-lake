@@ -2219,6 +2219,70 @@ with sync_playwright() as p:
         const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); }, 5); setTimeout(() => { clearInterval(iv); res(peak); }, 300); }); }""")
     check("the click is soft: its peak is far below the other effects (below 0.12) yet audible (above 0.005)", .005 < q2 < .12, str(q2))
     kp.close()
+    # ---------- Playtest 1, part 12: the bobber's look follows the bait used by the cast ----------
+    bp = b.new_page(viewport={"width": 1536, "height": 730})
+    bp.on("pageerror", lambda e: errs.append(str(e))); bp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    bp.goto(URL); bp.evaluate("localStorage.clear()"); bp.reload(); bp.wait_for_timeout(300); start_new(bp, "Floater")
+    bp.add_style_tag(content="#toast { display: none !important; }")
+    bp.evaluate("() => { S.baits = { worm: 9, shrimp: 9, golden: 9 }; S.bagMax = 20; save(); island = 'harbor'; go('fishing'); }"); bp.wait_for_timeout(700)
+    keys = {}
+    for key in ["none", "worm", "shrimp", "golden"]:
+        bp.evaluate(f"() => {{ stopFishing(); S.baitSel = '{key}'; go('home'); go('fishing'); }}"); bp.wait_for_timeout(300)
+        bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(250)
+        keys[key] = bp.evaluate("[bobberStyleKey(), F.usedBait]")
+        bp.wait_for_timeout(500); bp.evaluate("clearTimers()")
+        bp.screenshot(path=str(SHOTS / f"103_bobber_{key}_1536x730.png"))
+        r = bp.evaluate("""() => { const c = document.getElementById('sceneCanvas').getBoundingClientRect(); return [c.left + F.bobPos.x * c.width, c.top + F.bobPos.y * c.height]; }""")
+        bp.screenshot(path=str(SHOTS / f"103_bobber_{key}_crop.png"), clip={"x": r[0] - 70, "y": r[1] - 50, "width": 140, "height": 100})
+    check("the style key follows the bait used by the cast: none, worm, shrimp, golden (bobberStyleKey())",
+          keys == {"none": ["none", None], "worm": ["worm", "worm"], "shrimp": ["shrimp", "shrimp"], "golden": ["golden", "golden"]}, str(keys))
+    px = bp.evaluate("""() => { const out = {}, snap = (key, t, still) => { const c = document.createElement('canvas'); c.width = 40; c.height = 44; const g = c.getContext('2d');
+          drawBobber(g, 20, 16, key, t, still); const d = g.getImageData(0, 0, 40, 44).data; return Array.from(d).join(','); };
+        for (const k of ['none', 'worm', 'shrimp', 'golden']) out[k] = snap(k, 0, true);
+        out.gold0 = snap('golden', 0, false); out.gold500 = snap('golden', 500, false); out.goldStill500 = snap('golden', 500, true);
+        const diff = (a, b) => { a = a.split(','); b = b.split(','); let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) n++; return n; };
+        const ks = ['none', 'worm', 'shrimp', 'golden'], d = {}; for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) d[ks[i] + '/' + ks[j]] = diff(out[ks[i]], out[ks[j]]);
+        const filled = k => { const a = out[k].split(','); let n = 0; for (let i = 3; i < a.length; i += 4) if (a[i] !== '0') n++; return n; };
+        return { d, sparkle: diff(out.gold0, out.gold500), stillSame: diff(out.golden, out.goldStill500), gold0still: diff(out.gold0, out.golden), filled: ['none', 'worm', 'shrimp', 'golden'].map(filled) }; }""")
+    check("the four styles draw clearly different pixels (every pair differs in at least 40 pixels)", len(px["d"]) == 6 and min(px["d"].values()) >= 40, str(px["d"]))
+    check("the float body has the same size in every style (classic = golden = 160 pixels; the worm and shrimp tails only add pixels below)", px["filled"][0] == 160 and px["filled"][3] == 160 and px["filled"][1] > 160 and px["filled"][2] > 160, str(px["filled"]))
+    check("golden: the 2-frame sparkle alternates every 500 ms (different pixels at t=0 and t=500); with reduced motion there is no sparkle and no change over time",
+          px["sparkle"] > 0 and px["stillSame"] == 0 and px["gold0still"] > 0, str(px))
+    # position unchanged: same line, same bobber anchor and bob for every style; only the bobber's own pixels differ
+    pos = bp.evaluate("""() => { stopFishing(); island = 'harbor'; go('fishing'); const out = {}, T = 4321.5, H = cv.height, W = cv.width, L = { x: .6, y: .65 };
+        const rec = []; const wrap = k => { const f = ctx[k]; ctx[k] = function (...a) { rec.push(k + ':' + a.map(v => typeof v === 'number' ? +v.toFixed(3) : v).join(',')); return f.apply(this, a); }; };
+        const names = ['moveTo', 'quadraticCurveTo', 'ellipse', 'stroke']; const orig = names.map(k => ctx[k]); names.forEach(wrap);
+        for (const key of ['none', 'worm', 'shrimp', 'golden']) {
+          for (const phase of ['waiting', 'bite', 'reeling']) { rec.length = 0; F = { phase, castAt: T - 3000, land: L, fish: fishById('harbor_0'), usedBait: key === 'none' ? null : key }; drawScene(T);
+            out[key + '/' + phase] = { bp: [F.bobPos.x, F.bobPos.y], calls: rec.join('|'), n: rec.length, key: bobberStyleKey() }; } }
+        names.forEach((k, i) => { ctx[k] = orig[i]; });
+        const dy = { waiting: Math.sin(T / 300) * 3, bite: 8 + Math.sin(T / 40) * 5, reeling: Math.sin(T / 60) * 6 };
+        const exp = ph => [L.x, (H * L.y + dy[ph]) / H];
+        return { out, exp: { waiting: exp('waiting'), bite: exp('bite'), reeling: exp('reeling') } }; }""")
+    same = all(pos["out"][f"{k}/{ph}"]["calls"] == pos["out"][f"none/{ph}"]["calls"] and pos["out"][f"{k}/{ph}"]["bp"] == pos["out"][f"none/{ph}"]["bp"] and pos["out"][f"{k}/{ph}"]["n"] >= 3
+               for k in ["worm", "shrimp", "golden"] for ph in ["waiting", "bite", "reeling"])
+    styles_ok = all(pos["out"][f"{k}/{ph}"]["key"] == k for k in ["none", "worm", "shrimp", "golden"] for ph in ["waiting", "bite", "reeling"])
+    exact = all(abs(pos["out"][f"{k}/{ph}"]["bp"][0] - pos["exp"][ph][0]) < 1e-9 and abs(pos["out"][f"{k}/{ph}"]["bp"][1] - pos["exp"][ph][1]) < 1e-9 for k in ["none", "worm", "shrimp", "golden"] for ph in ["waiting", "bite", "reeling"])
+    check("the bobber position and dip are exactly as before in waiting, bite and reel for every style (same anchor, same bob)", exact and styles_ok, str(pos["exp"]))
+    check("the fishing line (rod tip, curve to the bobber) and the rings are drawn with identical calls for the four styles in waiting, bite and reeling", same)
+    # a cast keeps the style of the bait it used, even if the equipped bait changes during the cast
+    bp.evaluate("() => { stopFishing(); S.baits = { worm: 5, shrimp: 5, golden: 5 }; S.baitSel = 'worm'; save(); go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
+    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000)
+    bp.evaluate("() => { S.baitSel = 'golden'; render(); }"); bp.wait_for_timeout(300)
+    k1 = bp.evaluate("[bobberStyleKey(), F.usedBait, S.baits.worm, S.baits.golden]")
+    bp.evaluate("() => { S.baitSel = 'none'; render(); }"); bp.wait_for_function("F.phase === 'bite'", timeout=9000); bp.wait_for_timeout(120)
+    k2 = bp.evaluate("[bobberStyleKey(), F.phase]")
+    bp.click("#actBtn"); bp.wait_for_timeout(250)
+    k3 = bp.evaluate("[bobberStyleKey(), F.phase]")
+    check("a cast keeps the style of the bait it used (worm) while waiting, on the bite and while reeling, even though the equipped bait changed during the cast",
+          k1[:2] == ["worm", "worm"] and k1[2] == 4 and k1[3] == 5 and k2 == ["worm", "bite"] and k3[0] == "worm" and k3[1] == "reeling", f"{k1} {k2} {k3}")
+    bp.evaluate("() => { stopFishing(); S.baitSel = 'golden'; go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
+    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(200)
+    check("the next cast uses the newly equipped bait's style (golden)", bp.evaluate("bobberStyleKey()") == "golden")
+    bp.evaluate("() => { stopFishing(); S.baitSel = 'none'; go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
+    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(200)
+    check("a cast without bait draws the classic float", bp.evaluate("bobberStyleKey()") == "none")
+    bp.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")
