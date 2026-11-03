@@ -44,7 +44,7 @@ const REDUCED = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)
 /* Power cast (Playtest 1, part 4): hold CAST (button, Space or the scene) longer than POWER.quick ms to charge a power meter in the reel meter's
    space, release to throw. Only WHERE the bobber lands changes (a point on the near > far line, plus a small random offset); the wait,
    bite, HOOK, REEL, odds and rewards are untouched. A quick press (< POWER.quick) is the normal medium cast (POWER.mid). */
-const POWER = { quick: 250, fill: 1200, mid: .5, near: { x: .48, y: .72 }, far: { x: .68, y: .60 } };   // mid = BOB = (.58, .66)
+const POWER = { quick: 250, fill: 1200, mid: .5, near: { x: .48, y: .72 }, far: { x: .68, y: .60 }, jitterQuick: .05, jitterHold: .05 };   // jitter = uniform +- share of the throw range   // mid = BOB = (.58, .66)
 const CH = { on: false, src: "", pid: -1, t0: 0, shown: false };
 let sceneBg = null;   // cached painted background: { key, canvas, info }
 const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1, outfit: "harbor" };   // reused every frame (no allocations)
@@ -372,7 +372,8 @@ function renderFishingHud() {
   const a = $("actBtn");
   if (F.phase === "idle") {
     a.disabled = bagFull(); a.textContent = bagFull() ? "BAG FULL" : "CAST"; a.className = "btn green";
-    $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag." : `${ISLANDS[island].name}: Ready? Cast your line!`;
+    $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag."
+      : (S.holdCasts || 0) < 3 ? "Tip: hold CAST to throw farther" : `${ISLANDS[island].name}: Ready? Cast your line!`;   // the tip: until 3 hold casts
     $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
   renderIsleProgress(); if (F.phase !== "reeling") showMeter(CH.on && CH.shown);
@@ -448,6 +449,12 @@ $("actBtn").addEventListener("click", e => { if (F.phase === "idle" && e.detail)
 $("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); if (F.phase === "idle") chargeStart("ptr", e.pointerId); else act(); });
 document.addEventListener("pointerup", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeEnd(); });      // anywhere on the page
 document.addEventListener("pointercancel", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); });
+// iOS: a long press fires contextmenu (callout / loupe) and may take the pointer away (lostpointercapture): both are a clean cancel, not a stuck charge.
+// lostpointercapture also follows every normal pointerup, but by then the release has already thrown and CH.on is false.
+["actBtn", "scene"].forEach(id => {
+  $(id).addEventListener("contextmenu", e => e.preventDefault());
+  $(id).addEventListener("lostpointercapture", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); });
+});
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") chargeReset();                                                    // Esc cancels the charge, nothing is thrown
   if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show")) return;
@@ -486,21 +493,24 @@ function chargeReset(quiet) {
   if (was && F.phase === "idle") { showMeter(false); if (!quiet && current === "fishing") renderFishingHud(); }
 }
 function chargeEnd() {
-  const now = performance.now(), p = now - CH.t0 < POWER.quick ? POWER.mid : chargePower(now);
+  const now = performance.now(), quick = now - CH.t0 < POWER.quick, p = quick ? POWER.mid : chargePower(now);
   chargeReset(true);
-  if (F.phase === "idle" && current === "fishing" && !$("actBtn").disabled) cast(p);
+  if (F.phase === "idle" && current === "fishing" && !$("actBtn").disabled) {
+    if (!quick) { S.holdCasts = (S.holdCasts || 0) + 1; save(); }          // the hint "hold CAST" goes away after 3 hold-to-charge casts
+    cast(p, quick ? POWER.jitterQuick : POWER.jitterHold);
+  }
 }
-// where a cast with this power lands: a point on the near > far line, with a random offset of about +-5% of the power and +-1% of the height
-function landing(power) {
-  const p = Math.min(1, Math.max(0, power + (Math.random() - .5) * .1));
+// where a cast with this power lands: a point on the near > far line, with a uniform random offset of +-`jitter` of the throw range (5%) and +-1% of the height
+function landing(power, jitter = POWER.jitterQuick) {
+  const p = Math.min(1, Math.max(0, power + (Math.random() * 2 - 1) * jitter));
   return { x: POWER.near.x + (POWER.far.x - POWER.near.x) * p, y: POWER.near.y + (POWER.far.y - POWER.near.y) * p + (Math.random() - .5) * .02, p };
 }
-function cast(power = POWER.mid) {
+function cast(power = POWER.mid, jitter = POWER.jitterQuick) {
   if (bagFull()) { toast("Your bag is full."); return; }
   // one bait of the selected kind; when it runs out the selection goes back to "no bait"
   const usedBait = BAITS[S.baitSel] && S.baits[S.baitSel] > 0 ? S.baitSel : null;
   if (usedBait) { S.baits[usedBait]--; if (!S.baits[usedBait]) S.baitSel = "none"; save(); }
-  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait, land: landing(power) };
+  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait, land: landing(power, jitter) };
   sfx.cast(); $("actBtn").disabled = true; $("actBtn").textContent = "...";
   const left = usedBait && S.baits[usedBait];
   $("fMsg").textContent = !usedBait ? "Waiting for a bite..." : left ? `Cast with ${BAITS[usedBait].name} (${left} left)... waiting` : `Cast with your last ${BAITS[usedBait].name}... waiting`;

@@ -1130,7 +1130,7 @@ with sync_playwright() as p:
             ok2a = nv.is_visible("#shop") and nv.inner_text("#navName") == "SHOP"
             nv.click("#navBack"); nv.wait_for_timeout(300)
             check("Fishing (Frost) > GO TO SHOP > BACK returns to the Fishing screen on the same island",
-                  ok2a and nv.is_visible("#fishing") and nv.evaluate("island") == "frost" and "Frost" in nv.inner_text("#fMsg") and nv.is_enabled("#actBtn"), nv.inner_text("#fMsg"))
+                  ok2a and nv.is_visible("#fishing") and nv.evaluate("island") == "frost" and "Frost" in nv.inner_text("#isleProg") and nv.is_enabled("#actBtn"), nv.inner_text("#isleProg"))
             check("Home > Bag > BACK returns to Home", ok1)
             check("no BACK bar on the Fishing screen; SHOP and TOWN MAP stay next to CAST", not nav_on_fishing and acts == ["actBtn", "fShopBtn", "map"], str(acts))
             nv.click("#fishing [data-go=map]"); nv.wait_for_timeout(200); nv.click("#navBack"); nv.wait_for_timeout(200)
@@ -1726,7 +1726,7 @@ with sync_playwright() as p:
         hold_btn(cp, 500); e0 = cp.evaluate(CHARGING); cp.keyboard.press("Escape"); cp.wait_for_timeout(80)
         e1 = cp.evaluate("[CH.on, document.getElementById('meter').classList.contains('charging'), getComputedStyle(document.getElementById('meter')).visibility, getComputedStyle(document.getElementById('isleProg')).visibility, document.getElementById('fMsg').textContent]")
         cp.mouse.up(); cp.wait_for_timeout(80); e2 = cp.evaluate("[F.phase, document.getElementById('actBtn').disabled]")
-        check(f"{tag}: Escape cancels the charge (meter gone, message back, nothing thrown on release)", e0 and e1[:4] == [False, False, "hidden", "visible"] and "Ready" in e1[4] and e2 == ["idle", False], f"{e0} {e1} {e2}")
+        check(f"{tag}: Escape cancels the charge (meter gone, message back, nothing thrown on release)", e0 and e1[:4] == [False, False, "hidden", "visible"] and ("Ready" in e1[4] or "hold CAST" in e1[4]) and e2 == ["idle", False], f"{e0} {e1} {e2}")
         cp.keyboard.down("Space"); cp.wait_for_timeout(450); cp.keyboard.press("Escape"); cp.keyboard.up("Space"); cp.wait_for_timeout(80)
         check(f"{tag}: Escape also cancels a held Space (no cast)", cp.evaluate("[F.phase, CH.on]") == ["idle", False])
         hold_btn(cp, 450); cp.evaluate("() => window.dispatchEvent(new Event('blur'))"); cp.wait_for_timeout(80)
@@ -1766,6 +1766,123 @@ with sync_playwright() as p:
         if reduced: check("reduced motion: the power meter fills once and holds at max (2.4 s lands as far as 1.45 s, no ping-pong)", abs(res[0] - res[1]) <= .025 and res[1] > .65, str(res))
         else: check("normal motion: the power meter ping-pongs (2.4 s lands nearer than 1.45 s)", res[1] < res[0] - .04, str(res))
         rc2.close()
+    # ---------- Playtest 1, parts 6-8: iOS long-press selection, quick casts vary, hold-to-charge hint ----------
+    for vw, vh in [(1536, 730), (360, 640)]:
+        tag = f"{vw}x{vh}"
+        xp = b.new_page(viewport={"width": vw, "height": vh})
+        xp.on("pageerror", lambda e: errs.append(str(e))); xp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        xp.goto(URL); xp.evaluate("localStorage.clear()"); xp.reload(); xp.wait_for_timeout(200)
+        # the name input stays selectable and editable (Title > NEW GAME)
+        xp.click("#newBtn"); xp.wait_for_timeout(150)
+        ni = xp.evaluate("(() => { const i = document.getElementById('nameInput'), c = getComputedStyle(i); return [c.userSelect, c.webkitUserSelect]; })()")
+        xp.fill("#nameInput", "Anglerx"); xp.focus("#nameInput"); xp.keyboard.press("Control+A")
+        sel = xp.evaluate("(() => { const i = document.getElementById('nameInput'); return [i.selectionStart, i.selectionEnd, i.value]; })()")
+        xp.keyboard.press("End"); xp.keyboard.type("y")
+        check(f"{tag}: the player-name input stays selectable and editable (user-select text, Ctrl+A selects it, typing works)",
+              ni[0] == "text" and sel == [0, 7, "Anglerx"] and xp.input_value("#nameInput") == "Anglerxy", f"{ni} {sel} {xp.input_value('#nameInput')}")
+        xp.fill("#nameInput", "Power"); xp.click("#nameStart"); xp.wait_for_timeout(200)
+        xp.add_style_tag(content="#toast { display: none !important; }")
+        xp.evaluate("() => { island = 'harbor'; go('fishing'); }"); xp.wait_for_timeout(500)
+        us = xp.evaluate("""() => ['actBtn', 'scene', 'sceneCanvas', 'rodChip', 'fMsg', 'sellTop'].map(id => { const c = getComputedStyle(document.getElementById(id));
+            return [id, c.userSelect, c.webkitUserSelect, c.webkitTouchCallout || 'none', c.touchAction]; })""")
+        check(f"{tag}: user-select is none on the CAST button, the scene, the canvas, the chips and the labels (no iOS selection handles / loupe)",
+              all(r[1] == "none" for r in us), str(us))
+        ta = {r[0]: r[4] for r in us}
+        check(f"{tag}: touch-action is manipulation on the CAST button and the scene", ta["actBtn"] == "manipulation" and ta["scene"] == "manipulation", str(ta))
+        cm = xp.evaluate("""() => ['actBtn', 'scene'].map(id => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.getElementById(id).dispatchEvent(e); return e.defaultPrevented; })""")
+        check(f"{tag}: a contextmenu event (long press) on the CAST button and on the scene is default-prevented", cm == [True, True], str(cm))
+        # pointercancel / lostpointercapture during a charge: meter hidden, nothing thrown, nothing stuck
+        outs = []
+        for kind in ("pointercancel", "lostpointercapture", "scene-touch-cancel"):
+            xp.evaluate("() => { stopFishing(); renderFishingHud(); }"); xp.wait_for_timeout(100)
+            if kind == "scene-touch-cancel":
+                xp.evaluate("""() => { const sc = document.getElementById('scene'); sc.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, pointerType: 'touch', button: 0, bubbles: true, cancelable: true })); }""")
+                xp.wait_for_timeout(450); shown = xp.evaluate(CHARGING)
+                xp.evaluate("() => document.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 9, pointerType: 'touch', bubbles: true }))")
+            else:
+                x, y = center(xp, "#actBtn"); xp.mouse.move(x, y); xp.mouse.down(); xp.wait_for_timeout(450); shown = xp.evaluate(CHARGING)
+                if kind == "pointercancel": xp.evaluate("() => document.dispatchEvent(new PointerEvent('pointercancel', { pointerId: CH.pid, bubbles: true }))")
+                else: xp.evaluate("() => document.getElementById('actBtn').dispatchEvent(new PointerEvent('lostpointercapture', { pointerId: CH.pid, bubbles: true }))")
+            xp.wait_for_timeout(80)
+            st = xp.evaluate("[CH.on, document.getElementById('meter').classList.contains('charging'), getComputedStyle(document.getElementById('meter')).visibility, F.phase, document.getElementById('actBtn').disabled, document.getElementById('actBtn').textContent]")
+            if kind != "scene-touch-cancel": xp.mouse.up()
+            xp.evaluate("() => document.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, pointerType: 'touch', bubbles: true }))"); xp.wait_for_timeout(80)
+            outs.append((kind, shown, st, xp.evaluate("F.phase")))
+        check(f"{tag}: pointercancel / lostpointercapture during a charge hides the meter, throws nothing and leaves CAST usable (also after the late release)",
+              all(o[1] and o[2] == [False, False, "hidden", "idle", False, "CAST"] and o[3] == "idle" for o in outs), str(outs))
+        xp.evaluate("() => { stopFishing(); renderFishingHud(); }"); xp.click("#actBtn"); xp.wait_for_timeout(60)
+        check(f"{tag}: after a cancelled charge a normal tap still casts", xp.evaluate("F.phase") == "casting")
+        xp.close()
+    # --- quick casts vary: 20 quick presses land at different distances inside a +-5% band around the medium cast ---
+    qp = b.new_page(viewport={"width": 1366, "height": 768}); qp.on("pageerror", lambda e: errs.append(str(e))); qp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    qp.goto(URL); qp.evaluate("localStorage.clear()"); qp.reload(); qp.wait_for_timeout(200); start_new(qp, "Quick")
+    qp.add_style_tag(content="#toast { display: none !important; }")
+    qp.evaluate("() => { island = 'harbor'; go('fishing'); }"); qp.wait_for_timeout(500)
+    ps = []
+    for i in range(20):
+        qp.evaluate("() => { stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(40)
+        if i % 3 == 0: qp.click("#actBtn")
+        elif i % 3 == 1: qp.mouse.click(*center(qp, "#scene"))
+        else: qp.keyboard.press("Space")
+        qp.wait_for_timeout(30); ps.append(qp.evaluate("F.land.p"))
+    span = max(ps) - min(ps)
+    check("20 quick casts (button, scene tap, Space) land at different distances: they span at least 4% of the throw range",
+          span >= .04 and len(set(ps)) == 20, f"span {span:.3f}")
+    check("20 quick casts stay inside the 10% band (+-5% of the throw range) around the medium cast", all(abs(p - .5) <= .0501 for p in ps), f"{min(ps):.3f}..{max(ps):.3f}")
+    holds = []
+    for ms in (450, 1300):
+        qp.evaluate("() => { stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(60); l, h = timed_hold(qp, ms); holds.append((l["p"], exp_power(h)))
+    check("hold casts still differ by power (the long hold lands farther) and follow their real hold time (+-.12)",
+          holds[1][0] > holds[0][0] + .2 and all(abs(a - e) <= .12 for a, e in holds), str(holds))
+    # --- the hint: new save shows it, 3 hold casts hide it, quick casts do not count, phases never show it ---
+    TIP = "hold CAST to throw farther"
+    qp.evaluate("() => { S.holdCasts = 0; save(); stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(100)
+    m0 = qp.inner_text("#fMsg"); pos_tip = qp.evaluate(CAST_POS)
+    qp.evaluate("() => { S.holdCasts = 3; save(); renderFishingHud(); }"); qp.wait_for_timeout(100)
+    m3 = qp.inner_text("#fMsg"); pos_none = qp.evaluate(CAST_POS)
+    check("hint: a new save shows 'Tip: hold CAST to throw farther' in the message line, a save with 3 hold casts doesn't, and CAST doesn't move",
+          TIP in m0 and TIP not in m3 and "Ready" in m3 and same_pos(pos_tip, pos_none), f"{m0!r} {m3!r} {pos_tip} {pos_none}")
+    qp.evaluate("() => { S.holdCasts = 0; save(); stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(60)
+    qp.click("#actBtn"); qp.wait_for_timeout(60); q_cnt = qp.evaluate("S.holdCasts")        # a quick cast does not count
+    seen = []
+    for i in range(3):
+        qp.evaluate("() => { stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(80)
+        seen.append(TIP in qp.inner_text("#fMsg")); timed_hold(qp, 450)
+    qp.evaluate("() => { stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(80)
+    check("hint: quick casts don't count; it shows before each of the first 3 hold casts and is gone after the 3rd (counter saved)",
+          q_cnt == 0 and seen == [True, True, True] and TIP not in qp.inner_text("#fMsg") and qp.evaluate("S.holdCasts") == 3 and qp.evaluate(SAVED + ".holdCasts") == 3,
+          f"{q_cnt} {seen} {qp.inner_text('#fMsg')!r} {qp.evaluate(SAVED + '.holdCasts')}")
+    qp.evaluate("() => { S.holdCasts = 0; save(); stopFishing(); renderFishingHud(); }"); qp.wait_for_timeout(60)
+    qp.click("#actBtn"); qp.wait_for_function("F.phase === 'bite'", timeout=9000); b_msg = qp.inner_text("#fMsg")
+    qp.click("#actBtn"); qp.wait_for_timeout(120); r_msg = qp.inner_text("#fMsg"); r_ph = qp.evaluate("F.phase")
+    check("hint: never shown during bite, hook (reel) or reeling (the new-save counter is 0)", TIP not in b_msg and TIP not in r_msg and r_ph == "reeling", f"{b_msg!r} {r_msg!r} {r_ph}")
+    qp.evaluate("() => stopFishing()")
+    qp.close()
+    # --- old saves without the counter load as 0 and keep working ---
+    cs = b.new_page(viewport={"width": 1366, "height": 768}); cs.on("pageerror", lambda e: errs.append(str(e))); cs.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    cs.goto(URL)
+    vals = cs.evaluate("[cleanSave({}).holdCasts, cleanSave({ holdCasts: 2 }).holdCasts, cleanSave({ holdCasts: -4 }).holdCasts, cleanSave({ holdCasts: 'x' }).holdCasts, cleanSave(null).holdCasts, cleanSave({ rod: 2, bait: 3 }).holdCasts]")
+    cs.evaluate("""() => localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Oldie', coins: 120, rods: ['bamboo'], rodEq: 'bamboo', baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: 'none', bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 4 }))""")
+    cs.reload(); cs.wait_for_timeout(300); cs.click("#contBtn"); cs.wait_for_timeout(200)
+    cs.evaluate("() => { island = 'harbor'; go('fishing'); }"); cs.wait_for_timeout(300)
+    old = cs.evaluate("[S.holdCasts, S.name, S.coins]"); old_msg = cs.inner_text("#fMsg")
+    cs.click("#actBtn"); cs.wait_for_timeout(80)
+    check("an old save without the hold counter loads as 0 (garbage too), CONTINUE works, the hint shows and CAST casts",
+          vals == [0, 2, 0, 0, 0, 0] and old == [0, "Oldie", 120] and "hold CAST" in old_msg and cs.evaluate("F.phase") == "casting", f"{vals} {old} {old_msg!r}")
+    cs.close()
+    # --- scrolling still works in the Bag list and the Collection on a phone (user-select / touch-action don't block panning) ---
+    sp2 = b.new_page(viewport={"width": 360, "height": 640}); sp2.on("pageerror", lambda e: errs.append(str(e))); sp2.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    sp2.goto(URL); sp2.evaluate("localStorage.clear()"); sp2.reload(); sp2.wait_for_timeout(200); start_new(sp2, "Scroller")
+    sp2.evaluate("""() => { S.bagMax = 30; S.bag = FISH.slice(0, 14).map(f => ({ fishId: f.id, weight: f.min || 1, price: 10 })); FISH.forEach(f => S.discovered[f.id] = true); save(); go('bag'); }""")
+    sp2.wait_for_timeout(300); x0, y0 = center(sp2, "#bagList")
+    sp2.mouse.move(x0, y0); sp2.mouse.wheel(0, 400); sp2.wait_for_timeout(250)
+    bag_sc = sp2.evaluate("[document.querySelector('#bag .scroll-list').scrollTop, window.scrollY, getComputedStyle(document.querySelector('#bag .scroll-list')).touchAction, getComputedStyle(document.body).touchAction]")
+    sp2.evaluate("() => { go('collection'); }"); sp2.wait_for_timeout(300)
+    sp2.mouse.move(180, 400); sp2.mouse.wheel(0, 500); sp2.wait_for_timeout(250)
+    col_sc = sp2.evaluate("[window.scrollY, document.documentElement.scrollHeight > innerHeight]")
+    check("the Bag list and the Collection still scroll (touch-action is not none there)",
+          (bag_sc[0] > 0 or bag_sc[1] > 0) and bag_sc[2] != "none" and bag_sc[3] != "none" and col_sc[0] > 0, f"{bag_sc} {col_sc}")
+    sp2.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")
@@ -1855,7 +1972,7 @@ with sync_playwright() as p:
             on_shop = [sp.evaluate("current"), sp.inner_text("#navName")]
             shop_fit = sp.evaluate("document.documentElement.scrollHeight <= innerHeight + 1") if vw >= 900 else True
             sp.click("#navBack"); sp.wait_for_timeout(300)
-            back = [sp.evaluate("current"), sp.evaluate("island"), sp.is_enabled("#actBtn"), "Desert" in sp.inner_text("#fMsg")]
+            back = [sp.evaluate("current"), sp.evaluate("island"), sp.is_enabled("#actBtn"), "Desert" in sp.inner_text("#isleProg")]
             check(f"{vw}x{vh}: Fishing (Desert) > SHOP opens the Shop; BACK returns to the Fishing screen on the same island",
                   on_shop == ["shop", "SHOP"] and shop_fit and back == ["fishing", "desert", True, True], f"{on_shop} {back}")
             sp.click("#sellTop"); sp.wait_for_timeout(300)

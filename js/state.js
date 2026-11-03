@@ -2,7 +2,7 @@
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
 const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none",
-  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, pending: null });
+  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, pending: null, holdCasts: 0 });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
@@ -30,6 +30,7 @@ function cleanSave(raw) {
     records: raw.records && typeof raw.records === "object" ? raw.records : {},
     mastery: raw.mastery && typeof raw.mastery === "object" ? raw.mastery : {},
     totalCaught: num(raw.totalCaught, 0), mythical: raw.mythical === true,
+    holdCasts: num(raw.holdCasts, 0),               // hold-to-charge casts so far (the "hold CAST" hint stops after 3); old saves: 0
     sound: raw.sound !== false,                       // older saves have no sound setting: default on
     pending: validCatch(raw.pending) ? raw.pending : null,   // a catch still waiting for KEEP / RELEASE
   };

@@ -71,7 +71,7 @@ them with `go(id)` or with any element that has `data-go="<screen id>"`.
 `beep()`, which does nothing when sound is off. A save that holds only `{ sound }` (sound toggled before
 any game was started) does not count as a game, so CONTINUE stays disabled.
 
-**New save:** 300 coins, `rods: ["bamboo"]`, `rodEq: "bamboo"`, `baits: { worm: 0, shrimp: 0, golden: 0 }`,
+**New save:** `holdCasts: 0` (hold-to-charge casts so far, drives the "hold CAST" hint; old saves without it load as 0), 300 coins, `rods: ["bamboo"]`, `rodEq: "bamboo"`, `baits: { worm: 0, shrimp: 0, golden: 0 }`,
 `baitSel: "none"`, bag capacity 5, `pending: null` (the catch waiting on the Result screen).
 **Old saves** (from before rods/baits) have `rod` (level), `bait` (count) and `useBait`. `load()` migrates them once:
 level 1 → Bamboo; level 2+ → also owns and equips the Sturdy Rod, and each level above 2 is refunded 200 coins; the old
@@ -161,7 +161,15 @@ the **landing spot** of the bobber on the line `POWER.near` (.48, .72) > `POWER.
 offset (+-5% of the power, +-1% of the height), stored in `F.land`; the line/arc animation follows it. The wait, bite, HOOK, REEL, odds and rewards
 are unchanged. HOOK and REEL still act at once (no charge). The charge is cancelled (nothing thrown, meter hidden, message restored) by Esc,
 window blur, the page being hidden, a pointer cancel, a banner/popup opening or leaving the Fishing screen; the meter never shows outside idle.
-Enter on the focused button (a click with `detail` 0) still casts at once. The landing line was checked against the water masks
+Enter on the focused button (a click with `detail` 0) still casts at once.
+**Spread and hint** (parts 6-8): `landing(power, jitter)` adds a uniform random offset of +-`POWER.jitterQuick` / `POWER.jitterHold` (both .05 = +-5% of the
+throw range, so a 10% band) to the power, clamped to 0..1, plus +-1% of the height, for quick presses as well as holds (`cast(power, jitter)`).
+On a 972px-wide scene +-5% is about +-10px, on a 324px phone scene about +-3px: raise the two constants (and re-check the water masks) if casts
+should look more different. `S.holdCasts` (save, default 0, old saves load as 0) counts hold-to-charge casts (a press of `POWER.quick` or longer, thrown);
+while it is below 3 the idle message line (`#fMsg`, so nothing moves) reads "Tip: hold CAST to throw farther" instead of "<Island>: Ready? Cast your
+line!". Bite, hook and reel messages replace it, so it never shows there. **iOS** (part 6): `css/style.css` sets `user-select: none`,
+`-webkit-touch-callout: none` and a transparent tap highlight on everything (inputs and textareas stay `text`), `touch-action: manipulation` on
+`#actBtn` and the scene; `contextmenu` is default-prevented on both, and `pointercancel` / `lostpointercapture` cancel a charge cleanly. The landing line was checked against the water masks
 (`tools/water_masks`) for scene shapes from 2.0:1 to 4.1:1 (every desktop size and 360x640); keep new landing spots on open water.
 
 **Fishing screen layout (don't break this):** the CAST/HOOK/REEL button must not move between phases, and the
@@ -296,6 +304,9 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
 - **Fish drawings** (`drawFish` in `js/state.js`, 24x16 grid): `fishShape(f)` picks slim / regular / flat / round /
   long / eel / ray from the fish's `len` and `h` (named exceptions in `FISH_SHAPES`). Rare and better fish get glints;
   Legendary and Mythical get sparkles. Keep the 24x16 size: it scales to exactly 8x (Result), 4x (Collection), 3x (Bag).
+- **Selection / touch:** nothing in the UI can be selected (`user-select: none`, `-webkit-touch-callout: none`, no tap highlight on `*`); text inputs are
+  re-enabled with `input, textarea { user-select: text }`. Any new text field must stay selectable. Don't set `touch-action: none` on anything that
+  should scroll (Bag list, Collection, page).
 - **Animation:** animate only `transform` and `opacity` so phones stay smooth, and add every new animation to
   the `prefers-reduced-motion` block.
 

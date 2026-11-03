@@ -24,6 +24,11 @@ body {
   padding: calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
 }
 button { font-family: inherit; }
+/* iOS Safari (Playtest 1, part 6): holding CAST selected the label (blue handles + magnifier loupe) and could cancel the touch. Nothing in the
+   game UI is selectable or shows the long-press callout / tap flash; the name input (and any text field) must stay selectable and editable. */
+*, *::before, *::after { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+#actBtn, #fishing .scene { touch-action: manipulation; }
 .title, .logo, h2, .btn, .tab, .island, #resName, .record, .item b, .how dt, #resRarity span {
   font-family: var(--pixel); font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }   /* no ligatures: "fi" became one odd glyph */
 .app { width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 14px; }
