@@ -56,7 +56,8 @@ def candy():
         if x >= 9: g.m[(x, y)] = "D" if s < 3 else "a"
     return g.rows()
 
-FROG = ["....OOOO....", ".OOO.OO.OOO.", "OWWWOBBOWWWO", "OWKWOBBOWKWO", "OGGGOBBOGGGO", "OBBBBBBBBBDO", "OBDBBBBBBDDO", "OBBDDDDDDBDO", "OBBBBBBBBBDO", "OBBBBBBBBBDO", "OBLLLLLLLLDO", "OBLLLLLLLLDO", "OBLLLLLLLLDO", "OBLLLLLLLLDO", ".OLLLLLLLLO.", ".OLLLLLLLLO.", "..OLLLLLLO..", "...OLLLLO...", "....OOOO...."]
+# part 12e: a wide, squat head (full 12 px, eyes at the corners, smile) sitting on a narrow float body (6 px, light stripe); row 14 = the waterline
+FROG = ["....OOOO....", ".OOO.OO.OOO.", "OWWWOBBOWWWO", "OWKWOBBOWKWO", "OGGGBBBBGGGO", "OBBBBBBBBBBO", "OBDBBBBBBDBO", "OBBDDDDDDBBO", ".OBBBBBBBBO.", "..OBBBBBDO..", "..OBBBBBDO..", "..OLLLLLDO..", "..OLLLLLDO..", "..OBBBBBDO..", "..OBBBBBDO..", "..OBBBBBDO..", "...OBBBBO...", "....OBBO....", "....OOOO...."]
 FROG_BLINK = FROG[:2] + ["OGGGOBBOGGGO", "ODDDOBBODDDO"] + FROG[4:]       # eyes shut for ~120 ms every 3 s: a green lid and a dark lid line, same 12 x 19 box
 # the bigger, cuter frog for the UI previews (Shop, Tackle Box, Choose Float, FLOAT chip): 16 x 16 art pixels, shown at 2x: big eyes with a white highlight, pink cheeks, a wide smile
 FROG_ICON = ["..OOOO....OOOO..", ".OBBBBO..OBBBBO.", "OBWWWWBOOBWWWWBO", "OBWWKWBOOBWWKWBO", "OBWKKWBOOBWKKWBO", "OBBBBBBOOBBBBBBO", ".OBBBBBBBBBBBBO.", "OBBBBBBBBBBBBBBO",
