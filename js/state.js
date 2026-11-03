@@ -25,7 +25,7 @@ function cleanSave(raw) {
     coins: num(raw.coins, d.coins) + (legacy && oldRod > 2 ? (oldRod - 2) * 200 : 0),
     rods: [...new Set(rods)], rodEq: legacy ? (oldRod >= 2 ? "sturdy" : "bamboo") : rods.includes(raw.rodEq) ? raw.rodEq : "bamboo",
     baits, baitSel, bagMax: num(raw.bagMax, 5, 5),
-    bag: Array.isArray(raw.bag) ? raw.bag.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)) : [],
+    bag: Array.isArray(raw.bag) ? raw.bag.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)).map(b => ({ ...b, locked: b.locked === true })) : [],   // locked: kept out of SELL ALL (old saves: unlocked)
     discovered: raw.discovered && typeof raw.discovered === "object" ? raw.discovered : {},
     records: raw.records && typeof raw.records === "object" ? raw.records : {},
     mastery: raw.mastery && typeof raw.mastery === "object" ? raw.mastery : {},
@@ -219,7 +219,9 @@ const masteredCount = () => ISLAND_IDS.filter(i => S.mastery[i]).length;
 const secretOpen = () => masteredCount() === 4;
 const rod = () => RODS[S.rodEq];                     // equipped rod
 const allowedMiss = () => rod().miss + (S.mastery.forest ? 1 : 0);
-const bagFull = () => S.bag.length >= S.bagMax;
+const bagFull = () => S.bag.length >= S.bagMax;   // locked fish count too
+const unlockedIdx = () => S.bag.map((b, i) => b.locked ? -1 : i).filter(i => i >= 0);
+const unlockedTotal = () => unlockedIdx().reduce((t, i) => t + S.bag[i].price, 0);   // prices already include the Golden Hook bonus
 // Rarity chances in % (Common, Rare, Epic, Legendary) for one cast: base odds + bait + Lucky Rod + Lucky Lure,
 // each tier at least 0, scaled to 100%, then Legendary capped at LEGENDARY_CAP (the rest goes to Epic).
 function rarityWeights(baitId = "none", rodId = S.rodEq) {

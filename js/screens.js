@@ -165,9 +165,17 @@ function renderBag() {
     const c = document.createElement("canvas"); drawFish(c, f);
     row.append(c);
     row.insertAdjacentHTML("beforeend", `<div class="grow"><b>${f.name}</b><br><span class="rar-${f.rarity}">${f.rarity}</span> · ${b.weight} kg</div>`);
+    const lk = document.createElement("button"); lk.className = "lockbtn"; lk.type = "button";
+    lk.setAttribute("aria-label", b.locked ? "Unlock fish" : "Lock fish"); lk.setAttribute("aria-pressed", b.locked ? "true" : "false");
+    lk.innerHTML = `<span class="ico ${b.locked ? "i-padlock" : "i-padlock-open"}"></span>`;
+    lk.onclick = () => { b.locked = !b.locked; save(); renderBag(); };
+    row.append(lk); row.classList.toggle("locked", !!b.locked);
     const s = document.createElement("button"); s.className = "btn green"; s.textContent = `SELL ${fmt(b.price)}`;
+    if (b.locked) { s.classList.add("is-locked"); }
     s.onclick = () => sell([i]); row.append(s); L.append(row);
   });
+  const ut = unlockedTotal();
+  $("sellAll").innerHTML = `<span class="ico i-coin"></span>SELL ALL${ut ? ` <span class="amt">${fmt(ut)}</span>` : ""}`;   // value of the unlocked fish only
   $("sellAll").disabled = !S.bag.length;
   bagFade();
 }
@@ -175,10 +183,11 @@ function renderBag() {
 function bagFade() { const l = $("bagList"); l.classList.toggle("has-more", l.scrollHeight > l.clientHeight + 4); }
 window.addEventListener("resize", () => { if (current === "bag") bagFade(); });
 function sell(idx) {
+  if (idx.some(i => S.bag[i].locked)) { toast("Unlock it first"); return; }
   let total = 0; idx.sort((a, b) => b - a).forEach(i => { total += S.bag[i].price; S.bag.splice(i, 1); });
   S.coins += total; save(); sfx.coin(); toast(`Sold for ${fmt(total)} coins!`); render();
 }
-$("sellAll").onclick = () => sell(S.bag.map((_, i) => i));
+$("sellAll").onclick = () => { const u = unlockedIdx(); if (!u.length) { if (S.bag.length) toast("All your fish are locked"); return; } sell(u); };
 
 /* ===================== SHOP ===================== */
 // every item says exactly what it does, whether you own / use it, and why it can't be bought

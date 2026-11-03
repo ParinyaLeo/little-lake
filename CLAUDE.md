@@ -183,6 +183,14 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
+**Bag lock** (Playtest 1, part 9): every Bag row has a 40x40 padlock button (`.lockbtn`, closed gold `i-padlock` = locked, open grey `i-padlock-open`;
+aria-label "Lock fish" / "Unlock fish", `aria-pressed`); a locked row gets a bright gold border (`.row.locked`) and its SELL button is greyed. The flag is an optional
+`locked: true` on the fish in `S.bag` (`cleanSave()` maps every fish to `locked: b.locked === true`, so old saves and garbage load as unlocked). **SELL ALL** sells only
+`unlockedIdx()` and its label shows `unlockedTotal()` ("SELL ALL 120"; plain "SELL ALL" when nothing is unlocked); with every fish locked it sells nothing and toasts
+"All your fish are locked". A single SELL on a locked fish toasts "Unlock it first". Locked fish still count toward `bagFull()` (capacity, the glowing top-bar SELL, the
+Result screen's full-bag choices). The Result screen's **SELL A FISH** sells the cheapest *unlocked* fish (`cheapest()` returns -1 when all are locked: the button is
+disabled and the text explains). Prices are stored at catch time, so the Golden Hook bonus is already in `b.price`. Rows keep their fixed `--bag-row` height; on phones the
+row's SELL button drops its rivets and side padding so "Rarity · kg" still fits beside the 40px lock (at 360x640 the page already scrolled a little before the locks: 673px with 5 fish; the locks add nothing).
 **Bag:** sell fish one at a time or **SELL ALL** for coins (from Fishing: the SELL button beside the coins). Its only bottom button is SELL ALL; the way out is the top bar's BACK.
 
 **Rods** (`RODS`, bought once, one equipped in `S.rodEq`; each is a clear step up in forgiveness, 1 / 2 / 3 / 5 misses, and
@@ -304,6 +312,7 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
 - **Fish drawings** (`drawFish` in `js/state.js`, 24x16 grid): `fishShape(f)` picks slim / regular / flat / round /
   long / eel / ray from the fish's `len` and `h` (named exceptions in `FISH_SHAPES`). Rare and better fish get glints;
   Legendary and Mythical get sparkles. Keep the 24x16 size: it scales to exactly 8x (Result), 4x (Collection), 3x (Bag).
+- **Lock icons:** `i-padlock` (gold, closed) and `i-padlock-open` (grey) are 12x12 icons like the others (the old dark `i-lock` is still the locked-card padlock).
 - **Selection / touch:** nothing in the UI can be selected (`user-select: none`, `-webkit-touch-callout: none`, no tap highlight on `*`); text inputs are
   re-enabled with `input, textarea { user-select: text }`. Any new text field must stay selectable. Don't set `touch-action: none` on anything that
   should scroll (Bag list, Collection, page).

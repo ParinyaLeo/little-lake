@@ -1883,6 +1883,114 @@ with sync_playwright() as p:
     check("the Bag list and the Collection still scroll (touch-action is not none there)",
           (bag_sc[0] > 0 or bag_sc[1] > 0) and bag_sc[2] != "none" and bag_sc[3] != "none" and col_sc[0] > 0, f"{bag_sc} {col_sc}")
     sp2.close()
+    # ---------- Playtest 1, part 9: lock a fish in the Bag so SELL ALL keeps it ----------
+    LK_FILL = """n => { S.bagMax = 8; S.bag = []; const isl = ['harbor', 'frost', 'desert', 'forest'];
+        while (S.bag.length < n) { const i = S.bag.length; S.bag.push({ fishId: isl[i % 4] + '_' + (i % 10), weight: .5, price: 20 + i * 10, time: 1000 + i }); }
+        save(); go('home'); go('bag'); }"""
+    LK_GEO = """() => { const l = document.getElementById('bagList'), rows = [...l.querySelectorAll('.row')], btns = [...l.querySelectorAll('.lockbtn')],
+        rb = id => document.getElementById(id).getBoundingClientRect(), L = l.getBoundingClientRect();
+        return { rows: rows.length, h: rows.map(r => +r.getBoundingClientRect().height.toFixed(1)), lw: btns.map(x => Math.round(x.getBoundingClientRect().width)), lh: btns.map(x => Math.round(x.getBoundingClientRect().height)),
+                 lab: btns.map(x => x.getAttribute('aria-label')), inside: rows.every(r => { const q = r.getBoundingClientRect(), s = r.querySelector('.btn').getBoundingClientRect(), k = r.querySelector('.lockbtn').getBoundingClientRect();
+                     return q.right <= L.right + 1 && s.right <= q.right + 1 && k.right <= s.left + 1 && k.left >= q.left; }),
+                 lockedCls: rows.filter(r => r.classList.contains('locked')).length, side: document.documentElement.scrollWidth, page: document.documentElement.scrollHeight, vw: innerWidth, vh: innerHeight,
+                 all: document.getElementById('sellAll').innerText.trim(), sellAllTop: Math.round(rb('sellAll').top), noWrap: rows.every(r => r.querySelector('.grow').scrollHeight <= r.querySelector('.grow').clientHeight + 2) }; }"""
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (390, 844), (360, 640)]:
+        tag = f"{vw}x{vh}"
+        lp = b.new_page(viewport={"width": vw, "height": vh})
+        lp.on("pageerror", lambda e: errs.append(str(e))); lp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        lp.goto(URL); lp.evaluate("localStorage.clear()"); lp.reload(); lp.wait_for_timeout(200); start_new(lp, "Locker")
+        lp.evaluate(LK_FILL, 5); lp.wait_for_timeout(500)
+        g0 = lp.evaluate(LK_GEO)
+        lp.click("#bagList .row:nth-child(2) .lockbtn"); lp.wait_for_timeout(100)
+        lp.click("#bagList .row:nth-child(4) .lockbtn"); lp.wait_for_timeout(100)
+        g1 = lp.evaluate(LK_GEO)
+        check(f"{tag}: every Bag row has a lock button of at least 40x40 with aria-label 'Lock fish'; tapping locks it ('Unlock fish'), locked rows are marked",
+              g0["rows"] == 5 and min(g0["lw"]) >= 40 and min(g0["lh"]) >= 40 and set(g0["lab"]) == {"Lock fish"} and g0["lockedCls"] == 0
+              and g1["lab"] == ["Lock fish", "Unlock fish", "Lock fish", "Unlock fish", "Lock fish"] and g1["lockedCls"] == 2 and lp.evaluate("S.bag.map(x => !!x.locked)") == [False, True, False, True, False], f"{g0} {g1}")
+        check(f"{tag}: rows keep one constant height whether locked or not, the lock + SELL fit inside each row, names don't wrap, SELL ALL doesn't move, no page or side scroll",
+              len(set(g0["h"] + g1["h"])) == 1 and g1["inside"] and g1["noWrap"] and g0["sellAllTop"] == g1["sellAllTop"] and g1["side"] <= g1["vw"] and (g1["page"] <= g1["vh"] or (vw < 900 and g1["page"] == g0["page"])), f"{g0['h']} {g1['h']} {g1}")
+        lp.close()
+
+    for vw, vh in [(1536, 730), (360, 640)]:
+        tag = f"{vw}x{vh}"
+        lp = b.new_page(viewport={"width": vw, "height": vh})
+        lp.on("pageerror", lambda e: errs.append(str(e))); lp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        lp.goto(URL); lp.evaluate("localStorage.clear()"); lp.reload(); lp.wait_for_timeout(200); start_new(lp, "Locker")
+        lp.evaluate(LK_FILL, 5); lp.wait_for_timeout(400)
+        prices = lp.evaluate("S.bag.map(x => x.price)")      # 20 30 40 50 60
+        lp.click("#bagList .row:nth-child(1) .lockbtn"); lp.click("#bagList .row:nth-child(5) .lockbtn"); lp.wait_for_timeout(100)
+        want_total = prices[1] + prices[2] + prices[3]
+        lbl = lp.inner_text("#sellAll")
+        check(f"{tag}: the SELL ALL button shows the value of the unlocked fish only ({want_total})", str(want_total) in lbl.replace(",", "") and "SELL ALL" in lbl, lbl)
+        # single sell of a locked fish is blocked
+        c0 = lp.evaluate("S.coins"); lp.click("#bagList .row:nth-child(1) .btn"); lp.wait_for_timeout(120)
+        check(f"{tag}: selling a locked fish one by one is blocked: toast 'Unlock it first', fish and coins unchanged",
+              "Unlock it first" in lp.inner_text("#toast") and lp.evaluate("S.bag.length") == 5 and lp.evaluate("S.coins") == c0)
+        lp.screenshot(path=str(SHOTS / f"101_bag_locks_{tag}.png"))
+        # the lock survives a reload (CONTINUE)
+        lp.reload(); lp.wait_for_timeout(300); lp.click("#contBtn"); lp.wait_for_timeout(300); lp.evaluate("go('bag')"); lp.wait_for_timeout(300)
+        check(f"{tag}: the lock is saved: after a reload the same two fish are locked", lp.evaluate("S.bag.map(x => !!x.locked)") == [True, False, False, False, True]
+              and lp.evaluate("document.querySelectorAll('#bagList .row.locked').length") == 2)
+        # SELL ALL skips the locked fish
+        c0 = lp.evaluate("S.coins"); lp.click("#sellAll"); lp.wait_for_timeout(200)
+        left = lp.evaluate("S.bag.map(x => x.price)")
+        check(f"{tag}: SELL ALL sells only the unlocked fish: the 2 locked ones stay, coins rise by exactly their total",
+              left == [prices[0], prices[4]] and lp.evaluate("S.coins") - c0 == want_total and lp.evaluate("S.bag.every(x => x.locked)"), f"{left} {lp.evaluate('S.coins') - c0} want {want_total}")
+        # all locked: toast, nothing sold, the bag still counts toward capacity
+        c0 = lp.evaluate("S.coins"); lp.click("#sellAll"); lp.wait_for_timeout(120)
+        check(f"{tag}: with every fish locked SELL ALL shows 'All your fish are locked' and sells nothing",
+              "All your fish are locked" in lp.inner_text("#toast") and lp.evaluate("S.bag.length") == 2 and lp.evaluate("S.coins") == c0 and lp.inner_text("#sellAll").strip() == "SELL ALL")
+        # unlock again and it can be sold one by one
+        lp.click("#bagList .row:nth-child(1) .lockbtn"); lp.wait_for_timeout(80)
+        check(f"{tag}: unlocking makes a fish sellable again", lp.get_attribute("#bagList .row:nth-child(1) .lockbtn", "aria-label") == "Lock fish" and lp.evaluate("!S.bag[0].locked"))
+        lp.click("#bagList .row:nth-child(1) .btn"); lp.wait_for_timeout(120)
+        check(f"{tag}: ...and a single sell then works", lp.evaluate("S.bag.length") == 1 and lp.evaluate("S.coins") == c0 + prices[0])
+        lp.close()
+
+    # Golden Hook (+20%): the stored price already holds the bonus, so SELL ALL pays exactly the unlocked prices
+    lp = b.new_page(viewport={"width": 1536, "height": 730})
+    lp.on("pageerror", lambda e: errs.append(str(e))); lp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    lp.goto(URL); lp.evaluate("localStorage.clear()"); lp.reload(); lp.wait_for_timeout(200); start_new(lp, "Hooker")
+    lp.evaluate("() => { S.mastery.harbor = true; S.bagMax = 8; save(); }")
+    for fid in ["harbor_2", "harbor_5", "harbor_7"]:
+        lp.evaluate(f"() => {{ F = {{ phase: 'idle', fish: fishById('{fid}') }}; caught(); }}"); lp.wait_for_timeout(150); lp.click("#keepBtn"); lp.wait_for_timeout(200)
+    pr = lp.evaluate("S.bag.map(x => x.price)")
+    lp.evaluate("go('bag')"); lp.wait_for_timeout(300); lp.click("#bagList .row:nth-child(2) .lockbtn"); lp.wait_for_timeout(100)
+    c0 = lp.evaluate("S.coins"); lp.click("#sellAll"); lp.wait_for_timeout(200)
+    check("Golden Hook active: SELL ALL pays exactly the unlocked fish (bonus included) and keeps the locked one",
+          len(pr) == 3 and lp.evaluate("S.coins") - c0 == pr[0] + pr[2] and lp.evaluate("S.bag.length") == 1 and lp.evaluate("S.bag[0].price") == pr[1], f"{pr} {lp.evaluate('S.coins') - c0}")
+    # a full bag: locked fish still count toward capacity; the Result screen's SELL A FISH never sells a locked fish
+    lp.evaluate("() => { S.bagMax = 3; S.bag = [{ fishId: 'harbor_0', weight: 1, price: 50, time: 1, locked: true }, { fishId: 'harbor_1', weight: 1, price: 90, time: 2 }, { fishId: 'harbor_3', weight: 1, price: 70, time: 3, locked: true }]; save(); }")
+    lp.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_4') }; caught(); }"); lp.wait_for_timeout(1200)
+    full_ok = lp.evaluate("bagFull()") and lp.is_visible("#fullBag") and lp.is_visible("#sellOneBtn")
+    info = lp.inner_text("#sellOneInfo"); c0 = lp.evaluate("S.coins")
+    lp.click("#sellOneBtn"); lp.wait_for_timeout(300)
+    check("full bag with locked fish: they still count toward capacity, SELL A FISH sells the cheapest UNLOCKED fish and keeps the new catch",
+          full_ok and lp.evaluate("fishById('harbor_1').name") in info and lp.evaluate("S.coins") - c0 == 90 and lp.evaluate("S.bag.length") == 3
+          and lp.evaluate("S.bag.filter(x => x.locked).length") == 2 and lp.evaluate("S.bag.some(x => x.fishId === 'harbor_4')"), f"{info} {lp.evaluate('S.bag')}")
+    lp.evaluate("() => { S.bag.forEach(x => x.locked = true); S.pending = null; save(); }")
+    lp.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_6') }; caught(); }"); lp.wait_for_timeout(1200)
+    check("full bag, every fish locked: SELL A FISH is disabled with an explanation; RELEASE and OPEN BAG still work",
+          lp.is_visible("#sellOneBtn") and lp.is_disabled("#sellOneBtn") and "locked" in lp.inner_text("#sellOneInfo") and lp.is_visible("#fullRelease") and lp.is_visible("#resBagBtn"))
+    lp.click("#fullRelease"); lp.wait_for_timeout(300)
+    check("the top-bar SELL glows while the bag is full of locked fish, and the bag stays full", lp.evaluate("bagFull() && document.getElementById('sellTop').classList.contains('glow')") and lp.evaluate("S.bag.length") == 3)
+    lp.close()
+
+    # old saves without the flag load as unlocked; garbage flags too
+    lp = b.new_page(viewport={"width": 1536, "height": 730})
+    lp.on("pageerror", lambda e: errs.append(str(e))); lp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    lp.goto(URL)
+    lp.evaluate("""() => localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Oldie', coins: 120, rods: ['bamboo'], rodEq: 'bamboo', bagMax: 5,
+        bag: [{ fishId: 'harbor_0', weight: 1, price: 30, time: 1 }, { fishId: 'harbor_1', weight: 1, price: 40, time: 2, locked: 'yes' }, { fishId: 'harbor_2', weight: 1, price: 50, time: 3, locked: true }] }))""")
+    lp.reload(); lp.wait_for_timeout(300); lp.click("#contBtn"); lp.wait_for_timeout(300); lp.evaluate("go('bag')"); lp.wait_for_timeout(300)
+    check("an old save without the locked flag loads as unlocked (garbage flags too), the Bag renders and SELL ALL totals the unlocked fish",
+          lp.evaluate("S.bag.map(x => x.locked)") == [False, False, True] and "70" in lp.inner_text("#sellAll") and lp.evaluate("document.querySelectorAll('#bagList .lockbtn').length") == 3)
+    lp.evaluate("() => { localStorage.setItem('littleLakeSave', '{\"bag\": [null, 5, {\"fishId\": \"harbor_0\", \"weight\": 1, \"price\": 3}]}'); }")
+    lp.reload(); lp.wait_for_timeout(300)
+    check("a broken save with odd bag entries still loads (entries without the flag are unlocked)", lp.evaluate("S.bag.length") == 1 and lp.evaluate("S.bag[0].locked") is False)
+    howtxt = lp.evaluate("document.getElementById('howBox').textContent")
+    check("HOW TO PLAY says: Lock a fish in the Bag to keep it from SELL ALL.", "Lock a fish in the Bag to keep it from SELL ALL." in howtxt)
+    lp.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")

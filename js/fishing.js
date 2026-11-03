@@ -592,13 +592,15 @@ function renderResult() {
   // full bag: never drop the fish silently; offer a clear choice instead of KEEP
   $("result").classList.toggle("full", full);
   if (full) {
-    const c = cheapest(), cf = fishById(S.bag[c].fishId);
+    const c = cheapest(), cf = c < 0 ? null : fishById(S.bag[c].fishId);
+    $("sellOneBtn").disabled = c < 0;
     $("fullText").textContent = `Your bag is full (${S.bag.length} / ${S.bagMax}). Make room for the ${f.name} or let it go.`;
     $("sellOneBtn").innerHTML = `<span class="ico i-coin"></span>SELL A FISH`;
-    $("sellOneInfo").textContent = `SELL A FISH sells your cheapest fish (${cf.name}, ${fmt(S.bag[c].price)} coins) and keeps the ${f.name}.`;
+    $("sellOneInfo").textContent = cf ? `SELL A FISH sells your cheapest unlocked fish (${cf.name}, ${fmt(S.bag[c].price)} coins) and keeps the ${f.name}.`
+      : `All your fish are locked. Unlock one in the Bag to sell it, or release the ${f.name}.`;
   }
 }
-const cheapest = () => S.bag.reduce((m, b, i) => b.price < S.bag[m].price ? i : m, 0);
+const cheapest = () => S.bag.reduce((m, b, i) => b.locked ? m : m < 0 || b.price < S.bag[m].price ? i : m, -1);   // -1 = every fish is locked
 // put the waiting catch in the bag, with a toast and a bouncing bag counter
 function keepCatch(prefix = "") {
   const p = S.pending; if (!p) return go("fishing");
@@ -609,7 +611,8 @@ function keepCatch(prefix = "") {
 $("keepBtn").onclick = () => keepCatch();
 $("sellOneBtn").onclick = () => {
   if (!S.pending || !bagFull()) return keepCatch();
-  const i = cheapest(), b = S.bag[i]; S.bag.splice(i, 1); S.coins += b.price; sfx.coin();
+  const i = cheapest(); if (i < 0) { toast("All your fish are locked"); return; }
+  const b = S.bag[i]; S.bag.splice(i, 1); S.coins += b.price; sfx.coin();
   keepCatch(`Sold ${fishById(b.fishId).name} for ${fmt(b.price)} coins. `);
 };
 $("resBagBtn").onclick = () => go("bag");
