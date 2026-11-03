@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=44">
+<link rel="stylesheet" href="css/style.css?v=45">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -28,8 +28,8 @@
       <div class="nav-name" id="navName" aria-live="polite"></div>
       <span class="nav-end" aria-hidden="true"></span>
     </nav>
-    <!-- HOME (Playtest 1, part 13): Fishing screen only, after the title and left of SELL; the same Title/main-menu route as the Home screen's MENU button (data-go="titleScreen"); disabled while a cast is busy -->
-    <button class="btn top-home" id="homeTop" data-go="titleScreen" title="Back to the main menu" aria-label="Home"><span class="ico i-home"></span><span class="lbl">HOME</span></button>
+    <!-- HOME (Playtest 1, part 13): Fishing screen only, after the title and left of SELL; the same route as the Town Map's HOME tab (data-go="home"); disabled while a cast is busy -->
+    <button class="btn top-home" id="homeTop" data-go="home" title="Back to Home" aria-label="Home"><span class="ico i-home"></span><span class="lbl">HOME</span></button>
     <!-- SELL: only on the Fishing screen (body.plain), directly left of the coins: selling and coins belong together -->
     <button class="btn blue top-sell" id="sellTop" data-go="bag" title="Sell your fish" aria-label="Sell your fish"><span class="ico i-bag"></span>SELL</button>
     <div class="sign wood"><span class="coins" id="coinTop">0</span></div>
@@ -268,10 +268,10 @@
 </div>
 
 
-<script src="js/data.js?v=44"></script>
-<script src="js/state.js?v=44"></script>
-<script src="js/fisherman.js?v=44"></script>
-<script src="js/fishing.js?v=44"></script>
-<script src="js/screens.js?v=44"></script>
+<script src="js/data.js?v=45"></script>
+<script src="js/state.js?v=45"></script>
+<script src="js/fisherman.js?v=45"></script>
+<script src="js/fishing.js?v=45"></script>
+<script src="js/screens.js?v=45"></script>
 </body>
 </html>

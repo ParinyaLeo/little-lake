@@ -2430,13 +2430,22 @@ with sync_playwright() as p:
             navbefore = hp.evaluate("() => { window.__clicks = 0; const f = sfx.click; sfx.click = function (...a) { window.__clicks++; return f.apply(this, a); }; return navStack.length; }")
             hp.click("#homeTop"); hp.wait_for_timeout(350)
             after = hp.evaluate(SAVE_SNAP)
-            st = hp.evaluate("() => ({ cur: current, title: document.getElementById('titleScreen').classList.contains('active'), nav: navStack.length, clicks: window.__clicks, saved: JSON.parse(localStorage.getItem('littleLakeSave')).coins, cont: !document.getElementById('contBtn').disabled })")
-            check("HOME goes to the Title screen (like MENU), clears the history, keeps the save (coins, bag, rods, floats), CONTINUE is enabled, and it plays one soft click",
-                  st["cur"] == "titleScreen" and st["title"] and st["nav"] == 0 and navbefore >= 1 and snap == after and st["saved"] == 999999 and st["clicks"] == 1 and st["cont"], f"{st} {navbefore} {snap} {after}")
+            hp.screenshot(path=str(SHOTS / "106_home_hub_1536x730.png"))
+            st = hp.evaluate("() => ({ cur: current, title: document.getElementById('titleScreen').classList.contains('active'), hub: document.getElementById('home').classList.contains('active'), nav: navStack.length, clicks: window.__clicks, saved: JSON.parse(localStorage.getItem('littleLakeSave')).coins, cont: 1 })")
+            check("HOME goes to the Home hub screen (like the Town Map HOME tab, not the Title screen), clears the history, keeps the save (coins, bag, rods, floats), and plays one soft click",
+                  st["cur"] == "home" and st["hub"] and not st["title"] and st["nav"] == 0 and navbefore >= 1 and snap == after and st["saved"] == 999999 and st["clicks"] == 1, f"{st} {navbefore} {snap} {after}")
+            # BACK on the hub behaves as after the Town Map HOME tab: back to the Title screen, never into the fishing screen; same history state
+            hp.evaluate("() => { go('map'); }"); hp.wait_for_timeout(200); hp.click("#mapHome"); hp.wait_for_timeout(250)
+            viamap = hp.evaluate("[current, navStack.length]")
+            hp.evaluate("() => { go('fishing'); }"); hp.wait_for_timeout(250); hp.click("#homeTop"); hp.wait_for_timeout(250)
+            viafish = hp.evaluate("[current, navStack.length]")
+            hp.click("#navBack") if hp.is_visible("#navBack") else hp.keyboard.press("Escape"); hp.wait_for_timeout(250)
+            check("after HOME the history is the same as after the Town Map HOME tab (home, empty), and BACK / Esc on the hub does not return to the fishing screen",
+                  viamap == viafish == ["home", 0] and hp.evaluate("current") != "fishing", f"{viamap} {viafish} {hp.evaluate('current')}")
             for key in ["Enter", "Space"]:
                 hp.evaluate("() => { go('home'); go('fishing'); }"); hp.wait_for_timeout(300)
                 hp.focus("#homeTop"); hp.keyboard.press(key); hp.wait_for_timeout(250)
-                check(f"HOME is focusable and {key} works", hp.evaluate("current") == "titleScreen")
+                check(f"HOME is focusable and {key} works (goes to the Home hub)", hp.evaluate("current") == "home")
             hp.evaluate("() => { go('home'); go('fishing'); }"); hp.wait_for_timeout(300)
             bt = hp.evaluate("[...document.querySelectorAll('#fishing .actions > *')].map(e => (e.id || e.textContent).trim())")
             check("the bottom three buttons are unchanged (CAST, SHOP, TOWN MAP)", len(bt) == 3, str(bt))
