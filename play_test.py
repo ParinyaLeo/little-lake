@@ -309,12 +309,12 @@ with sync_playwright() as p:
     fake_catch(q, "harbor_2")
     check("catch waiting on Result is stored in the save", q.evaluate(SAVED + ".pending.fishId") == "harbor_2")
     q.reload(); q.wait_for_timeout(300); q.click("#contBtn"); q.wait_for_timeout(300)
-    check("reload + CONTINUE returns to the waiting catch", q.is_visible("#result") and "Sea Bream" in q.inner_text("#resName"))
+    check("reload + CONTINUE returns to the waiting catch", q.is_visible("#result") and "Hermit Crab" in q.inner_text("#resName"))
     q.evaluate("go('home')"); q.wait_for_timeout(150)
     check("can't leave the Result screen without KEEP or RELEASE", q.is_visible("#result") and not q.is_visible("#home"))
     q.click("#keepBtn"); q.wait_for_timeout(150)
-    check("KEEP shows '+1 Sea Bream added to bag' and bounces the bag count",
-          "+1 Sea Bream added to bag" in toast_text(q) and "bump" in q.get_attribute("#fBag", "class")
+    check("KEEP shows '+1 Hermit Crab added to bag' and bounces the bag count",
+          "+1 Hermit Crab added to bag" in toast_text(q) and "bump" in q.get_attribute("#fBag", "class")
           and q.evaluate("S.bag.length") == 1 and q.evaluate(SAVED + ".pending") is None, toast_text(q))
     q.evaluate("() => { for (let i = 0; i < 4; i++) { F = { phase: 'idle', fish: fishById('harbor_0') }; caught(); keepCatch(); } }")
     check("several catches in a row all stay in the bag (and after reload)",
@@ -330,7 +330,7 @@ with sync_playwright() as p:
     coins0 = q.evaluate("S.coins"); q.click("#sellOneBtn"); q.wait_for_timeout(150)
     check("SELL A FISH sells the cheapest fish and keeps the new one",
           q.evaluate("S.coins") == coins0 + 7 and q.evaluate("S.bag.length") == 5 and q.evaluate("S.bag.some(b => b.fishId === 'harbor_1')")
-          and q.evaluate("S.pending") is None and "Striped Mullet added to bag" in toast_text(q), toast_text(q))
+          and q.evaluate("S.pending") is None and "Moon Jellyfish added to bag" in toast_text(q), toast_text(q))
     fake_catch(q, "harbor_3"); q.click("#resBagBtn"); q.wait_for_timeout(200)
     check("OPEN BAG from a full Result opens the bag", q.is_visible("#bag"))
     q.click("#bagList .row .btn"); q.wait_for_timeout(100); q.click("#navBack"); q.wait_for_timeout(200)
@@ -1991,6 +1991,84 @@ with sync_playwright() as p:
     howtxt = lp.evaluate("document.getElementById('howBox').textContent")
     check("HOW TO PLAY says: Lock a fish in the Bag to keep it from SELL ALL.", "Lock a fish in the Bag to keep it from SELL ALL." in howtxt)
     lp.close()
+    # ---------- Playtest 1, part 10: 13 new creature species with 9 new body plans (jellyfish, crab, seahorse, shark, squid, turtle, frog, axolotl, crayfish) ----------
+    NEW_SPECIES = {  # id: (name, rarity, plan)
+        "harbor_1": ("Moon Jellyfish", "Common", "jellyfish"), "harbor_2": ("Hermit Crab", "Common", "crab"), "harbor_5": ("Seahorse", "Rare", "seahorse"), "harbor_7": ("Reef Shark", "Epic", "shark"),
+        "frost_2": ("Snow Crab", "Common", "crab"), "frost_6": ("Comb Jelly", "Rare", "jellyfish"), "frost_8": ("Greenland Shark", "Epic", "shark"), "frost_9": ("Aurora Squid", "Legendary", "squid"),
+        "desert_2": ("Oasis Turtle", "Common", "turtle"), "desert_5": ("Oasis Crayfish", "Rare", "crayfish"),
+        "forest_2": ("Green Frog", "Common", "frog"), "forest_6": ("Axolotl", "Rare", "axolotl"), "forest_8": ("Snapping Turtle", "Epic", "turtle")}
+    OLD_PRICES = {"harbor_1": 25, "harbor_2": 30, "harbor_5": 70, "harbor_7": 150, "frost_2": 25, "frost_6": 60, "frost_8": 200, "frost_9": 480, "desert_2": 15, "desert_5": 60, "forest_2": 20, "forest_6": 65, "forest_8": 210}
+    OLD_RARITY = {"harbor_1": "Common", "harbor_2": "Common", "harbor_5": "Rare", "harbor_7": "Epic", "frost_2": "Common", "frost_6": "Rare", "frost_8": "Epic", "frost_9": "Legendary",
+                  "desert_2": "Common", "desert_5": "Rare", "forest_2": "Common", "forest_6": "Rare", "forest_8": "Epic"}
+    fp = b.new_page(viewport={"width": 1536, "height": 730})
+    fp.on("pageerror", lambda e: errs.append(str(e))); fp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    fp.goto(URL); fp.evaluate("localStorage.clear()"); fp.reload(); fp.wait_for_timeout(300)
+    data = fp.evaluate("""() => ({ fish: FISH.map(f => ({ id: f.id, name: f.name, rarity: f.rarity, price: f.price, plan: f.plan, island: f.island })), ids: FISH.map(f => f.id) })""")
+    by = {f["id"]: f for f in data["fish"]}
+    check("the 13 new species sit in the listed slots with the listed names, the same rarity and the same price as the species they replaced",
+          all(by[i]["name"] == n and by[i]["rarity"] == r and OLD_RARITY[i] == r and by[i]["price"] == OLD_PRICES[i] for i, (n, r, pl) in NEW_SPECIES.items()), str({i: by[i]["name"] for i in NEW_SPECIES}))
+    check("each new species has its own plan field (jellyfish, crab, seahorse, shark, squid, turtle, frog, axolotl, crayfish) and no other fish has one",
+          all(by[i]["plan"] == pl for i, (n, r, pl) in NEW_SPECIES.items()) and all(f["plan"] is None for f in data["fish"] if f["id"] not in NEW_SPECIES)
+          and set(f["plan"] for f in data["fish"] if f["plan"]) == {"jellyfish", "crab", "seahorse", "shark", "squid", "turtle", "frog", "axolotl", "crayfish"})
+    rc = {}
+    for f in data["fish"]:
+        if f["island"] != "secret": rc.setdefault(f["island"], {}).setdefault(f["rarity"], 0); rc[f["island"]][f["rarity"]] += 1
+    check("every island still has 4 Common, 3 Rare, 2 Epic, 1 Legendary; the secret island has the one Mythical Lake Guardian; 41 fish in all",
+          all(v == {"Common": 4, "Rare": 3, "Epic": 2, "Legendary": 1} for v in rc.values()) and len(rc) == 4 and by["secret_0"]["rarity"] == "Mythical" and by["secret_0"]["name"] == "Lake Guardian" and len(data["fish"]) == 41, str(rc))
+    exp_ids = [f"{i}_{n}" for i in ["harbor", "frost", "desert", "forest"] for n in range(10)] + ["secret_0"]
+    check("all fish ids are unchanged (harbor_0..9, frost_0..9, desert_0..9, forest_0..9, secret_0) and unique", data["ids"] == exp_ids)
+    others = [f["name"] for f in data["fish"] if f["id"] not in NEW_SPECIES]
+    check("the other 28 species keep their names (e.g. Sardine, Clownfish, Manta Ray, Spirit Koi)", len(others) == 28 and all(n in others for n in ["Sardine", "Mackerel", "Clownfish", "Pufferfish", "Manta Ray", "Oarfish", "Ice Pike", "Spirit Koi", "Lake Guardian"]))
+    px = fp.evaluate("""ids => { const out = {};
+        for (const id of ids) { const f = fishById(id), cv = document.createElement('canvas'); drawFish(cv, f);
+          const d = cv.getContext('2d').getImageData(0, 0, 24, 16).data; let n = 0, bits = '';
+          for (let i = 3; i < d.length; i += 4) { n += d[i] ? 1 : 0; bits += d[i] ? '1' : '0'; }
+          const sc = document.createElement('canvas'); silhouette(sc, f); const sd = sc.getContext('2d').getImageData(0, 0, 24, 16).data; let sn = 0; for (let i = 3; i < sd.length; i += 4) sn += sd[i] ? 1 : 0;
+          const maps = FISH_PLANS[f.plan]; const mapOk = maps.length === 16 && maps.every(r => r.length === 24);
+          out[id] = { n, w: cv.width, h: cv.height, bits, sn, mapOk }; }
+        return out; }""", list(NEW_SPECIES))
+    check("every new species draws on a 24x16 canvas with at least 12 non-transparent pixels, its plan map is exactly 16 rows x 24 columns, and its undiscovered silhouette is drawn too",
+          all(v["w"] == 24 and v["h"] == 16 and v["n"] >= 12 and v["mapOk"] and v["sn"] >= 12 for v in px.values()), str({k: v["n"] for k, v in px.items()}))
+    bitsets = {}
+    for i, (n, r, pl) in NEW_SPECIES.items(): bitsets.setdefault(pl, set()).add(px[i]["bits"])
+    check("the 9 plans have 9 different silhouettes, and the plans shared by two species (crab, jellyfish, shark, turtle) draw the same outline", len({next(iter(s)) for s in bitsets.values()}) == 9 and all(len(s) <= 2 for s in bitsets.values()))
+    cmp = fp.evaluate("""() => { const mask = f => { const cv = document.createElement('canvas'); drawFish(cv, f); const d = cv.getContext('2d').getImageData(0, 0, 24, 16).data; let s = ''; for (let i = 3; i < d.length; i += 4) s += d[i] ? '1' : '0'; return s; };
+        const fish = FISH.filter(f => !f.plan).map(mask); const plans = ['harbor_1','harbor_2','harbor_5','harbor_7','frost_9','desert_2','forest_2','forest_6','desert_5'].map(id => mask(fishById(id)));
+        return plans.map(m => Math.min(...fish.map(o => { let diff = 0; for (let i = 0; i < m.length; i++) if (m[i] !== o[i]) diff++; return diff; }))); }""")
+    check("every new silhouette differs clearly from every ordinary fish at 24x16 (at least 40 pixels apart)", all(d >= 40 for d in cmp), str(cmp))
+    # Collection with everything found: all 4 islands, screenshots; Bag shows the new names; Result cards
+    start_new(fp, "Artist")
+    fp.evaluate("() => { FISH.forEach(f => { S.discovered[f.id] = true; S.records[f.id] = f.max; }); S.bagMax = 15; save(); go('collection'); }"); fp.wait_for_timeout(400)
+    for isl, nm in [("harbor", "Harbor"), ("frost", "Frost"), ("desert", "Desert"), ("forest", "Forest")]:
+        fp.click(f"#tabs .tab:has-text('{nm}')"); fp.wait_for_timeout(300)
+        txt = fp.inner_text("#collGrid"); want = [v[0] for i, v in NEW_SPECIES.items() if i.startswith(isl)]
+        sizes = fp.evaluate("[...document.querySelectorAll('#collGrid canvas')].map(c => [c.width, c.height])")
+        check(f"Collection {nm}: the new species show their names ({', '.join(want)}), 10 cards, every drawing 24x16", all(w in txt for w in want) and len(sizes) == 10 and all(s == [24, 16] for s in sizes))
+        fp.screenshot(path=str(SHOTS / f"102_collection_{isl}_1536x730.png"))
+    fp.evaluate("() => { S.discovered = {}; S.records = {}; save(); go('home'); go('collection'); }"); fp.wait_for_timeout(300)
+    unk = fp.evaluate("() => { const c = [...document.querySelectorAll('#collGrid .cell')]; return [c.length, c.every(x => x.classList.contains('unknown')), c.every(x => x.textContent.includes('Not found yet')), document.getElementById('collGrid').textContent.includes('Moon')]; }")
+    check("undiscovered fish still show the silhouette cards ('Not found yet', no name leaked)", unk[0] == 10 and unk[1] and unk[2] and not unk[3])
+    fp.evaluate("() => { S.discovered = { harbor_1: true, harbor_7: true }; S.records = { harbor_1: 1.2 }; save(); go('home'); go('collection'); }"); fp.wait_for_timeout(300); fp.click("#tabs .tab:has-text('Harbor')"); fp.wait_for_timeout(200)
+    fnd = fp.inner_text("#collGrid")
+    check("an old save that had discovered harbor_1 now shows Moon Jellyfish as found (ids unchanged, no migration)", "Moon Jellyfish" in fnd and "Reef Shark" in fnd and "Seahorse" not in fnd and "Best: 1.2 kg" in fnd)
+    fp.evaluate("() => { S.bag = ['harbor_1', 'frost_9', 'forest_8', 'desert_5', 'forest_6'].map((id, i) => ({ fishId: id, weight: 1, price: 50 + i, time: i })); save(); go('home'); go('bag'); }"); fp.wait_for_timeout(400)
+    bag = fp.inner_text("#bagList")
+    check("the Bag lists the new names (Moon Jellyfish, Aurora Squid, Snapping Turtle, Oasis Crayfish, Axolotl)", all(n in bag for n in ["Moon Jellyfish", "Aurora Squid", "Snapping Turtle", "Oasis Crayfish", "Axolotl"]))
+    fp.screenshot(path=str(SHOTS / "102_bag_new_fish_1536x730.png"))
+    fp.evaluate("() => { S.bag = []; S.bagMax = 5; save(); }")
+    for fid, tag in [("harbor_1", "moon_jellyfish"), ("harbor_7", "reef_shark"), ("frost_9", "aurora_squid"), ("forest_8", "snapping_turtle")]:
+        fp.evaluate(f"() => {{ S.pending = null; F = {{ phase: 'idle', fish: fishById('{fid}') }}; caught(); }}"); fp.wait_for_timeout(1300)
+        shown = fp.inner_text("#resName")
+        check(f"Result card shows {NEW_SPECIES[fid][0]}", NEW_SPECIES[fid][0] in shown and fp.is_visible("#resCanvas"), shown)
+        fp.screenshot(path=str(SHOTS / f"102_result_{tag}_1536x730.png"))
+        fp.evaluate("() => { S.pending = null; save(); go('home'); }"); fp.wait_for_timeout(200)
+    # an old save (with fish ids from before) still loads
+    fp.evaluate("""() => localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Oldie', coins: 90, rods: ['bamboo'], rodEq: 'bamboo', bagMax: 5,
+        bag: [{ fishId: 'harbor_1', weight: 1, price: 25, time: 1 }, { fishId: 'forest_8', weight: 9, price: 200, time: 2 }], discovered: { harbor_1: true, forest_8: true, frost_9: true }, records: { frost_9: 4 } }))""")
+    fp.reload(); fp.wait_for_timeout(300); fp.click("#contBtn"); fp.wait_for_timeout(300); fp.evaluate("go('bag')"); fp.wait_for_timeout(300)
+    check("an old save with fish ids harbor_1, forest_8, frost_9 loads: the bag and Collection show the new species", "Moon Jellyfish" in fp.inner_text("#bagList") and "Snapping Turtle" in fp.inner_text("#bagList")
+          and fp.evaluate("totalDisc()") == 3)
+    fp.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")
