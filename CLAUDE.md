@@ -370,6 +370,10 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
 - **Fish drawings** (`drawFish` in `js/state.js`, 24x16 grid): `fishShape(f)` picks slim / regular / flat / round /
   long / eel / ray from the fish's `len` and `h` (named exceptions in `FISH_SHAPES`). Rare and better fish get glints;
   Legendary and Mythical get sparkles. Keep the 24x16 size: it scales to exactly 8x (Result), 4x (Collection), 3x (Bag).
+- **Rivets** (Playtest 1, part 14): the four white corner rivets are the background layers `var(--rivets)` (14px boxes 7px inside the padding box) of `.wood` panels and `.btn`s. `* { --rivets: var(--rivets-on) }` gives every element its own value,
+  so **`.no-rivets`** (`--rivets: none`) hides the rivets of that one element only (not of buttons inside it) without changing border, shadow, size or tap target. Hidden on: `.chip-btn` (ROD / BAIT / FLOAT), `.top-home`, `.top-sell`, `#menuBtn`, `#pickShop`
+  and, below 700px, `#title`, `.sign` (coins), `.logo.wood`, `.panel.wood` and `.btn:has(> .ico)` (the icon + label buttons). Big panels and buttons on wide windows keep them. A new small button, chip or sign whose icon or text reaches into a corner needs `no-rivets`
+  (or an entry in that selector list): the test `no rivet overlaps an icon or text` measures the rivet circles against every icon and text node on all main screens at 1536x730 and 360x640 and fails otherwise. The popup heading (`.picker h2`) has 8px of left padding for the same reason.
 - **Lock icons:** `i-padlock` (gold, closed) and `i-padlock-open` (grey) are 12x12 icons like the others (the old dark `i-lock` is still the locked-card padlock).
 - **Selection / touch:** nothing in the UI can be selected (`user-select: none`, `-webkit-touch-callout: none`, no tap highlight on `*`); text inputs are
   re-enabled with `input, textarea { user-select: text }`. Any new text field must stay selectable. Don't set `touch-action: none` on anything that

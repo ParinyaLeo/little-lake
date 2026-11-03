@@ -2450,6 +2450,67 @@ with sync_playwright() as p:
             bt = hp.evaluate("[...document.querySelectorAll('#fishing .actions > *')].map(e => (e.id || e.textContent).trim())")
             check("the bottom three buttons are unchanged (CAST, SHOP, TOWN MAP)", len(bt) == 3, str(bt))
         hp.close()
+    # ---------- Playtest 1, part 14: rivets never overlap icons or text ----------
+    RIVET_JS = r"""() => {
+  const out = [], seen = new Set();
+  const all = document.querySelectorAll('body *');
+  for (const el of all) {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const bg = cs.backgroundImage;
+    if (!bg || !bg.includes('rgb(244, 244, 244)')) continue;      // the rivet gradient
+    const r = el.getBoundingClientRect(); if (r.width < 4 || r.height < 4) continue;
+    const bl = parseFloat(cs.borderLeftWidth) || 0, bt = parseFloat(cs.borderTopWidth) || 0, br = parseFloat(cs.borderRightWidth) || 0, bb = parseFloat(cs.borderBottomWidth) || 0;
+    const px0 = r.left + bl, py0 = r.top + bt, px1 = r.right - br, py1 = r.bottom - bb;   // padding box
+    const riv = [];    // the visible circle: 14x14 box at 7px from the padding edges, radius 6
+    for (const [cx, cy] of [[px0 + 14, py0 + 14], [px1 - 14, py0 + 14], [px0 + 14, py1 - 14], [px1 - 14, py1 - 14]]) riv.push([cx, cy]);
+    const content = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_ALL);
+    let n;
+    while ((n = walker.nextNode())) {
+      if (n.nodeType === 3) {
+        if (!n.textContent.trim()) continue;
+        const p = n.parentElement, pcs = getComputedStyle(p); if (pcs.display === 'none' || pcs.visibility === 'hidden') continue;
+        const rg = document.createRange(); rg.selectNodeContents(n);
+        for (const q of rg.getClientRects()) if (q.width > 0 && q.height > 0) content.push([q.left, q.top, q.right, q.bottom, 'text:' + n.textContent.trim().slice(0, 14)]);
+      } else if (n.nodeType === 1) {
+        const c = getComputedStyle(n); if (c.display === 'none' || c.visibility === 'hidden') continue;
+        const isIcon = n.classList.contains('ico') || ['IMG', 'CANVAS', 'SVG'].includes(n.tagName.toUpperCase());
+        if (isIcon) { const q = n.getBoundingClientRect(); if (q.width > 0 && q.height > 0) content.push([q.left, q.top, q.right, q.bottom, 'icon:' + (n.className.baseVal || n.className)]); }
+      }
+    }
+    for (const [cx, cy] of riv) for (const c of content) {
+      const nx = Math.max(c[0], Math.min(cx, c[2])), ny = Math.max(c[1], Math.min(cy, c[3]));
+      if (Math.hypot(nx - cx, ny - cy) < 5) { const id = el.id ? '#' + el.id : el.tagName.toLowerCase() + '.' + String(el.className).split(/\s+/).filter(Boolean).join('.'); const key = id + '|' + c[4]; if (!seen.has(key)) { seen.add(key); out.push({ el: id, hit: c[4], box: [Math.round(r.width), Math.round(r.height)] }); } }
+    }
+  }
+  return out;
+}"""
+    for rw, rh in [(1536, 730), (360, 640)]:
+        rp = b.new_page(viewport={"width": rw, "height": rh})
+        rp.on("pageerror", lambda e: errs.append(str(e))); rp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        rp.goto(URL); rp.evaluate("localStorage.clear()"); rp.reload(); rp.wait_for_timeout(300); start_new(rp, "Rivets")
+        rp.add_style_tag(content="#toast { display: none !important; }")
+        rp.evaluate("() => { S.coins = 999999; S.bagMax = 20; S.rods = ['bamboo','sturdy','precision','lucky']; S.floatsOwned = ['classic','candy','frog','duck','golden']; S.baits = {worm: 5, shrimp: 5, golden: 3}; S.baitSel = 'worm';"
+                    " S.bag = [0,1,2].map(i => ({ fishId: 'harbor_' + i, w: 1.2, price: 20 + i, locked: i === 1 })); save(); }")
+        hits = []
+        def rv(name, js):
+            rp.evaluate(js); rp.wait_for_timeout(350)
+            for h in rp.evaluate(RIVET_JS): hits.append(f"{name}: {h['el']} {h['hit']}")
+        rv("title", "go('titleScreen')"); rv("how", "document.getElementById('howBtn').click()"); rp.evaluate("document.getElementById('howOk').click()"); rp.wait_for_timeout(200); rv("hub", "go('home')"); rv("map", "go('map')")
+        for isl in ["harbor", "frost", "desert", "forest"]: rv("fishing-" + isl, f"() => {{ stopFishing(); island = '{isl}'; go('fishing'); }}")
+        for kind in ["float", "rod", "bait"]: rv("popup-" + kind, f"() => {{ closeModal('pickBox'); openPicker('{kind}'); }}")
+        rp.evaluate("closeModal('pickBox')")
+        rv("shop", "go('shop')"); rv("tackle", "go('tackle')"); rv("collection", "go('collection')"); rv("bag", "go('bag')")
+        check(f"{rw}x{rh}: no rivet overlaps an icon or text inside its own element (title, how to play, hub, map, 4 islands, 3 popups, shop, tackle box, collection, bag)", not hits, "; ".join(hits[:8]))
+        rp.evaluate("() => { stopFishing(); island = 'harbor'; go('fishing'); }"); rp.wait_for_timeout(400)
+        rp.screenshot(path=str(SHOTS / f"107_rivets_fishing_topbar_{rw}x{rh}.png"), clip={"x": 0, "y": 0, "width": rw, "height": 120})
+        rp.evaluate("go('home')"); rp.wait_for_timeout(400)
+        rp.screenshot(path=str(SHOTS / f"107_rivets_hub_{rw}x{rh}.png"))
+        if rw == 1536:
+            big = rp.evaluate("""() => { go('home'); const n = el => getComputedStyle(el).backgroundImage.includes('rgb(244, 244, 244)'); return { panel: n(document.querySelector('#home .panel')), map: (go('map'), n(document.querySelector('.map-panel'))), tm: (go('home'), n(document.querySelector('#home .btn[data-go=\"map\"]'))), chip: n(document.getElementById('menuBtn')) }; }""")
+            check("large panels and buttons keep their rivets on wide windows (hub panel, Town Map panel, big hub button) while the MENU button has none", big["panel"] and big["map"] and big["tm"] and not big["chip"], str(big))
+        rp.close()
     # screenshots (the five floats on the water, full scene + close-up) at 1536x730 and 360x640
     bp.close()
     for vw, vh in [(1536, 730), (360, 640)]:
