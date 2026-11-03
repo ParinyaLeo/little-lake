@@ -1,7 +1,7 @@
 // Save data, shared helpers (toast, sound, confetti, banner, fish drawing) and progress checks. Loaded after data.js.
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
-const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none",
+const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none", floatsOwned: ["classic"], floatEq: "classic",
   bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0 });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
@@ -20,11 +20,14 @@ function cleanSave(raw) {
   const baits = {}; BAIT_IDS.forEach(b => baits[b] = legacy ? (b === "shrimp" ? num(raw.bait, 0) : 0) : num(raw.baits && raw.baits[b], 0));
   let baitSel = legacy ? (raw.useBait !== false ? "shrimp" : "none") : raw.baitSel;
   if (!BAITS[baitSel] || !baits[baitSel]) baitSel = "none";
+  const floatsOwned = [...new Set(["classic", ...(Array.isArray(raw.floatsOwned) ? raw.floatsOwned.filter(id => FLOATS[id]) : [])])];
+  const floatEq = FLOATS[raw.floatEq] && floatsOwned.includes(raw.floatEq) ? raw.floatEq : "classic";
   const s = {
     name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim().slice(0, 20) : d.name,
     coins: num(raw.coins, d.coins) + (legacy && oldRod > 2 ? (oldRod - 2) * 200 : 0),
     rods: [...new Set(rods)], rodEq: legacy ? (oldRod >= 2 ? "sturdy" : "bamboo") : rods.includes(raw.rodEq) ? raw.rodEq : "bamboo",
     baits, baitSel, bagMax: num(raw.bagMax, 5, 5),
+    floatsOwned: floatsOwned, floatEq,          // cosmetic floats: older saves have none, so they own and use the classic float
     bag: Array.isArray(raw.bag) ? raw.bag.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)).map(b => ({ ...b, locked: b.locked === true })) : [],   // locked: kept out of SELL ALL (old saves: unlocked)
     discovered: raw.discovered && typeof raw.discovered === "object" ? raw.discovered : {},
     records: raw.records && typeof raw.records === "object" ? raw.records : {},
@@ -593,6 +596,12 @@ function rodFx(id) {
   return p.join(", ") + ".";
 }
 const baitName = id => BAITS[id] ? BAITS[id].name : "No bait";
+// equip a float you own (Tackle Box, the FLOAT chip, or right after buying it); never mid-cast
+function equipFloat(id) {
+  sfx.tick();
+  if (!FLOATS[id] || !S.floatsOwned.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
+  S.floatEq = id; save(); toast(`Equipped: ${FLOATS[id].name}`); render();
+}
 // equip a rod you own / select a bait you have (or "none"); used by the Tackle Box and the fishing HUD
 function equipRod(id) {
   sfx.tick();

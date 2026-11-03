@@ -353,6 +353,12 @@ p.small { font-size: 14px; margin: 0 0 12px; }
 /* the larger rod icons (16x16 art, Playtest 1 part 3): Shop 32px (2x), Choose Rod popup 32px (2x), Tackle Box 48px (3x): whole pixel multiples */
 .item b .ico[class*="i-rodlg-"], .pick-card > .ico[class*="i-rodlg-"] { width: 32px; height: 32px; }
 .item b .ico[class*="i-rodlg-"] { margin-right: 10px; vertical-align: middle; }
+/* float previews: the sprite as a background image, whole-pixel scaling */
+.ico.fl { background-size: contain; }
+.item b .ico.fl, .pick-card > .ico.fl { width: 24px; height: 32px; }
+.item b .ico.fl { margin-right: 10px; vertical-align: middle; }
+.gear-row > .ico.fl { width: 30px; height: 48px; margin: 0 3px; }
+.chip-btn .ico.fl { width: 16px; height: 25px; margin-right: 6px; vertical-align: -.55em; }
 .gear-row > .ico[class*="i-rodlg-"] { width: 48px; height: 48px; }
 
 /* full-viewport backdrop behind every screen (position: fixed, so it never scrolls). One layer per picture; the shown one
@@ -514,11 +520,14 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   .gear-row .grow { flex-basis: calc(100% - 60px); }
   .chip { max-width: none; margin-left: 48px; }
   /* phones: rod + bait chips on one row, reward icons (or the hint) on a second fixed row */
-  .gearbar { height: 76px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 40px 30px; gap: 6px; }
-  .gearbar .chip-btn { font-size: 13px; padding: 0 6px; }
+  .gearbar { height: 76px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 40px 30px; gap: 6px; }
+  .gearbar .chip-btn { font-size: 11px; padding: 0 2px; letter-spacing: 0; border-width: 3px; }   /* three chips share the row: the longest labels (Precision, Shrimp x12) must fit */
+  .gearbar .chip-btn .ico { margin-right: 3px; }
+  .chip-btn .ico.fl { width: 12px; height: 19px; vertical-align: -.35em; }
   .modal .picker { padding: 14px; }
   .pick-card { padding: 6px 8px; gap: 8px; }
   .pick-card > .ico { width: 24px; height: 24px; }
+  .pick-card > .ico.fl { width: 19px; height: 30px; }
   .pick-card .fx { font-size: 12px; }
   .pick-card .odds { font-size: 11px; }
   .pick-card .chip { font-size: 11px; padding: 2px 5px; }

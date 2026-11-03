@@ -56,6 +56,15 @@ const BAITS = {
   golden: { name: "Golden Lure", short: "Golden", pack: 3, price: 250, odds: [-35, -5, 22, 18], blurb: "Strong boost to Epic and Legendary fish." },
 };
 const BAIT_IDS = Object.keys(BAITS);
+// Floats (the bobber on the water): pure cosmetics, bought once in the Shop, one equipped in S.floatEq; no effect on odds, bites, rods, baits, rewards or timing.
+const FLOATS = {
+  classic: { name: "Classic Float", short: "Classic", price: 0,   blurb: "Red and white, the one every angler knows." },
+  candy:   { name: "Candy Float",   short: "Candy",   price: 150, blurb: "A pink-and-white swirl, sweet as a lollipop." },
+  frog:    { name: "Frog Float",    short: "Frog",    price: 250, blurb: "A green float with two tiny eyes watching the water." },
+  duck:    { name: "Duck Float",    short: "Duck",    price: 350, blurb: "A yellow float with an orange beak." },
+  golden:  { name: "Golden Float",  short: "Golden",  price: 600, blurb: "Shiny gold with a slow sparkle." },
+};
+const FLOAT_IDS = Object.keys(FLOATS);
 const BASE_ODDS = [60, 30, 8, 2];            // no bait, no bonuses
 const LUCKY_ROD_ODDS = BAITS.shrimp.odds;    // Lucky Rod: "like Shrimp bait"
 const LUCKY_LURE_ODDS = [-8, 0, 5, 3];       // Desert mastery reward

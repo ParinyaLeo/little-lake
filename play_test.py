@@ -2219,70 +2219,177 @@ with sync_playwright() as p:
         const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); }, 5); setTimeout(() => { clearInterval(iv); res(peak); }, 300); }); }""")
     check("the click is soft: its peak is far below the other effects (below 0.12) yet audible (above 0.005)", .005 < q2 < .12, str(q2))
     kp.close()
-    # ---------- Playtest 1, part 12: the bobber's look follows the bait used by the cast ----------
+    # ---------- Playtest 1, part 12b: floats are cosmetic gear you buy in the Shop and choose (Tackle Box, FLOAT chip); NOT linked to the bait ----------
+    FL = {"classic": 0, "candy": 150, "frog": 250, "duck": 350, "golden": 600}
     bp = b.new_page(viewport={"width": 1536, "height": 730})
     bp.on("pageerror", lambda e: errs.append(str(e))); bp.on("console", lambda m: m.type == "error" and errs.append(m.text))
     bp.goto(URL); bp.evaluate("localStorage.clear()"); bp.reload(); bp.wait_for_timeout(300); start_new(bp, "Floater")
-    bp.add_style_tag(content="#toast { display: none !important; }")
-    bp.evaluate("() => { S.baits = { worm: 9, shrimp: 9, golden: 9 }; S.bagMax = 20; save(); island = 'harbor'; go('fishing'); }"); bp.wait_for_timeout(700)
+    d = bp.evaluate("() => ({ f: Object.fromEntries(FLOAT_IDS.map(id => [id, FLOATS[id].price])), own: S.floatsOwned, eq: S.floatEq, names: FLOAT_IDS.map(id => FLOATS[id].name) })")
+    check("the five floats exist with the listed prices (classic free, candy 150, frog 250, duck 350, golden 600); classic is owned and equipped from the start",
+          d["f"] == FL and d["own"] == ["classic"] and d["eq"] == "classic", str(d))
+    # saves: old saves without the fields, garbage
+    bp.evaluate("""() => localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 80, rods: ['bamboo'], rodEq: 'bamboo', bagMax: 5, bag: [] }))"""); bp.reload(); bp.wait_for_timeout(300)
+    bp.click("#contBtn"); bp.wait_for_timeout(300)
+    check("an old save without floatsOwned / floatEq loads with the classic float owned and equipped (CONTINUE works)", bp.evaluate("[S.floatsOwned, S.floatEq, S.coins]") == [["classic"], "classic", 80])
+    bp.evaluate("""() => localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Odd', coins: 80, floatsOwned: ['nonsense', 'duck', 7], floatEq: 'frog' }))"""); bp.reload(); bp.wait_for_timeout(300)
+    check("odd float data is cleaned: unknown ids dropped, classic always owned, an unowned equipped float falls back to classic",
+          bp.evaluate("[S.floatsOwned.slice().sort(), S.floatEq]") == [["classic", "duck"], "classic"])
+    bp.evaluate("""() => localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Odd', coins: 80, floatsOwned: ['golden'], floatEq: 'golden' }))"""); bp.reload(); bp.wait_for_timeout(300)
+    check("a saved float choice survives a reload", bp.evaluate("[S.floatsOwned.slice().sort(), S.floatEq]") == [["classic", "golden"], "golden"])
+    bp.evaluate("localStorage.clear()"); bp.reload(); bp.wait_for_timeout(300); start_new(bp, "Floater")
+    # Shop: Floats section after Bait, with previews, descriptions, prices and states
+    bp.evaluate("() => { S.coins = 200; S.bagMax = 20; save(); go('shop'); }"); bp.wait_for_timeout(400)
+    sh = bp.evaluate("""() => { const h = [...document.querySelectorAll('#shop .shop-h')].map(x => x.firstChild.textContent.trim()), items = [...document.querySelectorAll('#shopFloats .item')];
+        return { heads: h, n: items.length, icons: items.every(i => i.querySelector('.ico.fl') && i.querySelector('.ico.fl').getBoundingClientRect().height >= 24 && i.querySelector('.ico.fl').getBoundingClientRect().height <= 32),
+                 names: items.map(i => i.querySelector('b').textContent.trim()), btns: items.map(i => i.querySelector('button').textContent.trim()), dis: items.map(i => i.querySelector('button').disabled),
+                 need: items.map(i => (i.querySelector('.need') || {}).textContent || ''), desc: items.every(i => i.querySelector('.fx').textContent.length > 12) }; }""")
+    check("Shop: a Floats section after Bait lists the five floats with a 24-32px preview, name and description; classic is EQUIPPED, the others show their price",
+          sh["heads"][:4] == ["Rods", "Bait", "Floats", "Bag"] and sh["n"] == 5 and sh["icons"] and sh["desc"] and sh["btns"] == ["EQUIPPED", "150 COINS", "250 COINS", "350 COINS", "600 COINS"], str(sh))
+    check("Shop: floats you can't afford are disabled and say 'Need N more coins'; the affordable one is enabled", sh["dis"] == [True, False, True, True, True] and sh["need"][2] == "Need 50 more coins" and sh["need"][4] == "Need 400 more coins", str(sh["need"]))
+    bp.click("#shopFloats [data-buy='float:candy']"); bp.wait_for_timeout(200)
+    check("buying with enough coins deducts the price, owns the float, equips it and toasts 'Bought: Candy Float'",
+          bp.evaluate("[S.coins, S.floatsOwned, S.floatEq]") == [50, ["classic", "candy"], "candy"] and "Bought: Candy Float" in bp.inner_text("#toast"), str(bp.evaluate("[S.coins, S.floatsOwned, S.floatEq]")))
+    bp.evaluate("() => { buyFloat('frog'); }"); bp.wait_for_timeout(150)
+    check("buying without enough coins fails: 'Not enough coins.', nothing owned, coins unchanged", bp.evaluate("[S.coins, S.floatsOwned.includes('frog'), S.floatEq]") == [50, False, "candy"] and "Not enough coins" in bp.inner_text("#toast"))
+    st = bp.evaluate("[...document.querySelectorAll('#shopFloats .item button')].map(b => b.textContent.trim())")
+    check("Shop states after buying: Classic OWNED, Candy EQUIPPED, the rest priced", st == ["OWNED", "EQUIPPED", "250 COINS", "350 COINS", "600 COINS"], str(st))
+    # Tackle Box: a Float row per float, equip with one tap
+    bp.evaluate("() => { S.coins = 5000; S.floatsOwned = ['classic', 'candy', 'duck']; S.floatEq = 'candy'; save(); go('tackle'); }"); bp.wait_for_timeout(400)
+    tk = bp.evaluate("""() => { const rows = [...document.querySelectorAll('#gearList .gear-row')].filter(r => r.querySelector('.ico.fl'));
+        return { n: rows.length, icons: rows.every(r => r.querySelector('.ico.fl').getBoundingClientRect().height > 20), text: rows.map(r => r.innerText.replace(/\\s+/g, ' ')), head: [...document.querySelectorAll('#gearList h3')].map(h => h.firstChild.textContent.trim()) }; }""")
+    check("Tackle Box: a Float row for each float with a preview, after Bait; the equipped one says EQUIPPED, owned ones have EQUIP, unowned ones show the price and a shop shortcut",
+          tk["n"] == 5 and tk["icons"] and tk["head"][:3] == ["Rod", "Bait", "Float"] and "EQUIPPED" in tk["text"][1] and "EQUIP" in tk["text"][0] and "SHOP · 250 COINS" in tk["text"][2] and "SHOP · 600 COINS" in tk["text"][4], str(tk["text"]))
+    bp.click("#gearList [data-float='duck']"); bp.wait_for_timeout(200)
+    check("equipping from the Tackle Box with one tap works and shows 'Equipped: Duck Float'", bp.evaluate("S.floatEq") == "duck" and "Equipped: Duck Float" in bp.inner_text("#toast"))
+    bp.click("#gearList .gear-row:has(.ico.fl) >> nth=2 >> text=SHOP"); bp.wait_for_timeout(300)
+    check("an unowned float's shop shortcut opens the Shop", bp.evaluate("current") == "shop")
+    # fishing screen: FLOAT chip + popup
+    bp.evaluate("() => { island = 'harbor'; go('fishing'); }"); bp.wait_for_timeout(500)
+    chip = bp.inner_text("#floatChip")
+    check("the fishing screen has a FLOAT chip with a preview and the short name next to ROD and BAIT", bp.is_visible("#floatChip") and "Duck" in chip and bp.evaluate("!!document.querySelector('#floatChip .ico.fl')"), chip)
+    bp.click("#floatChip"); bp.wait_for_timeout(300)
+    pk = bp.evaluate("""() => ({ title: document.getElementById('pickTitle').textContent, n: document.querySelectorAll('#pickList .pick-card').length, dis: [...document.querySelectorAll('#pickList .pick-card')].map(c => c.disabled),
+        icons: [...document.querySelectorAll('#pickList .pick-card .ico.fl')].length, shop: !!document.getElementById('pickShop') && getComputedStyle(document.getElementById('pickShop')).display !== 'none' })""")
+    check("the FLOAT chip opens Choose Float: five cards with previews, unowned ones disabled with a price, a GO TO SHOP shortcut", pk["title"] == "Choose Float" and pk["n"] == 5 and pk["dis"] == [False, False, True, False, True] and pk["icons"] == 5 and pk["shop"], str(pk))
+    bp.click("#pick-classic"); bp.wait_for_timeout(250)
+    check("choosing an owned float equips it with one tap, closes the popup and toasts 'Equipped: Classic Float'", bp.evaluate("S.floatEq") == "classic" and not bp.is_visible("#pickBox") and "Equipped: Classic Float" in bp.inner_text("#toast") and "Classic" in bp.inner_text("#floatChip"))
+    bp.click("#floatChip"); bp.wait_for_timeout(200); bp.keyboard.press("Escape"); bp.wait_for_timeout(150)
+    check("the Choose Float popup closes with Esc and the focus returns to the FLOAT chip", not bp.is_visible("#pickBox") and bp.evaluate("document.activeElement.id") == "floatChip")
+    # the style key follows the float, never the bait
+    bp.evaluate("() => { S.floatsOwned = ['classic', 'candy', 'frog', 'duck', 'golden']; S.baits = { worm: 20, shrimp: 20, golden: 20 }; save(); }")
     keys = {}
-    for key in ["none", "worm", "shrimp", "golden"]:
-        bp.evaluate(f"() => {{ stopFishing(); S.baitSel = '{key}'; go('home'); go('fishing'); }}"); bp.wait_for_timeout(300)
-        bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(250)
-        keys[key] = bp.evaluate("[bobberStyleKey(), F.usedBait]")
-        bp.wait_for_timeout(500); bp.evaluate("clearTimers()")
-        bp.screenshot(path=str(SHOTS / f"103_bobber_{key}_1536x730.png"))
-        r = bp.evaluate("""() => { const c = document.getElementById('sceneCanvas').getBoundingClientRect(); return [c.left + F.bobPos.x * c.width, c.top + F.bobPos.y * c.height]; }""")
-        bp.screenshot(path=str(SHOTS / f"103_bobber_{key}_crop.png"), clip={"x": r[0] - 70, "y": r[1] - 50, "width": 140, "height": 100})
-    check("the style key follows the bait used by the cast: none, worm, shrimp, golden (bobberStyleKey())",
-          keys == {"none": ["none", None], "worm": ["worm", "worm"], "shrimp": ["shrimp", "shrimp"], "golden": ["golden", "golden"]}, str(keys))
-    px = bp.evaluate("""() => { const out = {}, snap = (key, t, still) => { const c = document.createElement('canvas'); c.width = 40; c.height = 44; const g = c.getContext('2d');
-          drawBobber(g, 20, 16, key, t, still); const d = g.getImageData(0, 0, 40, 44).data; return Array.from(d).join(','); };
-        for (const k of ['none', 'worm', 'shrimp', 'golden']) out[k] = snap(k, 0, true);
-        out.gold0 = snap('golden', 0, false); out.gold500 = snap('golden', 500, false); out.goldStill500 = snap('golden', 500, true);
+    for fid in FL:
+        row = []
+        for bait in ["none", "worm", "shrimp", "golden"]:
+            bp.evaluate(f"() => {{ stopFishing(); S.floatEq = '{fid}'; S.baitSel = '{bait}'; save(); go('home'); go('fishing'); }}"); bp.wait_for_timeout(250)
+            bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(150)
+            row.append(bp.evaluate("[bobberStyleKey(), F.floatId, F.usedBait]"))
+        keys[fid] = row
+    check("the style key (bobberStyleKey) is the equipped float, and it does NOT change with the bait (none, worm, shrimp, golden)",
+          all([r[0] for r in rows] == [fid] * 4 and [r[1] for r in rows] == [fid] * 4 for fid, rows in keys.items()) and [r[2] for r in keys["candy"]] == [None, "worm", "shrimp", "golden"], str(keys["candy"]))
+    px = bp.evaluate("""() => { const ids = ['classic', 'candy', 'frog', 'duck', 'golden'], snap = (id, t, still) => { const c = document.createElement('canvas'); c.width = 60; c.height = 70; const g = c.getContext('2d');
+          drawFloat(g, 30, 44, id, t, still); return Array.from(g.getImageData(0, 0, 60, 70).data).join(','); };
         const diff = (a, b) => { a = a.split(','); b = b.split(','); let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) n++; return n; };
-        const ks = ['none', 'worm', 'shrimp', 'golden'], d = {}; for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) d[ks[i] + '/' + ks[j]] = diff(out[ks[i]], out[ks[j]]);
-        const filled = k => { const a = out[k].split(','); let n = 0; for (let i = 3; i < a.length; i += 4) if (a[i] !== '0') n++; return n; };
-        return { d, sparkle: diff(out.gold0, out.gold500), stillSame: diff(out.golden, out.goldStill500), gold0still: diff(out.gold0, out.golden), filled: ['none', 'worm', 'shrimp', 'golden'].map(filled) }; }""")
-    check("the four styles draw clearly different pixels (every pair differs in at least 40 pixels)", len(px["d"]) == 6 and min(px["d"].values()) >= 40, str(px["d"]))
-    check("the float body has the same size in every style (classic = golden = 160 pixels; the worm and shrimp tails only add pixels below)", px["filled"][0] == 160 and px["filled"][3] == 160 and px["filled"][1] > 160 and px["filled"][2] > 160, str(px["filled"]))
-    check("golden: the 2-frame sparkle alternates every 500 ms (different pixels at t=0 and t=500); with reduced motion there is no sparkle and no change over time",
-          px["sparkle"] > 0 and px["stillSame"] == 0 and px["gold0still"] > 0, str(px))
-    # position unchanged: same line, same bobber anchor and bob for every style; only the bobber's own pixels differ
+        const s = Object.fromEntries(ids.map(id => [id, snap(id, 0, true)])), d = {}; for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) d[ids[i] + '/' + ids[j]] = diff(s[ids[i]], s[ids[j]]);
+        const ext = id => { const c = document.createElement('canvas'); c.width = 60; c.height = 70; const g = c.getContext('2d'); drawFloat(g, 30, 44, id, 0, true); const a = g.getImageData(0, 0, 60, 70).data; let x0 = 99, x1 = -1, y0 = 99, y1 = -1;
+          for (let y = 0; y < 70; y++) for (let x = 0; x < 60; x++) if (a[(y * 60 + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return [x1 - x0 + 1, y1 - y0 + 1, y0]; };
+        return { d, g0: diff(snap('golden', 0, false), snap('golden', 500, false)), gStill: diff(snap('golden', 0, true), snap('golden', 500, true)), g0still: diff(snap('golden', 0, false), snap('golden', 0, true)),
+                 others: ['classic', 'candy', 'frog', 'duck'].map(id => diff(snap(id, 0, false), snap(id, 500, false))), ext: ids.map(ext) }; }""")
+    check("the five float styles draw clearly different pixels (every pair differs in at least 60 pixels)", len(px["d"]) == 10 and min(px["d"].values()) >= 60, str(px["d"]))
+    check("golden: the 2-frame sparkle alternates every 500 ms; with prefers-reduced-motion there is no sparkle and no change; the other floats never animate",
+          px["g0"] > 0 and px["gStill"] == 0 and px["g0still"] > 0 and px["others"] == [0, 0, 0, 0], str(px))
+    check("every float is about twice the old bobber: 24px wide and at least 36px tall (the old one was 12 x 19), and each ties the line on 28px above the anchor",
+          all(e[0] >= 22 and e[0] <= 30 and e[1] >= 36 and e[1] <= 40 for e in px["ext"]), str(px["ext"]))
+    # a float can't change mid-cast: chip disabled, popup refuses, equipFloat refuses; the cast keeps its float
+    bp.evaluate("() => { stopFishing(); S.floatEq = 'candy'; S.baitSel = 'none'; save(); go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
+    seen = {}
+    def probe(ph):
+        seen[ph] = bp.evaluate("""() => { const before = S.floatEq; openPicker('float'); const open = document.getElementById('pickBox').classList.contains('show'); equipFloat('duck');
+            const r = [document.getElementById('floatChip').disabled, open, S.floatEq === before, bobberStyleKey(), F.floatId]; return r; }""")
+    bp.click("#actBtn"); bp.wait_for_timeout(60); probe("casting")
+    bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(200); probe("waiting")
+    bp.evaluate("() => { S.floatEq = 'frog'; }"); bp.wait_for_timeout(200)       # even a forced change mid-cast does not change the float being drawn
+    bp.wait_for_function("F.phase === 'bite'", timeout=9000); bp.wait_for_timeout(100); probe("bite")
+    bp.click("#actBtn"); bp.wait_for_timeout(250); probe("reeling")
+    check("while casting, waiting, on the bite and while reeling: the FLOAT chip is disabled, the popup won't open, equipFloat changes nothing",
+          all(v[0] is True and v[1] is False and v[2] is True for ph, v in seen.items() if ph != "bite") and seen["bite"][0] is True and seen["bite"][1] is False, str(seen))
+    check("a cast keeps the float that was equipped when it started (candy) in every phase, even if the saved choice changes mid-cast",
+          all(v[3] == "candy" and v[4] == "candy" for v in seen.values()), str(seen))
+    bp.evaluate("() => { stopFishing(); S.floatEq = 'duck'; go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
+    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(200)
+    check("the next cast uses the newly equipped float (duck)", bp.evaluate("bobberStyleKey()") == "duck")
+    # line start, tie-on point and dip are unchanged (identical for every float; the formulas are the old ones)
     pos = bp.evaluate("""() => { stopFishing(); island = 'harbor'; go('fishing'); const out = {}, T = 4321.5, H = cv.height, W = cv.width, L = { x: .6, y: .65 };
-        const rec = []; const wrap = k => { const f = ctx[k]; ctx[k] = function (...a) { rec.push(k + ':' + a.map(v => typeof v === 'number' ? +v.toFixed(3) : v).join(',')); return f.apply(this, a); }; };
-        const names = ['moveTo', 'quadraticCurveTo', 'ellipse', 'stroke']; const orig = names.map(k => ctx[k]); names.forEach(wrap);
-        for (const key of ['none', 'worm', 'shrimp', 'golden']) {
-          for (const phase of ['waiting', 'bite', 'reeling']) { rec.length = 0; F = { phase, castAt: T - 3000, land: L, fish: fishById('harbor_0'), usedBait: key === 'none' ? null : key }; drawScene(T);
-            out[key + '/' + phase] = { bp: [F.bobPos.x, F.bobPos.y], calls: rec.join('|'), n: rec.length, key: bobberStyleKey() }; } }
+        const rec = []; const names = ['moveTo', 'quadraticCurveTo', 'ellipse', 'stroke']; const orig = names.map(k => ctx[k]);
+        names.forEach(k => { const f = ctx[k]; ctx[k] = function (...a) { rec.push(k + ':' + a.map(v => typeof v === 'number' ? +v.toFixed(3) : v).join(',')); return f.apply(this, a); }; });
+        for (const id of ['classic', 'candy', 'frog', 'duck', 'golden']) for (const phase of ['waiting', 'bite', 'reeling']) {
+          rec.length = 0; F = { phase, castAt: T - 3000, land: L, fish: fishById('harbor_0'), usedBait: null, floatId: id }; drawScene(T);
+          out[id + '/' + phase] = { bp: [F.bobPos.x, F.bobPos.y], calls: rec.join('|'), n: rec.length, key: bobberStyleKey(), move: rec.find(c => c.startsWith('moveTo')), quad: rec.find(c => c.startsWith('quadraticCurveTo')) }; }
         names.forEach((k, i) => { ctx[k] = orig[i]; });
         const dy = { waiting: Math.sin(T / 300) * 3, bite: 8 + Math.sin(T / 40) * 5, reeling: Math.sin(T / 60) * 6 };
-        const exp = ph => [L.x, (H * L.y + dy[ph]) / H];
-        return { out, exp: { waiting: exp('waiting'), bite: exp('bite'), reeling: exp('reeling') } }; }""")
-    same = all(pos["out"][f"{k}/{ph}"]["calls"] == pos["out"][f"none/{ph}"]["calls"] and pos["out"][f"{k}/{ph}"]["bp"] == pos["out"][f"none/{ph}"]["bp"] and pos["out"][f"{k}/{ph}"]["n"] >= 3
-               for k in ["worm", "shrimp", "golden"] for ph in ["waiting", "bite", "reeling"])
-    styles_ok = all(pos["out"][f"{k}/{ph}"]["key"] == k for k in ["none", "worm", "shrimp", "golden"] for ph in ["waiting", "bite", "reeling"])
-    exact = all(abs(pos["out"][f"{k}/{ph}"]["bp"][0] - pos["exp"][ph][0]) < 1e-9 and abs(pos["out"][f"{k}/{ph}"]["bp"][1] - pos["exp"][ph][1]) < 1e-9 for k in ["none", "worm", "shrimp", "golden"] for ph in ["waiting", "bite", "reeling"])
-    check("the bobber position and dip are exactly as before in waiting, bite and reel for every style (same anchor, same bob)", exact and styles_ok, str(pos["exp"]))
-    check("the fishing line (rod tip, curve to the bobber) and the rings are drawn with identical calls for the four styles in waiting, bite and reeling", same)
-    # a cast keeps the style of the bait it used, even if the equipped bait changes during the cast
-    bp.evaluate("() => { stopFishing(); S.baits = { worm: 5, shrimp: 5, golden: 5 }; S.baitSel = 'worm'; save(); go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
-    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000)
-    bp.evaluate("() => { S.baitSel = 'golden'; render(); }"); bp.wait_for_timeout(300)
-    k1 = bp.evaluate("[bobberStyleKey(), F.usedBait, S.baits.worm, S.baits.golden]")
-    bp.evaluate("() => { S.baitSel = 'none'; render(); }"); bp.wait_for_function("F.phase === 'bite'", timeout=9000); bp.wait_for_timeout(120)
-    k2 = bp.evaluate("[bobberStyleKey(), F.phase]")
-    bp.click("#actBtn"); bp.wait_for_timeout(250)
-    k3 = bp.evaluate("[bobberStyleKey(), F.phase]")
-    check("a cast keeps the style of the bait it used (worm) while waiting, on the bite and while reeling, even though the equipped bait changed during the cast",
-          k1[:2] == ["worm", "worm"] and k1[2] == 4 and k1[3] == 5 and k2 == ["worm", "bite"] and k3[0] == "worm" and k3[1] == "reeling", f"{k1} {k2} {k3}")
-    bp.evaluate("() => { stopFishing(); S.baitSel = 'golden'; go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
-    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(200)
-    check("the next cast uses the newly equipped bait's style (golden)", bp.evaluate("bobberStyleKey()") == "golden")
-    bp.evaluate("() => { stopFishing(); S.baitSel = 'none'; go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
-    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000); bp.wait_for_timeout(200)
-    check("a cast without bait draws the classic float", bp.evaluate("bobberStyleKey()") == "none")
+        return { out, exp: Object.fromEntries(Object.entries(dy).map(([ph, v]) => [ph, [L.x, (H * L.y + v) / H]])), tip: [TIP.x * W, TIP.y * H], W, H, top: FLOAT_TOP }; }""")
+    ids5 = list(FL)
+    exact = all(abs(pos["out"][f"{i}/{ph}"]["bp"][0] - pos["exp"][ph][0]) < 1e-9 and abs(pos["out"][f"{i}/{ph}"]["bp"][1] - pos["exp"][ph][1]) < 1e-9 for i in ids5 for ph in ["waiting", "bite", "reeling"])
+    same = all(pos["out"][f"{i}/{ph}"]["calls"] == pos["out"][f"classic/{ph}"]["calls"] and pos["out"][f"{i}/{ph}"]["n"] >= 3 and pos["out"][f"{i}/{ph}"]["key"] == i for i in ids5 for ph in ["waiting", "bite", "reeling"])
+    mv = pos["out"]["golden/reeling"]["move"].split(":")[1].split(",")      # the last scene drawn: its rod tip is TIP now
+    qd = pos["out"]["classic/waiting"]["quad"].split(":")[1].split(",")
+    bx = pos["exp"]["waiting"][0] * pos["W"]; by = pos["exp"]["waiting"][1] * pos["H"]
+    check("the bobber's anchor and the dip on a bite / reel are exactly as before for all five floats (same formulas, same position)", exact)
+    check("the line starts at the rod tip and is drawn identically for every float; it ties on at the top of the float (28px above the anchor)",
+          same and abs(float(mv[0]) - pos["tip"][0]) < .01 and abs(float(mv[1]) - pos["tip"][1]) < .01 and abs(float(qd[2]) - bx) < .01 and abs(float(qd[3]) - (by - pos["top"])) < .01 and pos["top"] == 28, f"{mv} {qd} {bx} {by}")
+    # screenshots (the five floats on the water, full scene + close-up) at 1536x730 and 360x640
     bp.close()
+    for vw, vh in [(1536, 730), (360, 640)]:
+        sp = b.new_page(viewport={"width": vw, "height": vh})
+        sp.on("pageerror", lambda e: errs.append(str(e))); sp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        sp.goto(URL); sp.evaluate("localStorage.clear()"); sp.reload(); sp.wait_for_timeout(300); start_new(sp, "Shots")
+        sp.add_style_tag(content="#toast { display: none !important; }")
+        sp.evaluate("() => { S.coins = 5000; S.floatsOwned = ['classic', 'candy', 'frog', 'duck', 'golden']; S.bagMax = 30; save(); }")
+        for fid in FL:
+            sp.evaluate(f"() => {{ stopFishing(); S.floatEq = '{fid}'; save(); island = 'harbor'; go('home'); go('fishing'); }}"); sp.wait_for_timeout(300)
+            sp.click("#actBtn"); sp.wait_for_function("F.phase === 'waiting'", timeout=4000); sp.wait_for_timeout(900); sp.evaluate("clearTimers()")
+            sp.screenshot(path=str(SHOTS / f"104_float_{fid}_{vw}x{vh}.png"))
+            r = sp.evaluate("""() => { const c = document.getElementById('sceneCanvas').getBoundingClientRect(); return [c.left + F.bobPos.x * c.width, c.top + F.bobPos.y * c.height]; }""")
+            sp.screenshot(path=str(SHOTS / f"104_float_{fid}_{vw}x{vh}_crop.png"), clip={"x": max(0, r[0] - 70), "y": max(0, r[1] - 60), "width": 140, "height": 100})
+        sp.evaluate("() => { stopFishing(); S.floatEq = 'duck'; save(); island = 'harbor'; go('fishing'); }"); sp.wait_for_timeout(400)
+        sp.locator("#fishing .gearbar").screenshot(path=str(SHOTS / f"104_float_chips_{vw}x{vh}.png"))
+        sp.screenshot(path=str(SHOTS / f"104_float_fishing_{vw}x{vh}.png"))
+        sp.evaluate("() => { go('home'); go('shop'); }"); sp.wait_for_timeout(300)
+        sp.evaluate("() => document.getElementById('shopFloats').scrollIntoView({ block: 'center' })"); sp.wait_for_timeout(300)
+        sp.screenshot(path=str(SHOTS / f"104_float_shop_{vw}x{vh}.png"))
+        sp.evaluate("() => { go('home'); go('tackle'); }"); sp.wait_for_timeout(300)
+        sp.evaluate("() => { const r = [...document.querySelectorAll('#gearList h3')].find(h => h.textContent.startsWith('Float')); r.scrollIntoView({ block: 'start' }); }"); sp.wait_for_timeout(300)
+        sp.screenshot(path=str(SHOTS / f"104_float_tackle_{vw}x{vh}.png"))
+        sp.close()
+    # layout: the three chips fit on one row on phones; no overflow; CAST doesn't move; no page scroll on the Fishing screen at every size, nor on Shop / Tackle Box on wide windows
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (390, 844), (360, 640)]:
+        tag = f"{vw}x{vh}"
+        lp = b.new_page(viewport={"width": vw, "height": vh})
+        lp.on("pageerror", lambda e: errs.append(str(e))); lp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        lp.goto(URL); lp.evaluate("localStorage.clear()"); lp.reload(); lp.wait_for_timeout(300); start_new(lp, "Fitter")
+        lp.evaluate("() => { S.floatsOwned = ['classic', 'candy', 'frog', 'duck', 'golden']; S.floatEq = 'golden'; S.rods = ['bamboo', 'sturdy', 'precision', 'lucky']; S.rodEq = 'precision'; S.baits = { worm: 12, shrimp: 12, golden: 12 }; S.baitSel = 'golden'; S.mastery = { harbor: true, frost: true, desert: true, forest: true }; save(); island = 'harbor'; go('fishing'); }")
+        lp.wait_for_timeout(500)
+        GEO = """() => { const bar = document.querySelector('#fishing .gearbar').getBoundingClientRect(), ids = ['rodChip', 'baitChip', 'floatChip'], cs = ids.map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { top: Math.round(r.top), h: Math.round(r.height), l: r.left, r: r.right, over: e.scrollWidth > e.clientWidth + 1, vis: r.width > 0 }; });
+            const a = document.getElementById('actBtn').getBoundingClientRect(), bon = document.getElementById('bonuses').getBoundingClientRect();
+            return { cs, barL: bar.left, barR: bar.right, barB: bar.bottom, act: Math.round(a.top * 10) / 10, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, vw: innerWidth, vh: innerHeight, bonB: bon.bottom, bonR: bon.right }; }"""
+        g0 = lp.evaluate(GEO)
+        chips_ok = all(c["vis"] and c["h"] >= (40 if vw < 900 else 36) and c["l"] >= g0["barL"] - 1 and c["r"] <= g0["barR"] + 1 and not c["over"] for c in g0["cs"])      # not cut off even with Precision + Golden x12
+        one_row = len({c["top"] for c in g0["cs"]}) == 1 and g0["cs"][0]["r"] <= g0["cs"][1]["l"] + 1 and g0["cs"][1]["r"] <= g0["cs"][2]["l"] + 1
+        check(f"{tag}: the ROD, BAIT and FLOAT chips fit on one row inside the panel (no overflow, tap height at least {'40' if vw < 900 else '36'}px), 4 island rewards beside / below them, no side scroll",
+              chips_ok and one_row and g0["sw"] <= g0["vw"] and g0["bonR"] <= g0["barR"] + 1, str(g0))
+        check(f"{tag}: Fishing screen with the FLOAT chip: no page scroll", g0["sh"] <= g0["vh"], f"{g0['sh']} > {g0['vh']}")
+        tops = [g0["act"]]
+        lp.click("#actBtn"); lp.wait_for_timeout(80); tops.append(lp.evaluate(GEO)["act"])
+        lp.wait_for_function("F.phase === 'waiting'", timeout=4000); tops.append(lp.evaluate(GEO)["act"])
+        lp.wait_for_function("F.phase === 'bite'", timeout=9000); tops.append(lp.evaluate(GEO)["act"])
+        lp.click("#actBtn"); lp.wait_for_timeout(100); g4 = lp.evaluate(GEO); tops.append(g4["act"])
+        check(f"{tag}: CAST / HOOK / REEL doesn't move between phases and the chips stay in place while busy (floats disabled)", max(tops) - min(tops) <= 1 and [c["top"] for c in g4["cs"]] == [c["top"] for c in g0["cs"]], str(tops))
+        for scr in ["shop", "tackle"]:
+            lp.evaluate(f"() => {{ stopFishing(); go('home'); go('{scr}'); }}"); lp.wait_for_timeout(350)
+            m = lp.evaluate("() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, vw: innerWidth, vh: innerHeight })")
+            if vw >= 900: check(f"{tag}: {scr.title()} with the floats: no page scroll", m["sh"] <= m["vh"] and m["sw"] <= m["vw"], str(m))
+            else: check(f"{tag}: {scr.title()} with the floats: no side scroll (phones scroll the page, as before)", m["sw"] <= m["vw"], str(m))
+        lp.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")
