@@ -2081,7 +2081,7 @@ with sync_playwright() as p:
     check("the music scheduler started after the gesture with the home theme and keeps scheduling notes", st["theme"] == "home" and st["ticking"] is True, str(st))
     n0 = ap.evaluate("audioState().notes"); ap.wait_for_timeout(2500); n1 = ap.evaluate("audioState().notes")
     check("the scheduler keeps adding notes ahead of time (audio clock), not in one burst", n1 > n0 and n1 - n0 < 40, f"{n0} -> {n1}")
-    sfx_names = ["whoosh", "splash", "cast", "bite", "hit", "miss", "fail", "catch", "coin", "click"]
+    sfx_names = ["whoosh", "splash", "cast", "bite", "hit", "miss", "fail", "catch", "coin", "click", "tick"]
     res = ap.evaluate("""names => names.map(n => { try { if (typeof sfx[n] !== 'function') return n + ': missing'; sfx[n](); return 'ok'; } catch (e) { return n + ': ' + e.message; } })""", sfx_names)
     check("every sound effect function exists (whoosh, splash, cast, bite, hit, miss, fail, catch, coin, click) and runs without throwing", all(r == "ok" for r in res), str(res))
     ap.wait_for_timeout(500)
@@ -2092,7 +2092,7 @@ with sync_playwright() as p:
     pk = ap.evaluate("""async () => { const an = AC.createAnalyser(); an.fftSize = 2048; AUD.master.connect(an); const buf = new Float32Array(2048);
         const peak = async ms => { let m = 0; const t0 = performance.now(); while (performance.now() - t0 < ms) { an.getFloatTimeDomainData(buf); for (const v of buf) m = Math.max(m, Math.abs(v)); await new Promise(r => setTimeout(r, 15)); } return m; };
         const out = {}; musicStop(.01); await new Promise(r => setTimeout(r, 300));
-        for (const k of ['whoosh', 'splash', 'bite', 'hit', 'miss', 'fail', 'catch', 'coin', 'click']) { sfx[k](); out[k] = await peak(450); }
+        for (const k of ['whoosh', 'splash', 'bite', 'hit', 'miss', 'fail', 'catch', 'coin', 'tick']) { sfx[k](); out[k] = await peak(450); }
         musicStart('home'); out.music = await peak(2500); return out; }""")
     sfx_min = min(v for k, v in pk.items() if k != "music")
     check("the effects are audible (every one peaks above 0.1 on the master output) and the music is clearly quieter than the effects", sfx_min > .1 and .03 < pk["music"] < .6 * sfx_min + .1 and pk["music"] < max(v for k, v in pk.items() if k != "music"), str({k: round(v, 2) for k, v in pk.items()}))
@@ -2167,6 +2167,58 @@ with sync_playwright() as p:
     op.evaluate("() => go('titleScreen')"); op.click("#newBtn"); op.click("#confirmYes"); op.fill("#nameInput", "Fresh"); op.click("#nameStart"); op.wait_for_timeout(300)
     check("NEW GAME keeps the player's Music choice", op.evaluate("S.music") is False and op.evaluate("S.name") == "Fresh")
     op.close()
+    # ---------- Playtest 1, part 14: ordinary buttons make a soft click; buttons with their own sound stay quiet ----------
+    kp = b.new_page(viewport={"width": 1280, "height": 720})
+    kp.on("pageerror", lambda e: errs.append(str(e))); kp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    kp.goto(URL); kp.evaluate("localStorage.clear()"); kp.reload(); kp.wait_for_timeout(300)
+    kp.click("#howBtn"); kp.wait_for_timeout(500); kp.click("#howOk"); kp.wait_for_timeout(200)
+    start_new(kp, "Clicker"); kp.wait_for_timeout(400)
+    kp.evaluate("""() => { window.__k = { click: 0, tick: 0, coin: 0, voices: 0 };
+        for (const n of ['click', 'tick', 'coin']) { const f = sfx[n]; sfx[n] = (...a) => { window.__k[n]++; return f(...a); }; }
+        const tn = tone, nz = noise; tone = (...a) => { window.__k.voices++; return tn(...a); }; noise = (...a) => { window.__k.voices++; return nz(...a); };   // sfx voices only (the music has its own)
+        S.coins = 5000; S.bagMax = 10; S.bag = ['harbor_0', 'harbor_3', 'frost_0'].map((id, i) => ({ fishId: id, weight: 1, price: 30 + i, time: i })); save(); render(); }""")
+    def press(sel, wait=250):
+        kp.evaluate("() => { window.__k.click = window.__k.tick = window.__k.coin = window.__k.voices = 0; }")
+        kp.click(sel); kp.wait_for_timeout(wait)
+        return kp.evaluate("window.__k")
+    k = press("[data-go='map'].green"); check("pressing TOWN MAP calls sfx.click once and plays one sound", k["click"] == 1 and k["voices"] == 1, str(k))
+    k = press("#mapHome"); check("pressing HOME (Town Map) calls sfx.click once", k["click"] == 1 and k["voices"] == 1, str(k))
+    k = press("#home [data-go='shop']"); check("pressing SHOP calls sfx.click once", k["click"] == 1 and k["voices"] == 1, str(k))
+    k = press("#navBack"); check("pressing BACK calls sfx.click once", k["click"] == 1 and k["voices"] == 1, str(k))
+    k = press("#home [data-go='tackle']"); k2 = press("#navBack")
+    check("pressing TACKLE BOX and BACK each call sfx.click once", k["click"] == 1 and k2["click"] == 1)
+    kp.evaluate("() => { island = 'harbor'; go('fishing'); }"); kp.wait_for_timeout(300)
+    k = press("#rodChip"); check("pressing the ROD chip calls sfx.click once", k["click"] == 1 and kp.is_visible("#pickBox"), str(k))
+    k = press("#pickClose"); check("pressing a popup button (CLOSE) calls sfx.click once", k["click"] == 1, str(k))
+    k = press("#actBtn", 100); check("pressing CAST does not call sfx.click (the whoosh is its sound)", k["click"] == 0 and k["tick"] == 0, str(k))
+    kp.evaluate("() => { stopFishing(); go('home'); go('bag'); }"); kp.wait_for_timeout(300)
+    k = press("#bagList .row:nth-child(1) .lockbtn"); check("pressing a lock does not call sfx.click; it plays its own tick (one sound)", k["click"] == 0 and k["tick"] == 1 and k["voices"] == 1, str(k))
+    k = press("#bagList .row:nth-child(2) .btn"); check("a single SELL button does not call sfx.click (coin sound only)", k["click"] == 0 and k["coin"] == 1, str(k))
+    k = press("#sellAll"); check("SELL ALL does not call sfx.click (coin sound only)", k["click"] == 0 and k["coin"] == 1, str(k))
+    kp.evaluate("() => { go('home'); go('shop'); }"); kp.wait_for_timeout(300)
+    k = press("#buyBag"); check("buying (Bigger bag) does not call sfx.click (coin sound only)", k["click"] == 0 and k["coin"] == 1, str(k))
+    kp.evaluate("() => { S.coins = 5000; save(); go('home'); go('tackle'); }"); kp.wait_for_timeout(300)
+    kp.evaluate("() => { S.rods = ['bamboo', 'sturdy']; save(); render(); }"); kp.wait_for_timeout(200)
+    k = press("[data-equip='sturdy']"); check("EQUIP does not call sfx.click (its own tick only)", k["click"] == 0 and k["tick"] == 1 and k["voices"] == 1, str(k))
+    dis = kp.evaluate("() => { go('shop'); render(); S.coins = 0; render(); return [...document.querySelectorAll('#shop [data-buy]')].filter(x => x.disabled).length; }"); kp.wait_for_timeout(300)
+    kp.evaluate("() => { window.__k.click = window.__k.voices = 0; document.querySelector('#shop [data-buy][disabled]').dispatchEvent(new MouseEvent('click', { bubbles: true })); }")
+    kd = kp.evaluate("window.__k")
+    check("a disabled button makes no sound", dis > 0 and kd["click"] == 0 and kd["voices"] == 0, f"{dis} {kd}")
+    kp.evaluate("() => go('titleScreen')"); kp.wait_for_timeout(300)
+    k = press("#soundBtn"); check("the Title SOUND toggle does not call sfx.click (it has its own confirmation)", k["click"] == 0 and k["tick"] == 1, str(k))
+    k = press("#soundBtn")
+    k = press("#musicBtn"); check("the Title MUSIC toggle plays only its own tick (no click)", k["click"] == 0 and k["tick"] == 1 and k["voices"] == 1, str(k))
+    kp.evaluate("() => { S.sound = false; saveSound(); audioApply(); renderTitle(); }")
+    k = press("#howBtn"); kp.click("#howOk")
+    osc_off = kp.evaluate("() => { let n = 0; const f = AC.createOscillator; AC.createOscillator = function (...a) { n++; return f.apply(this, a); }; sfx.click(); AC.createOscillator = f; return n; }")
+    check("with SOUND off a menu press runs sfx.click but makes no sound (no oscillator is created, the effects bus is 0)", k["click"] == 1 and osc_off == 0 and kp.evaluate("audioState().sfx") == 0, f"{k} {osc_off}")
+    kp.evaluate("() => { S.sound = true; saveSound(); audioApply(); renderTitle(); musicStop(.01); }"); kp.wait_for_timeout(400)
+    osc_on = kp.evaluate("() => { let n = 0; const f = AC.createOscillator; AC.createOscillator = function (...a) { n++; return f.apply(this, a); }; sfx.click(); AC.createOscillator = f; return n; }")
+    check("with SOUND on one press makes exactly one short sound (one oscillator)", osc_on == 1, str(osc_on))
+    q2 = kp.evaluate("""() => { const o = {}; const t0 = AC.currentTime; let peak = 0; const an = AC.createAnalyser(); AUD.master.connect(an); return new Promise(res => { sfx.click(); const buf = new Float32Array(2048);
+        const iv = setInterval(() => { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); }, 5); setTimeout(() => { clearInterval(iv); res(peak); }, 300); }); }""")
+    check("the click is soft: its peak is far below the other effects (below 0.12) yet audible (above 0.005)", .005 < q2 < .12, str(q2))
+    kp.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")

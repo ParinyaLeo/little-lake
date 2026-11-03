@@ -151,9 +151,18 @@ const sfx = {
   fail: () => tone(560, .5, "triangle", .27, 0, { to: 150 }),                                        // escape: a falling tone
   catch: () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(f, i === 3 ? .42 : .16, "triangle", .27, i * .11); tone(f * 2, i === 3 ? .3 : .12, "sine", .1, i * .11); }),   // 4-note fanfare
   coin: () => { tone(1318.5, .09, "square", .17); tone(1760, .2, "square", .17, .075); },            // two quick high notes
-  click: () => tone(760, .05, "triangle", .2, 0, { to: 380 }),                                       // equip / lock / toggle: a soft click
+  tick: () => tone(760, .05, "triangle", .2, 0, { to: 380 }),                                        // equip / lock / Title toggles: their own confirmation tick
+  click: () => tone(1900, .035, "sine", .05, 0, { to: 1500, attack: .002 }),                         // ordinary menu buttons: a very short, soft, high tick (quieter than every other effect)
 };
 sfx.cast = sfx.whoosh;                               // the cast sound is the whoosh
+// One delegated listener gives every ordinary button a soft click (Playtest 1, part 14). Buttons that make their own sound or feedback carry data-nosound
+// (the CAST / HOOK / REEL button, SELL ALL / SELL A FISH, single SELL, buying, EQUIP / USE and the rod / bait cards, the Bag lock, the Title SOUND / MUSIC toggles);
+// disabled buttons are silent. Sound OFF is silent because tone() checks it.
+document.addEventListener("click", e => {
+  const b = e.target && e.target.closest ? e.target.closest("button") : null;
+  if (!b || b.disabled || b.closest("[data-nosound]")) return;
+  sfx.click();
+}, true);
 
 /* ---- music: themes ---- */
 // root: MIDI note of scale degree 1; scale: semitones (any length); chords: scale degree of the chord root for each of 8 bars (stacked in thirds from the scale);
@@ -586,13 +595,13 @@ function rodFx(id) {
 const baitName = id => BAITS[id] ? BAITS[id].name : "No bait";
 // equip a rod you own / select a bait you have (or "none"); used by the Tackle Box and the fishing HUD
 function equipRod(id) {
-  sfx.click();
+  sfx.tick();
   if (!S.rods.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
   S.rodEq = id; save(); toast(`Equipped: ${RODS[id].name}`); render();
 }
 function selectBait(id) {
   if ((id !== "none" && !(S.baits[id] > 0)) || (typeof F !== "undefined" && F.phase !== "idle")) return;
-  S.baitSel = id; save(); sfx.click(); toast(id === "none" ? "No bait: your bait is saved for later." : `Using ${BAITS[id].name}: ${BAITS[id].blurb}`); render();
+  S.baitSel = id; save(); sfx.tick(); toast(id === "none" ? "No bait: your bait is saved for later." : `Using ${BAITS[id].name}: ${BAITS[id].blurb}`); render();
 }
 const misses = n => `${n} miss${n === 1 ? "" : "es"}`;
 

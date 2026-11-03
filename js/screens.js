@@ -113,8 +113,8 @@ $("nameForm").onsubmit = e => {
 $("contBtn").onclick = () => { if (!hasSave()) return; S = load(); go("home"); };
 $("howBtn").onclick = () => openModal("howBox", "howPanel");
 $("howOk").onclick = () => closeModal("howBox");
-$("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); audioApply(); renderTitle(); sfx.click(); };   // the click confirms (only when Sound is on)
-$("musicBtn").onclick = () => { S.music = !S.music; saveSound(); audioApply(); musicSync(); renderTitle(); sfx.click(); };
+$("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); audioApply(); renderTitle(); sfx.tick(); };   // the click confirms (only when Sound is on)
+$("musicBtn").onclick = () => { S.music = !S.music; saveSound(); audioApply(); musicSync(); renderTitle(); sfx.tick(); };
 // Esc closes an open popup and does nothing else; with no popup open it works as BACK on the screens with the
 // BACK bar (so never on Home, where BACK would leave the game for the Title screen)
 document.addEventListener("keydown", e => {
@@ -169,12 +169,12 @@ function renderBag() {
     const c = document.createElement("canvas"); drawFish(c, f);
     row.append(c);
     row.insertAdjacentHTML("beforeend", `<div class="grow"><b>${f.name}</b><br><span class="rar-${f.rarity}">${f.rarity}</span> · ${b.weight} kg</div>`);
-    const lk = document.createElement("button"); lk.className = "lockbtn"; lk.type = "button";
+    const lk = document.createElement("button"); lk.className = "lockbtn"; lk.type = "button"; lk.dataset.nosound = "";
     lk.setAttribute("aria-label", b.locked ? "Unlock fish" : "Lock fish"); lk.setAttribute("aria-pressed", b.locked ? "true" : "false");
     lk.innerHTML = `<span class="ico ${b.locked ? "i-padlock" : "i-padlock-open"}"></span>`;
-    lk.onclick = () => { b.locked = !b.locked; save(); sfx.click(); renderBag(); };
+    lk.onclick = () => { b.locked = !b.locked; save(); sfx.tick(); renderBag(); };
     row.append(lk); row.classList.toggle("locked", !!b.locked);
-    const s = document.createElement("button"); s.className = "btn green"; s.textContent = `SELL ${fmt(b.price)}`;
+    const s = document.createElement("button"); s.className = "btn green"; s.dataset.nosound = ""; s.textContent = `SELL ${fmt(b.price)}`;
     if (b.locked) { s.classList.add("is-locked"); }
     s.onclick = () => sell([i]); row.append(s); L.append(row);
   });
@@ -198,7 +198,7 @@ $("sellAll").onclick = () => { const u = unlockedIdx(); if (!u.length) { if (S.b
 function shopItem({ buy, icon, name, tag, fx, odds, note, label, can }) {
   return `<div class="item${tag === "EQUIPPED" ? " equipped" : ""}"><b><span class="ico i-${icon}"></span>${name}</b>` +
     (tag ? `<span class="tag">${tag}</span>` : "") + `<span class="fx">${fx}</span>` + (odds ? `<span class="odds">${odds}</span>` : "") +
-    (note || "") + `<button class="btn green" data-buy="${buy}"${can ? "" : " disabled"}>${label}</button></div>`;
+    (note || "") + `<button class="btn green" data-nosound data-buy="${buy}"${can ? "" : " disabled"}>${label}</button></div>`;
 }
 const needMore = price => S.coins < price ? `<span class="need">Need ${fmt(price - S.coins)} more coins</span>` : "";
 function renderShop() {
@@ -244,13 +244,13 @@ function renderTackle() {
   const rods = ROD_IDS.map(id => {
     const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
     return row(`rodlg-${id}`, r.name, rodFx(id) + (own ? charm : ""),
-      eq ? chip("EQUIPPED") : own ? `<button class="btn small green" data-equip="${id}">EQUIP</button>` : chip(`SHOP · ${r.price} COINS`),
+      eq ? chip("EQUIPPED") : own ? `<button class="btn small green" data-nosound data-equip="${id}">EQUIP</button>` : chip(`SHOP · ${r.price} COINS`),
       eq ? "active" : own ? "" : "notowned");
   }).join("");
   const baits = ["none", ...BAIT_IDS].map(id => {
     const b = BAITS[id], n = b ? S.baits[id] : 0, sel = S.baitSel === id;
     return row(`bait-${id}`, b ? `${b.name} x${n}` : "No bait", (b ? b.blurb + " " : "Saves your bait. ") + oddsText(rarityWeights(id)) + ".",
-      sel ? chip("EQUIPPED") : (!b || n) ? `<button class="btn small green" data-bait="${id}">USE</button>` : chip("BUY IN SHOP"),
+      sel ? chip("EQUIPPED") : (!b || n) ? `<button class="btn small green" data-nosound data-bait="${id}">USE</button>` : chip("BUY IN SHOP"),
       sel ? "active" : (!b || n) ? "" : "notowned");
   }).join("");
   $("gearList").innerHTML =

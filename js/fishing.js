@@ -396,7 +396,7 @@ function renderPicker() {
   $("pickSub").textContent = isRod ? `Odds are shown with your current bait (${baitName(S.baitSel)}).`
     : `Odds are shown with your ${rod().name}. One bait is used per cast.`;
   const card = (id, icon, name, fx, odds, state, label) =>
-    `<button type="button" class="pick-card ${state}" id="pick-${id}" data-id="${id}"${state === "locked" ? " disabled" : ""}>` +
+    `<button type="button" class="pick-card ${state}" id="pick-${id}" data-nosound data-id="${id}"${state === "locked" ? " disabled" : ""}>` +
     `<span class="ico i-${icon}"></span><span class="grow"><span class="top"><b>${name}</b><span class="chip">${label}</span></span>` +
     `<span class="fx">${fx}</span><span class="odds">${odds}</span></span></button>`;
   $("pickList").innerHTML = isRod

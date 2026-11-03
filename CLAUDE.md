@@ -79,7 +79,8 @@ count as a game, so CONTINUE stays disabled; NEW GAME keeps both choices.
   throwing AudioContext never breaks the game (`audioState()` shows the state for the tests).
 - **Effects** (`sfx`, voices about .17-.45 before the master gain): `whoosh` (= `cast`, a filtered-noise sweep, at the start of a cast), `splash` (low-passed noise + plop,
   when the bobber lands), `bite` (two bright pings), `hit` (rising blip), `miss` (low buzz), `fail` (falling tone, the escape), `catch` (4-note fanfare), `coin` (two quick
-  high notes), `click` (soft click: Title toggles, equip rod, choose bait, Bag lock). `beep()` remains for old callers. All go through `tone()` / `noise()`, which do nothing
+  high notes), `tick` (the own-confirmation tick: Title SOUND / MUSIC toggles, equip rod, choose bait, Bag lock), `click` (Playtest 1, part 14: the very short, soft, high menu tick, 35 ms, volume .05, far
+  below every other effect; see UI click). `beep()` remains for old callers. All go through `tone()` / `noise()`, which do nothing
   unless Sound is on and the context is running.
 - **Music** (`THEMES`, `musicStep`, `musicTick`, `musicSync`): a step sequencer with a 120 ms timer that schedules notes 0.35 s ahead on the audio clock (low CPU). Six
   8-bar loops built from a scale, chords per bar, a melody (two 4-bar phrases in a compact text format), a bass pattern, a soft pad and an optional noise hat:
@@ -87,6 +88,12 @@ count as a game, so CONTINUE stays disabled; NEW GAME keeps both choices.
   flute-like), `secret` (slow, low pad). `go()` calls `musicSync()`, which picks the theme from the screen / `island` and crossfades (600 ms) when it changes; the music
   starts only after the first gesture, stops when Music is off, pauses (and suspends the context) while the tab is hidden and resumes on return. `musicDuck(true)` dips the
   music to 40% while reeling (`hook()`), back to 100% in `caught()`, `escape()` and `stopFishing()`. To add a theme: add an entry to `THEMES` (keyed by island id), nothing else.
+- **UI click** (part 14): one delegated `click` listener on `document` (capture phase, end of the sfx block in `js/state.js`) calls `sfx.click()` for any `<button>` press, so
+  HOME, BACK, SHOP, TOWN MAP, TACKLE BOX, COLLECTION, HOW TO PLAY, island cards, tabs, ROD / BAIT chips and popup buttons all tick (keyboard Enter / Space too: it is the `click` event).
+  A button, or anything inside an element, marked **`data-nosound`** is skipped, and so is every `disabled` button. Mark a button `data-nosound` when it already plays its own sound,
+  so one press never makes two sounds: the CAST / HOOK / REEL button (`#actBtn`), SELL ALL, SELL A FISH, the single SELL buttons, every buy button (`data-buy`, `#buyBag`),
+  the Tackle Box EQUIP / USE buttons, the Choose Rod / Bait cards (`.pick-card`), the Bag lock padlock, and the Title SOUND / MUSIC toggles. New buttons that play their
+  own sound must carry `data-nosound`; plain navigation buttons need nothing. With Sound off `tone()` does nothing, so the click is silent.
 - **Not done on purpose:** no speaker button in the Fishing top bar (it would crowd the SELL / coin row on phones); sound is controlled from the Title screen.
 - Keep new effects quiet-proof: put new sounds in `sfx` and call them through `tone()` / `noise()` so the Sound switch and the iOS unlock apply.
 
