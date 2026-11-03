@@ -2388,6 +2388,59 @@ with sync_playwright() as p:
     check("the bobber's anchor and the dip on a bite / reel are exactly as before for all five floats (same formulas, same position)", exact)
     check("the line starts at the rod tip and is drawn identically for every float; it ties on at the top of the float (14px above the anchor)",
           same and abs(float(mv[0]) - pos["tip"][0]) < .01 and abs(float(mv[1]) - pos["tip"][1]) < .01 and abs(float(qd[2]) - bx) < .01 and abs(float(qd[3]) - (by - pos["top"])) < .01 and pos["top"] == 14, f"{mv} {qd} {bx} {by}")
+    # ---------- Playtest 1, part 13: HOME button on the fishing screen ----------
+    HOME_GEO = """() => { const r = id => { const e = document.getElementById(id), b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, w: b.width, h: b.height, vis: b.width > 0 && getComputedStyle(e).visibility !== 'hidden', dis: e.disabled }; };
+          const top = document.querySelector('.app > .top'), t = document.getElementById('title'), lbl = document.querySelector('#homeTop .lbl'), ic = document.querySelector('#homeTop .ico').getBoundingClientRect();
+          return { home: r('homeTop'), sell: r('sellTop'), title: r('title'), tops: [...top.children].filter(c => c.getBoundingClientRect().width > 0).map(c => Math.round(c.getBoundingClientRect().top)),
+                   overflow: top.scrollWidth > top.clientWidth + 1, titleClip: t.scrollWidth > t.clientWidth + 1, pageScroll: document.documentElement.scrollWidth > innerWidth, lbl: !!lbl && getComputedStyle(lbl).display !== 'none', icon: ic.width, label: document.getElementById('homeTop').getAttribute('aria-label') }; }"""
+    SAVE_SNAP = "JSON.stringify({ c: S.coins, b: S.bag.length, r: S.rods, f: S.floatsOwned, e: S.floatEq, rod: S.rodEq })"
+    for hw, hh in [(1536, 730), (390, 844), (360, 640)]:
+        hp = b.new_page(viewport={"width": hw, "height": hh})
+        hp.on("pageerror", lambda e: errs.append(str(e))); hp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        hp.goto(URL); hp.evaluate("localStorage.clear()"); hp.reload(); hp.wait_for_timeout(300); start_new(hp, "Homer")
+        hp.add_style_tag(content="#toast { display: none !important; }")
+        hp.evaluate("() => { S.coins = 999999; S.bagMax = 20; S.floatsOwned = ['classic', 'frog']; S.floatEq = 'frog'; S.rods = ['bamboo', 'sturdy']; save(); }")
+        for isl in ["harbor", "frost", "desert", "forest"]:
+            hp.evaluate(f"() => {{ stopFishing(); island = '{isl}'; go('home'); go('fishing'); }}"); hp.wait_for_timeout(350)
+            g = hp.evaluate(HOME_GEO)
+            ok = (g["home"]["vis"] and not g["home"]["dis"] and g["home"]["r"] <= g["sell"]["l"] + .5 and g["home"]["l"] >= g["title"]["r"] - .5 and abs(g["home"]["h"] - g["sell"]["h"]) < 1.5
+                  and abs(g["home"]["t"] - g["sell"]["t"]) < 1.5 and g["home"]["w"] >= 40 and g["home"]["h"] >= 40 and len(set(g["tops"])) == 1 and not g["overflow"] and not g["titleClip"] and not g["pageScroll"]
+                  and g["label"] == "Home" and (g["lbl"] if hw > 700 else not g["lbl"]))
+            check(f"{hw}x{hh} {isl}: HOME is visible and enabled when idle, between the title and SELL, as tall as SELL (at least 40x40), top bar on one line without overflow or a clipped title; {'icon + HOME' if hw > 700 else 'icon only'}", ok, str(g))
+        if hw in (1536, 360):
+            hp.evaluate("() => { stopFishing(); island = 'harbor'; go('home'); go('fishing'); }"); hp.wait_for_timeout(300)
+            hp.screenshot(path=str(SHOTS / f"106_home_fishing_{hw}x{hh}.png"))
+            hp.screenshot(path=str(SHOTS / f"106_home_topbar_{hw}x{hh}.png"), clip={"x": 0, "y": 0, "width": hw, "height": 110})
+        if hw == 1536:
+            snap = hp.evaluate(SAVE_SNAP)
+            dis = {}
+            for ph in ["casting", "waiting", "bite", "reeling", "caught"]:
+                dis[ph] = hp.evaluate(f"() => {{ stopFishing(); go('fishing'); F.phase = '{ph}'; renderFishingHud(); const b = document.getElementById('homeTop'); b.click(); return [b.disabled, current]; }}")
+            check("HOME is disabled during cast, wait, bite, reel and catch, and clicking it does nothing (stays on the fishing screen)", all(v == [True, "fishing"] for v in dis.values()), str(dis))
+            hp.evaluate("() => { stopFishing(); go('home'); go('fishing'); }"); hp.wait_for_timeout(300)
+            hp.click("#actBtn"); hp.wait_for_function("F.phase === 'waiting'", timeout=4000)
+            real = [hp.evaluate("document.getElementById('homeTop').disabled")]
+            hp.evaluate("document.getElementById('homeTop').click()"); real.append(hp.evaluate("[current, F.phase]"))
+            hp.wait_for_function("F.phase === 'bite'", timeout=9000); real.append(hp.evaluate("document.getElementById('homeTop').disabled"))
+            hp.click("#actBtn"); hp.wait_for_timeout(250); real.append(hp.evaluate("[document.getElementById('homeTop').disabled, F.phase]"))
+            check("in a real cast HOME is disabled while waiting, on the bite and while reeling, and a click while waiting keeps the cast", real[0] is True and real[1] == ["fishing", "waiting"] and real[2] is True and real[3] == [True, "reeling"], str(real))
+            hp.evaluate("() => { stopFishing(); go('fishing'); }"); hp.wait_for_timeout(300)
+            check("HOME is enabled again once the fishing state is idle", hp.evaluate("document.getElementById('homeTop').disabled") is False)
+            hp.evaluate("() => { go('shop'); go('fishing'); }"); hp.wait_for_timeout(250)
+            navbefore = hp.evaluate("() => { window.__clicks = 0; const f = sfx.click; sfx.click = function (...a) { window.__clicks++; return f.apply(this, a); }; return navStack.length; }")
+            hp.click("#homeTop"); hp.wait_for_timeout(350)
+            after = hp.evaluate(SAVE_SNAP)
+            st = hp.evaluate("() => ({ cur: current, title: document.getElementById('titleScreen').classList.contains('active'), nav: navStack.length, clicks: window.__clicks, saved: JSON.parse(localStorage.getItem('littleLakeSave')).coins, cont: !document.getElementById('contBtn').disabled })")
+            check("HOME goes to the Title screen (like MENU), clears the history, keeps the save (coins, bag, rods, floats), CONTINUE is enabled, and it plays one soft click",
+                  st["cur"] == "titleScreen" and st["title"] and st["nav"] == 0 and navbefore >= 1 and snap == after and st["saved"] == 999999 and st["clicks"] == 1 and st["cont"], f"{st} {navbefore} {snap} {after}")
+            for key in ["Enter", "Space"]:
+                hp.evaluate("() => { go('home'); go('fishing'); }"); hp.wait_for_timeout(300)
+                hp.focus("#homeTop"); hp.keyboard.press(key); hp.wait_for_timeout(250)
+                check(f"HOME is focusable and {key} works", hp.evaluate("current") == "titleScreen")
+            hp.evaluate("() => { go('home'); go('fishing'); }"); hp.wait_for_timeout(300)
+            bt = hp.evaluate("[...document.querySelectorAll('#fishing .actions > *')].map(e => (e.id || e.textContent).trim())")
+            check("the bottom three buttons are unchanged (CAST, SHOP, TOWN MAP)", len(bt) == 3, str(bt))
+        hp.close()
     # screenshots (the five floats on the water, full scene + close-up) at 1536x730 and 360x640
     bp.close()
     for vw, vh in [(1536, 730), (360, 640)]:

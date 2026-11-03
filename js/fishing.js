@@ -417,6 +417,7 @@ function renderFishingHud() {
   $("floatChip").innerHTML = `${floatIcon(S.floatEq)}<span class="k">FLOAT</span>${fl.short}`;
   $("floatChip").title = `${fl.name}: ${fl.blurb} (only a look). Tap to choose a float.`;
   $("rodChip").disabled = $("baitChip").disabled = $("floatChip").disabled = busy;
+  $("homeTop").disabled = busy;                                  // HOME (part 13): only when idle, so a cast or catch is never lost
   // small icons for the island rewards that are active (tap for details; hover shows the same text)
   $("bonuses").innerHTML = ISLAND_IDS.filter(i => S.mastery[i]).map(i => { const I = ISLANDS[i], tip = `${I.reward}: ${I.effect}`;
     return `<button class="bonus" data-tip="${tip}" title="${tip}" aria-label="${tip}"><span class="ico i-${I.icon}"></span></button>`; }).join("")
@@ -518,13 +519,13 @@ document.addEventListener("pointercancel", e => { if (CH.on && CH.src === "ptr" 
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Escape") chargeReset();                                                    // Esc cancels the charge, nothing is thrown
-  if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show")) return;
+  if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show") || e.target === $("homeTop")) return;   // Space on the focused HOME button presses HOME (part 13), it does not cast
   e.preventDefault();                                                                       // no page scroll, no second click on a focused button
   if (e.repeat) return;
   if (F.phase === "idle") chargeStart("key"); else act();
 });
 document.addEventListener("keyup", e => {
-  if (e.code !== "Space") return;
+  if (e.code !== "Space" || e.target === $("homeTop")) return;
   if (CH.on && CH.src === "key") chargeEnd();
   if (current === "fishing" && !document.querySelector(".banner.show")) e.preventDefault();
 });

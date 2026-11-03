@@ -48,6 +48,11 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .title { padding: 0 28px; font-size: clamp(20px, 5vw, 36px); font-weight: bold; letter-spacing: 4px; white-space: nowrap; cursor: pointer; user-select: none; }
 .sign { padding: 0 22px; font-size: clamp(14px, 3vw, 20px); font-weight: bold; white-space: nowrap; }
 /* SELL (opens the Bag): Fishing screen only, directly left of the coin sign and just as tall; margin-left: auto keeps it beside the coins */
+/* HOME (Fishing screen only, Playtest 1 part 13): after the title, left of SELL, same height; it takes the free space (margin-left: auto), SELL follows it */
+.top-home { display: none; height: var(--hdr-h); margin-left: auto; padding: 0 24px; font-size: clamp(14px, 3vw, 20px); white-space: nowrap; flex-shrink: 0; }
+body.plain .app > .top > .top-home { display: flex; align-items: center; }
+.top-home .ico { width: 20px; height: 20px; margin-right: 8px; }
+body.plain .app > .top > .top-sell { margin-left: 0; }
 .top-sell { display: none; height: var(--hdr-h); margin-left: auto; padding: 0 24px; font-size: clamp(14px, 3vw, 20px); white-space: nowrap; flex-shrink: 0; }
 body.plain .app > .top > .top-sell { display: flex; align-items: center; }
 
@@ -587,12 +592,15 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
 }
 /* phones, Fishing screen: LITTLE LAKE, SELL and the coins on one line (smaller title, no corner rivets on SELL so it can be narrow) */
 @media (max-width: 700px) {
-  body.plain .app > .top { flex-wrap: nowrap; column-gap: 6px; }
-  body.plain .app > .top > .title { min-width: 0; padding: 0 12px; font-size: clamp(14px, 4.2vw, 16px); letter-spacing: .5px; overflow: hidden; }
-  body.plain .app > .top > .sign { padding: 0 11px; flex-shrink: 0; }
-  body.plain .app > .top > .top-sell { padding: 0 9px; font-size: 15px; letter-spacing: 0; min-width: 44px;
+  body.plain .app > .top { flex-wrap: nowrap; column-gap: 4px; }
+  body.plain .app > .top > .title { min-width: 0; padding: 0 7px; font-size: clamp(13px, 3.9vw, 15px); letter-spacing: 0; overflow: hidden; }
+  body.plain .app > .top > .sign { padding: 0 6px; flex-shrink: 0; }
+  body.plain .app > .top > .top-sell { padding: 0 6px; font-size: 14px; letter-spacing: 0; min-width: 44px;
     background: repeating-linear-gradient(0deg, #2e5fae 0 18px, #264f93 18px 20px); }
-  body.plain .app > .top > .top-sell .ico { width: 16px; height: 16px; margin-right: 5px; }
+  body.plain .app > .top > .top-sell .ico { width: 16px; height: 16px; margin-right: 3px; }
+  body.plain .app > .top > .top-home { padding: 0; min-width: 40px; width: 40px; justify-content: center; }          /* icon only on phones (44px wide, as tall as SELL) */
+  body.plain .app > .top > .top-home .lbl { display: none; }
+  body.plain .app > .top > .top-home .ico { width: 20px; height: 20px; margin-right: 0; }
 }
 /* ---- wide windows (laptops / desktops): every screen fits the window. Sizes follow the window height (vh, clamp()),
    so a short window (e.g. 1280x600 or 1536x730 at 125% scaling) gets tighter paddings, smaller tiles and shorter buttons.

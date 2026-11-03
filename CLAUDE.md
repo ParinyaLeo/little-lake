@@ -125,6 +125,11 @@ the same screen twice in a row); `goBack()` returns to the previous screen, Home
 waiting catch); Esc first closes an open popup and then does nothing else, and does nothing on Home. Fishing > GO TO SHOP > BACK returns to
 Fishing on the same island; Fishing > SELL > BACK and Fishing > SHOP > BACK too.
 
+**HOME on the Fishing screen** (Playtest 1, part 13): `#homeTop` (`.top-home`, house icon `i-home`, aria-label "Home", `data-go="titleScreen"`, the same route as the Home screen's MENU button: `go()` clears `navStack`, the save is untouched and
+CONTINUE returns to the game) sits in the top bar after LITTLE LAKE and left of SELL, same height as SELL (`body.plain` only). Wide windows: icon + "HOME"; phones (max-width 700px): icon only, 40 x 40+ px, and the phone top bar was tightened (smaller title and paddings, 4px gaps)
+so LITTLE LAKE, HOME, SELL and up to 999,999 coins still fit one line at 360px without clipping. `renderFishingHud()` disables it whenever `F.phase !== "idle"` (cast, wait, bite, reel, catch), like the ROD / BAIT / FLOAT chips, so a cast or catch is never lost.
+It plays the normal soft UI click (no `data-nosound`). Space is the global cast key on the Fishing screen, except while HOME itself has the focus: then Space (like Enter) presses HOME (the `keydown` / `keyup` handlers skip `e.target === #homeTop`). The bottom row (CAST | SHOP | TOWN MAP) is unchanged.
+
 **Fishing screen buttons** (Playtest 1, BUG-32 / BUG-33): the bottom row (`.actions`) is **CAST | SHOP | TOWN MAP**; selling is the
 **SELL** button in the top bar (`#sellTop`, bag icon, blue, title/aria-label "Sell your fish", glows when the bag is full), directly left of
 the coin counter and as tall as it. SELL is shown **only on the Fishing screen** (`body.plain .top-sell`); no other screen gets it, and
