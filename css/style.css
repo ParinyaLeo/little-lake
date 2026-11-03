@@ -355,6 +355,10 @@ p.small { font-size: 14px; margin: 0 0 12px; }
 .item b .ico[class*="i-rodlg-"] { margin-right: 10px; vertical-align: middle; }
 /* float previews: the sprite as a background image, whole-pixel scaling */
 .ico.fl { background-size: contain; }
+/* the frog's UI preview is a bigger 16 x 16 picture (part 12d) */
+.item b .ico.fl.big, .pick-card > .ico.fl.big { width: 32px; height: 32px; }
+.gear-row > .ico.fl.big { width: 40px; height: 40px; }
+.chip-btn .ico.fl.big { width: 20px; height: 20px; vertical-align: -.45em; }
 .item b .ico.fl, .pick-card > .ico.fl { width: 24px; height: 32px; }
 .item b .ico.fl { margin-right: 10px; vertical-align: middle; }
 .gear-row > .ico.fl { width: 30px; height: 48px; margin: 0 3px; }
@@ -524,10 +528,12 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   .gearbar .chip-btn { font-size: 11px; padding: 0 2px; letter-spacing: 0; border-width: 3px; }   /* three chips share the row: the longest labels (Precision, Shrimp x12) must fit */
   .gearbar .chip-btn .ico { margin-right: 3px; }
   .chip-btn .ico.fl { width: 12px; height: 19px; vertical-align: -.35em; }
+  .chip-btn .ico.fl.big { width: 16px; height: 16px; vertical-align: -.3em; }
   .modal .picker { padding: 14px; }
   .pick-card { padding: 6px 8px; gap: 8px; }
   .pick-card > .ico { width: 24px; height: 24px; }
   .pick-card > .ico.fl { width: 19px; height: 30px; }
+  .pick-card > .ico.fl.big { width: 30px; height: 30px; }
   .pick-card .fx { font-size: 12px; }
   .pick-card .odds { font-size: 11px; }
   .pick-card .chip { font-size: 11px; padding: 2px 5px; }

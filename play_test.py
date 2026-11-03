@@ -2300,6 +2300,39 @@ with sync_playwright() as p:
           px["g0"] > 0 and px["gStill"] == 0 and px["g0still"] > 0 and px["others"] == [0, 0, 0, 0], str(px))
     check("every float is no bigger than the original classic float (12 x 19 px), also with the golden sparkle, and the line ties on 14px above the anchor",
           all(e[0] <= 12 and e[1] <= 19 for e in px["ext"] + px["extSp"]) and all(e[0] >= 9 and e[1] >= 17 for e in px["ext"]), str(px["ext"]) + str(px["extSp"]))
+    # ---------- Playtest 1, part 12d: the frog float is cuter (eyes, blink, bigger preview) ----------
+    fr = bp.evaluate("""() => { const W = 60, H = 70, cvs = (id, t, st) => { const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); drawFloat(g, 30, 44, id, t, st); return g.getImageData(0, 0, W, H).data; };
+        const diff = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) n++; return n; };
+        const box = a => { let x0 = 99, x1 = -1, y0 = 99, y1 = -1; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (a[(y * W + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return [x1 - x0 + 1, y1 - y0 + 1, x0, y0]; };
+        const open = cvs('frog', 0, false), shut = cvs('frog', 2900, false), still = cvs('frog', 2900, true), openStill = cvs('frog', 0, true), later = cvs('frog', 3000 + 100, false), cl = cvs('classic', 0, true);
+        const others = ['classic', 'candy', 'duck', 'golden'].map(id => diff(openStill, cvs(id, 0, true)));
+        return { box: [box(open), box(shut), box(cl)], blink: diff(open, shut), still: diff(openStill, still), openAgain: diff(open, later), openEq: diff(open, openStill), shutMs: [2879, 2880, 2999, 3000].map(t => diff(cvs('frog', t, false), open)), others }; }""")
+    check("frog: the open and the blinking frog fit the classic float's box (12 x 19) at the same position (same top, same anchor)",
+          all(b[0] <= 12 and b[1] <= 19 for b in fr["box"]) and fr["box"][0] == fr["box"][1] == fr["box"][2], str(fr["box"]))
+    check("frog: differs from classic, candy, duck and golden in at least 10 pixels each", len(fr["others"]) == 4 and min(fr["others"]) >= 10, str(fr["others"]))
+    check("frog: blinks every 3 s for about 120 ms (open until 2879 ms, closed 2880-2999, open again at 3000); the closed frame differs from the open one; static open eyes with reduced motion",
+          fr["blink"] > 0 and fr["openAgain"] == 0 and fr["still"] == 0 and fr["openEq"] == 0 and fr["shutMs"] == [0, fr["blink"], fr["blink"], 0], str(fr))
+    pp = b.new_page(viewport={"width": 1536, "height": 730})
+    pp.on("pageerror", lambda e: errs.append(str(e))); pp.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    pp.goto(URL); pp.evaluate("localStorage.clear()"); pp.reload(); pp.wait_for_timeout(300); start_new(pp, "Froggy")
+    pp.add_style_tag(content="#toast { display: none !important; }")
+    pp.evaluate("() => { S.coins = 5000; S.floatsOwned = ['classic', 'candy', 'frog', 'duck', 'golden']; save(); }")
+    SZ = "(e => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })"
+    pp.evaluate("go('shop')"); pp.wait_for_timeout(300)
+    pv = {"shop": pp.evaluate(f"{SZ}(document.querySelector('#shopFloats .item:nth-child(3) .ico.fl'))"), "shopOther": pp.evaluate(f"{SZ}(document.querySelector('#shopFloats .item:nth-child(2) .ico.fl'))")}
+    pp.locator("#shopFloats").scroll_into_view_if_needed(); pp.wait_for_timeout(200)
+    pp.locator("#shopFloats").screenshot(path=str(SHOTS / "105_frog_shop_cards_1536x730.png"))
+    pp.evaluate("go('tackle')"); pp.wait_for_timeout(300)
+    pv["tackle"] = pp.evaluate(f"{SZ}([...document.querySelectorAll('#gearList .gear-row')].filter(r => r.querySelector('.ico.fl'))[2].querySelector('.ico.fl'))")
+    pp.evaluate("() => { island = 'harbor'; go('fishing'); }"); pp.wait_for_timeout(300); pp.click("#floatChip"); pp.wait_for_timeout(300)
+    pv["pick"] = pp.evaluate(f"{SZ}(document.querySelector('#pickList .pick-card:nth-child(3) .ico.fl'))")
+    pp.close()
+    check("frog preview icon is bigger than before (at least 28 x 28 px) in the Shop, the Tackle Box and the Choose Float popup; the other floats' previews keep their size",
+          all(pv[k][0] >= 28 and pv[k][1] >= 28 for k in ["shop", "tackle", "pick"]) and pv["shopOther"] == [24, 32], str(pv))
+    # close-up screenshot: the frog open and blinking (enlarged 8x, on water colour)
+    bp.evaluate("""() => { const c = document.createElement('canvas'); c.id = 'frogShot'; c.width = 48; c.height = 24; const g = c.getContext('2d'); g.fillStyle = '#2f8fc8'; g.fillRect(0, 0, 48, 24);
+        drawFloat(g, 12, 16, 'frog', 0, false); drawFloat(g, 36, 16, 'frog', 2900, false); c.style.cssText = 'position:fixed;left:20px;top:20px;width:384px;height:192px;image-rendering:pixelated;z-index:9999'; document.body.appendChild(c); }""")
+    bp.screenshot(path=str(SHOTS / "105_frog_open_blink_1536x730.png"), clip={"x": 20, "y": 20, "width": 384, "height": 192}); bp.evaluate("document.getElementById('frogShot').remove()")
     # a float can't change mid-cast: chip disabled, popup refuses, equipFloat refuses; the cast keeps its float
     bp.evaluate("() => { stopFishing(); S.floatEq = 'candy'; S.baitSel = 'none'; save(); go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
     seen = {}

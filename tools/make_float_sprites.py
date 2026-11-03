@@ -56,14 +56,15 @@ def candy():
         if x >= 9: g.m[(x, y)] = "D" if s < 3 else "a"
     return g.rows()
 
+FROG = ["....OOOO....", ".OOO.OO.OOO.", "OWWWOBBOWWWO", "OWKWOBBOWKWO", "OGGGOBBOGGGO", "OBBBBBBBBBDO", "OBDBBBBBBDDO", "OBBDDDDDDBDO", "OBBBBBBBBBDO", "OBBBBBBBBBDO", "OBLLLLLLLLDO", "OBLLLLLLLLDO", "OBLLLLLLLLDO", "OBLLLLLLLLDO", ".OLLLLLLLLO.", ".OLLLLLLLLO.", "..OLLLLLLO..", "...OLLLLO...", "....OOOO...."]
+FROG_BLINK = FROG[:2] + ["OGGGOBBOGGGO", "ODDDOBBODDDO"] + FROG[4:]       # eyes shut for ~120 ms every 3 s: a green lid and a dark lid line, same 12 x 19 box
+# the bigger, cuter frog for the UI previews (Shop, Tackle Box, Choose Float, FLOAT chip): 16 x 16 art pixels, shown at 2x: big eyes with a white highlight, pink cheeks, a wide smile
+FROG_ICON = ["..OOOO....OOOO..", ".OBBBBO..OBBBBO.", "OBWWWWBOOBWWWWBO", "OBWWKWBOOBWWKWBO", "OBWKKWBOOBWKKWBO", "OBBBBBBOOBBBBBBO", ".OBBBBBBBBBBBBO.", "OBBBBBBBBBBBBBBO",
+             "OBPPBBBBBBBBPPBO", "OBPPBDBBBBDBPPBO", "OBBBBBDDDDBBBBBO", "OBLLLLLLLLLLLLBO", "OBLLLLLLLLLLLLBO", ".OLLLLLLLLLLLLO.", "..OLLLLLLLLLLO..", "...OOOOOOOOOO..."]
+assert all(len(r) == 12 for r in FROG + FROG_BLINK) and len(FROG) == 19 and all(len(r) == 16 for r in FROG_ICON) and len(FROG_ICON) == 16
+
 def frog():
-    g = G(); round_body(g)
-    for (x, y) in list(g.m):
-        g.m[(x, y)] = "L" if y >= 14 and 3 <= x <= 8 else "B"           # pale belly
-        if x >= 9: g.m[(x, y)] = "D"
-    g.px(3, 6, "W"); g.px(3, 7, "K"); g.px(8, 6, "W"); g.px(8, 7, "K")   # two eyes on top (white over black)
-    g.rect(4, 10, 7, 10, "D")                                            # mouth
-    return g.rows()
+    return FROG
 
 def duck():
     g = G(); g.ell(4.5, 11, 4, 7, "B", 4, 17)
@@ -87,7 +88,7 @@ FLOATS = {"classic": classic, "candy": candy, "frog": frog, "duck": duck, "golde
 LOOK = {   # O outline, B body, L light, D shade, A second colour, a its shade, W white, K black
     "classic": dict(O="#3a0d0d", B="#e53935", L="#ff9e9e", D="#a32121", A="#ffffff", a="#b8c4cc", W="#ffffff", K="#111111"),
     "candy":   dict(O="#6a0f45", B="#ff4fa0", L="#ffffff", D="#c2185b", A="#ffffff", a="#f3b6d4", W="#ffffff", K="#111111"),
-    "frog":    dict(O="#0b3a12", B="#43b649", L="#b6f0a8", D="#2a8a30", A="#ffffff", a="#c8e6c9", W="#ffffff", K="#0a0a0a"),
+    "frog":    dict(O="#0b3a12", B="#43c94f", L="#d4f58a", D="#2a8a30", G="#7fe06a", P="#ff9fb0", A="#ffffff", a="#c8e6c9", W="#ffffff", K="#0a0a0a"),
     "duck":    dict(O="#5e3b00", B="#fff03a", L="#ffffb0", D="#e8c800", A="#ff8a00", a="#d46a00", W="#ffffff", K="#111111"),
     "golden":  dict(O="#5a3d00", B="#f7b000", L="#ffe27a", D="#c26a00", A="#e08a00", a="#9a5200", W="#ffffff", K="#111111"),
 }
@@ -97,6 +98,8 @@ def block():
     for k, fn in FLOATS.items():
         out.append(f"  {k}: [" + ", ".join(f'"{r}"' for r in fn()) + "],")
     out.append("};")
+    out.append("const FLOAT_BLINK = { frog: [" + ", ".join(f'"{r}"' for r in FROG_BLINK) + "] };   // eyes shut (~120 ms every 3 s)")
+    out.append("const FLOAT_ICON_MAPS = { frog: [" + ", ".join(f'"{r}"' for r in FROG_ICON) + "] };   // 16 x 16 UI preview, shown at 2x")
     return "\n".join(out)
 
 if __name__ == "__main__":
