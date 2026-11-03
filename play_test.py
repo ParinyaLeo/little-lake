@@ -937,7 +937,7 @@ with sync_playwright() as p:
 
     # ---------- full-screen Title art ----------
     TITLE = """(() => { const img = document.querySelector('#titleScreen .title-bg'), r = img.getBoundingClientRect(), cs = getComputedStyle(img);
-        const btns = ['newBtn', 'contBtn', 'howBtn', 'soundBtn'].map(id => { const b = document.getElementById(id).getBoundingClientRect(),
+        const btns = ['newBtn', 'contBtn', 'howBtn', 'soundBtn', 'musicBtn'].map(id => { const b = document.getElementById(id).getBoundingClientRect(),
             hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2), hb = hit && hit.closest('button');
             return [b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth, !!hb && hb.id === id, Math.round(b.top), Math.round(b.left)]; });
         const logo = document.querySelector('#titleScreen .logo').getBoundingClientRect();
@@ -952,12 +952,12 @@ with sync_playwright() as p:
         r = tp.evaluate(TITLE)
         check(f"{vw}x{vh}: Title picture covers the whole screen (cover, pixelated), no frame, no pixel clouds or dashes",
               r["cover"] and r["fit"] == "cover" and r["pix"] == "pixelated" and not r["old"] and r["shimmer"] == "title-shimmer", str({k: r[k] for k in ("cover", "fit", "pix", "old", "shimmer")}))
-        check(f"{vw}x{vh}: all 4 Title buttons visible and clickable, sign near the top",
+        check(f"{vw}x{vh}: all 5 Title buttons visible and clickable, sign near the top",
               all(x[0] and x[1] for x in r["btns"]) and r["logoTop"] < .25, str(r["btns"]) + f" logo {r['logoTop']:.2f}")
         check(f"{vw}x{vh}: Title has no side or page scroll", r["sw"] <= r["vw"] and r["sh"] <= r["vh"], f"{r['sw']}x{r['sh']}")
         if vw == 360:
-            check("360x640: Title buttons stacked 2x2 at the bottom",
-                  len({x[2] for x in r["btns"]}) == 2 and len({x[3] for x in r["btns"]}) == 2 and min(x[2] for x in r["btns"]) > vh * .6, str(r["btns"]))
+            check("360x640: the 5 Title buttons are stacked at the bottom: NEW | CONTINUE, HOW TO PLAY across, SOUND | MUSIC (3 rows, 2 columns)",
+                  len({x[2] for x in r["btns"]}) == 3 and len({x[3] for x in r["btns"]}) == 2 and min(x[2] for x in r["btns"]) > vh * .5, str(r["btns"]))
         tp.screenshot(path=str(SHOTS / f"41_title_{vw}x{vh}.png"))
         tp.click("#howBtn"); tp.wait_for_timeout(200); ok_how = tp.is_visible("#howBox"); tp.click("#howOk"); tp.wait_for_timeout(100)
         tp.click("#soundBtn"); ok_sound = "OFF" in tp.inner_text("#soundBtn"); tp.click("#soundBtn")
@@ -1056,7 +1056,7 @@ with sync_playwright() as p:
 
     # BUG-20: Title sign fully visible on phones (100dvh, safe areas, no page scroll), at least 12px from the top edge
     SIGN = """(() => { const l = document.querySelector('#titleScreen .logo'), r = l.getBoundingClientRect(), m = new DOMMatrix(getComputedStyle(l).transform);
-        const btns = ['newBtn', 'contBtn', 'howBtn', 'soundBtn'].map(id => { const b = document.getElementById(id).getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; });
+        const btns = ['newBtn', 'contBtn', 'howBtn', 'soundBtn', 'musicBtn'].map(id => { const b = document.getElementById(id).getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; });
         return { top: r.top - m.m42 - 6, now: r.top, left: r.left, right: r.right, btns, vw: innerWidth, vh: innerHeight,
                  sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, viewport: document.querySelector('meta[name=viewport]').content }; })()"""
     def sign_ok(r): return r["top"] >= 12 and r["left"] >= 0 and r["right"] <= r["vw"] and all(r["btns"]) and r["sw"] <= r["vw"] and r["sh"] <= r["vh"]
@@ -2069,6 +2069,104 @@ with sync_playwright() as p:
     check("an old save with fish ids harbor_1, forest_8, frost_9 loads: the bag and Collection show the new species", "Moon Jellyfish" in fp.inner_text("#bagList") and "Snapping Turtle" in fp.inner_text("#bagList")
           and fp.evaluate("totalDisc()") == 3)
     fp.close()
+    # ---------- Playtest 1, part 11: audible effects, procedural music, separate Sound / Music switches ----------
+    ap = b.new_page(viewport={"width": 1280, "height": 720})
+    ap.on("pageerror", lambda e: errs.append(str(e))); ap.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    ap.goto(URL); ap.evaluate("localStorage.clear()"); ap.reload(); ap.wait_for_timeout(400)
+    check("before the first gesture there is no AudioContext and no music (nothing extra on first load)", ap.evaluate("typeof AC") == "undefined" and ap.evaluate("audioState().theme") is None)
+    ap.click("#howBtn"); ap.wait_for_timeout(700); ap.click("#howOk"); ap.wait_for_timeout(300)
+    st = ap.evaluate("audioState()")
+    check("the first gesture creates the shared AudioContext and it is running (resumed)", ap.evaluate("typeof AC") == "object" and st["ctx"] == "running", str(st))
+    check("Sound ON: sfx bus and master gain are above 0; Music ON: music bus is 0.25, well below the effects", st["master"] > 0 and st["sfx"] > 0 and abs(st["music"] - .25) < .001 and st["music"] < st["sfx"], str(st))
+    check("the music scheduler started after the gesture with the home theme and keeps scheduling notes", st["theme"] == "home" and st["ticking"] is True, str(st))
+    n0 = ap.evaluate("audioState().notes"); ap.wait_for_timeout(2500); n1 = ap.evaluate("audioState().notes")
+    check("the scheduler keeps adding notes ahead of time (audio clock), not in one burst", n1 > n0 and n1 - n0 < 40, f"{n0} -> {n1}")
+    sfx_names = ["whoosh", "splash", "cast", "bite", "hit", "miss", "fail", "catch", "coin", "click"]
+    res = ap.evaluate("""names => names.map(n => { try { if (typeof sfx[n] !== 'function') return n + ': missing'; sfx[n](); return 'ok'; } catch (e) { return n + ': ' + e.message; } })""", sfx_names)
+    check("every sound effect function exists (whoosh, splash, cast, bite, hit, miss, fail, catch, coin, click) and runs without throwing", all(r == "ok" for r in res), str(res))
+    ap.wait_for_timeout(500)
+    ev = ap.evaluate("""() => { const q = []; const wrap = (o, k) => { const f = o[k]; o[k] = (...a) => { q.push(k); return f(...a); }; };
+        const bad = []; for (const v of [[220, .1, 'sine', .22], [440, .2, 'square', .3, .05, { to: 880 }]]) { try { tone(...v); } catch (e) { bad.push(e.message); } }
+        try { beep(500); noise(.2, .2, 'lowpass', 2000, 300); } catch (e) { bad.push(e.message); } return bad; }""")
+    check("tone(), noise() and the old beep() run without throwing", ev == [])
+    pk = ap.evaluate("""async () => { const an = AC.createAnalyser(); an.fftSize = 2048; AUD.master.connect(an); const buf = new Float32Array(2048);
+        const peak = async ms => { let m = 0; const t0 = performance.now(); while (performance.now() - t0 < ms) { an.getFloatTimeDomainData(buf); for (const v of buf) m = Math.max(m, Math.abs(v)); await new Promise(r => setTimeout(r, 15)); } return m; };
+        const out = {}; musicStop(.01); await new Promise(r => setTimeout(r, 300));
+        for (const k of ['whoosh', 'splash', 'bite', 'hit', 'miss', 'fail', 'catch', 'coin', 'click']) { sfx[k](); out[k] = await peak(450); }
+        musicStart('home'); out.music = await peak(2500); return out; }""")
+    sfx_min = min(v for k, v in pk.items() if k != "music")
+    check("the effects are audible (every one peaks above 0.1 on the master output) and the music is clearly quieter than the effects", sfx_min > .1 and .03 < pk["music"] < .6 * sfx_min + .1 and pk["music"] < max(v for k, v in pk.items() if k != "music"), str({k: round(v, 2) for k, v in pk.items()}))
+    # switches
+    ap.evaluate("() => go('titleScreen')"); ap.wait_for_timeout(200)
+    ap.click("#soundBtn"); ap.wait_for_timeout(200)
+    s2 = ap.evaluate("audioState()")
+    check("Sound OFF: the effects bus is 0 (master stays open for the music); the button says OFF and aria-pressed is false; S.sound saved",
+          s2["sfx"] == 0 and s2["master"] > 0 and "OFF" in ap.inner_text("#soundBtn") and ap.get_attribute("#soundBtn", "aria-pressed") == "false" and ap.evaluate("S.sound") is False)
+    ap.click("#musicBtn"); ap.wait_for_timeout(500)
+    s3 = ap.evaluate("audioState()")
+    check("Music OFF as well: the master gain is 0, the scheduler stopped and no theme is playing; button says OFF, aria-pressed false",
+          s3["master"] == 0 and s3["music"] == 0 and s3["theme"] is None and s3["ticking"] is False and "OFF" in ap.inner_text("#musicBtn") and ap.get_attribute("#musicBtn", "aria-pressed") == "false" and ap.evaluate("S.music") is False, str(s3))
+    sv = ap.evaluate("JSON.parse(localStorage.getItem('littleLakeSave'))")
+    check("both toggles are saved before any game exists, and that still doesn't count as a save (CONTINUE disabled)", sv == {"sound": False, "music": False} and ap.is_disabled("#contBtn"), str(sv))
+    ap.reload(); ap.wait_for_timeout(400)
+    check("after a reload both buttons still say OFF and nothing plays", "SOUND: OFF" in ap.inner_text("#soundBtn") and "MUSIC: OFF" in ap.inner_text("#musicBtn") and ap.evaluate("S.music") is False)
+    ap.click("#musicBtn"); ap.wait_for_timeout(500)
+    s4 = ap.evaluate("audioState()")
+    check("Music ON again (Sound still off): the theme plays, master > 0, effects bus 0", s4["theme"] == "home" and s4["ticking"] is True and s4["master"] > 0 and s4["sfx"] == 0 and "MUSIC: ON" in ap.inner_text("#musicBtn"), str(s4))
+    ap.click("#soundBtn"); ap.wait_for_timeout(200)
+    check("Sound ON again: effects bus open", ap.evaluate("audioState().sfx") == 1 and "SOUND: ON" in ap.inner_text("#soundBtn"))
+    # themes follow the island
+    start_new(ap, "Tuner"); ap.wait_for_timeout(300)
+    themes = {}
+    for isl in ["harbor", "frost", "desert", "forest", "secret"]:
+        ap.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); ap.wait_for_timeout(250); themes[isl] = ap.evaluate("audioState().theme")
+    ap.evaluate("() => go('map')"); ap.wait_for_timeout(250); themes["map"] = ap.evaluate("audioState().theme")
+    check("the music theme changes with the island (harbor, frost, desert, forest, secret) and goes back to home on the other screens", themes == {"harbor": "harbor", "frost": "frost", "desert": "desert", "forest": "forest", "secret": "secret", "map": "home"}, str(themes))
+    check("the six themes exist with 8 bars of melody each and keep scheduling after a change", ap.evaluate("Object.keys(THEMES).sort().join()") == "desert,forest,frost,harbor,home,secret"
+          and ap.evaluate("Object.values(THEMES).every(T => T.m.length === 64 && T.chords.length === 8)") and ap.evaluate("audioState().ticking") is True)
+    # ducking during the REEL minigame
+    ap.evaluate("() => { island = 'harbor'; go('fishing'); }"); ap.wait_for_timeout(400)
+    d0 = ap.evaluate("audioState().duck")
+    ap.evaluate("() => { F = { phase: 'bite', fish: fishById('harbor_0') }; hook(); }"); ap.wait_for_timeout(500)
+    d1 = ap.evaluate("audioState().duck")
+    ap.evaluate("() => escape('test')"); ap.wait_for_timeout(500)
+    d2 = ap.evaluate("audioState().duck")
+    check("the music ducks to about 40% while reeling and comes back afterwards", d0 > .95 and .35 <= d1 <= .5 and d2 > .95, f"{d0} {d1} {d2}")
+    # cast: whoosh at the start, splash when the bobber lands
+    ap.evaluate("() => { window.__c = []; ['whoosh', 'splash'].forEach(k => { const f = sfx[k]; sfx[k] = () => { window.__c.push(k); f(); }; }); sfx.cast = sfx.whoosh; }")
+    ap.evaluate("() => { stopFishing(); go('home'); island = 'harbor'; go('fishing'); }"); ap.wait_for_timeout(300)
+    ap.click("#actBtn"); ap.wait_for_timeout(900)
+    check("a cast plays the whoosh when it starts and the splash when the bobber lands", ap.evaluate("window.__c") == ["whoosh", "splash"], str(ap.evaluate("window.__c")))
+    # a hidden tab is silent
+    ap.evaluate("() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }"); ap.wait_for_timeout(300)
+    h = ap.evaluate("audioState()")
+    ap.evaluate("() => { Object.defineProperty(document, 'hidden', { value: false, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }"); ap.wait_for_timeout(700)
+    v = ap.evaluate("audioState()")
+    check("the music pauses when the tab is hidden and resumes when it is visible again", h["ticking"] is False and h["ctx"] == "suspended" and v["ticking"] is True and v["ctx"] == "running", f"{h} {v}")
+    check("the HOW TO PLAY dialog has the silent-switch line", "No sound on iPhone? Turn off the silent switch on the side of the phone." in ap.evaluate("document.getElementById('howBox').textContent"))
+    ap.close()
+    # a failing audio engine never breaks the game
+    bp2 = b.new_page(viewport={"width": 1280, "height": 720}); perr = []
+    bp2.on("pageerror", lambda e: perr.append(str(e)))
+    bp2.add_init_script("window.AudioContext = function () { throw new Error('no audio here'); }; window.webkitAudioContext = undefined;")
+    bp2.goto(URL); bp2.evaluate("localStorage.clear()"); bp2.reload(); bp2.wait_for_timeout(300)
+    bp2.click("#howBtn"); bp2.click("#howOk"); bp2.click("#musicBtn"); bp2.click("#soundBtn")
+    start_new(bp2, "Mute"); bp2.evaluate("() => { island = 'harbor'; go('fishing'); }"); bp2.wait_for_timeout(300)
+    bp2.click("#actBtn"); bp2.wait_for_timeout(700); bp2.evaluate("Object.values(sfx).forEach(f => f())")
+    check("if the AudioContext can't be created (or throws) the game still works: no errors, CAST still casts", not perr and bp2.evaluate("F.phase") in ("waiting", "casting", "bite"), str(perr[:2]))
+    bp2.close()
+    # saves: an old save without S.music loads with music ON; a save with music false stays off
+    op = b.new_page(viewport={"width": 1280, "height": 720})
+    op.on("pageerror", lambda e: errs.append(str(e)))
+    op.goto(URL); op.evaluate("localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 70, rods: ['bamboo'], rodEq: 'bamboo', bagMax: 5, bag: [], sound: false }))")
+    op.reload(); op.wait_for_timeout(300)
+    check("an old save without S.music loads with music ON (and keeps sound OFF); the Title shows MUSIC: ON", op.evaluate("S.music") is True and op.evaluate("S.sound") is False and "MUSIC: ON" in op.inner_text("#musicBtn") and op.is_enabled("#contBtn"))
+    op.evaluate("localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 70, music: false }))"); op.reload(); op.wait_for_timeout(300)
+    op.click("#contBtn"); op.wait_for_timeout(500)
+    check("a save with music false stays silent after CONTINUE, then NEW GAME keeps both choices", op.evaluate("audioState().theme") is None and op.evaluate("S.music") is False)
+    op.evaluate("() => go('titleScreen')"); op.click("#newBtn"); op.click("#confirmYes"); op.fill("#nameInput", "Fresh"); op.click("#nameStart"); op.wait_for_timeout(300)
+    check("NEW GAME keeps the player's Music choice", op.evaluate("S.music") is False and op.evaluate("S.name") == "Fresh")
+    op.close()
     # 6 hearts (Lucky + Master's Charm) fit on a 360x640 phone; CAST/HOOK/REEL doesn't move between phases
     hp6 = b.new_page(viewport={"width": 360, "height": 640}); hp6.on("pageerror", lambda e: errs.append(str(e)))
     hp6.goto(URL); hp6.evaluate("localStorage.clear()"); hp6.reload(); hp6.wait_for_timeout(200); start_new(hp6, "Six")

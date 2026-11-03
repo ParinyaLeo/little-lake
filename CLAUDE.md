@@ -66,14 +66,31 @@ them with `go(id)` or with any element that has `data-go="<screen id>"`.
 - **NEW GAME** asks for a name (trimmed, 1–12 characters). If a save exists, it first shows a confirm dialog
   ("This will delete your current progress"). Nothing is reset until START is pressed with a valid name.
 - **CONTINUE** loads the save and goes to Home. It is disabled when `hasSave()` is false.
-- **HOW TO PLAY** opens a short help panel. **SOUND** toggles `S.sound`.
+- **HOW TO PLAY** opens a short help panel. **SOUND** (`#soundBtn`, effects) toggles `S.sound`, **MUSIC** (`#musicBtn`, "🎵 MUSIC: ON/OFF") toggles `S.music`; both have `aria-pressed`, both play a soft click as confirmation (when Sound is on).
 - The **☰ MENU** button on Home returns to the Title screen.
 
-**Sound:** `S.sound` (default `true`; old saves without it load as on). Every sound effect goes through
-`beep()`, which does nothing when sound is off. A save that holds only `{ sound }` (sound toggled before
-any game was started) does not count as a game, so CONTINUE stays disabled.
+**Sound and music** (Playtest 1, part 11; the AUDIO section of `js/state.js`): `S.sound` (effects) and `S.music` are separate switches, both default `true`
+(old saves without either load as on; `cleanSave()` uses `!== false`). A save that holds only `{ sound, music }` (toggled before any game was started) does not
+count as a game, so CONTINUE stays disabled; NEW GAME keeps both choices.
+- **Engine:** one shared `AC` (AudioContext), created and `resume()`d by `audioUnlock()` on the first `pointerdown` / `keydown` / `touchend` / `click` (the listeners go
+  away once it is running; before that `AC` is `undefined` and nothing plays). `navigator.audioSession.type = "playback"` (when it exists) lets iOS play Web Audio
+  with the silent switch on. Graph: sfx bus + (theme gain > duck > music bus) > master > DynamicsCompressor > speakers. `audioApply()` sets the levels: sfx bus 1 / 0
+  (Sound), music bus `MUSIC_VOL` .25 / 0 (Music), master 1 while either is on and 0 when both are off. Every audio call is wrapped in try/catch, so a missing or
+  throwing AudioContext never breaks the game (`audioState()` shows the state for the tests).
+- **Effects** (`sfx`, voices about .17-.45 before the master gain): `whoosh` (= `cast`, a filtered-noise sweep, at the start of a cast), `splash` (low-passed noise + plop,
+  when the bobber lands), `bite` (two bright pings), `hit` (rising blip), `miss` (low buzz), `fail` (falling tone, the escape), `catch` (4-note fanfare), `coin` (two quick
+  high notes), `click` (soft click: Title toggles, equip rod, choose bait, Bag lock). `beep()` remains for old callers. All go through `tone()` / `noise()`, which do nothing
+  unless Sound is on and the context is running.
+- **Music** (`THEMES`, `musicStep`, `musicTick`, `musicSync`): a step sequencer with a 120 ms timer that schedules notes 0.35 s ahead on the audio clock (low CPU). Six
+  8-bar loops built from a scale, chords per bar, a melody (two 4-bar phrases in a compact text format), a bass pattern, a soft pad and an optional noise hat:
+  `home` (Title, Home, Map, Bag, Shop, ...: calm, warm, triangle), `harbor` (sea shanty, square), `frost` (slow, sparse, bell), `desert` (minor, plucked), `forest` (flowing,
+  flute-like), `secret` (slow, low pad). `go()` calls `musicSync()`, which picks the theme from the screen / `island` and crossfades (600 ms) when it changes; the music
+  starts only after the first gesture, stops when Music is off, pauses (and suspends the context) while the tab is hidden and resumes on return. `musicDuck(true)` dips the
+  music to 40% while reeling (`hook()`), back to 100% in `caught()`, `escape()` and `stopFishing()`. To add a theme: add an entry to `THEMES` (keyed by island id), nothing else.
+- **Not done on purpose:** no speaker button in the Fishing top bar (it would crowd the SELL / coin row on phones); sound is controlled from the Title screen.
+- Keep new effects quiet-proof: put new sounds in `sfx` and call them through `tone()` / `noise()` so the Sound switch and the iOS unlock apply.
 
-**New save:** `holdCasts: 0` (hold-to-charge casts so far, drives the "hold CAST" hint; old saves without it load as 0), 300 coins, `rods: ["bamboo"]`, `rodEq: "bamboo"`, `baits: { worm: 0, shrimp: 0, golden: 0 }`,
+**New save:** `music: true` (see Sound and music), `holdCasts: 0` (hold-to-charge casts so far, drives the "hold CAST" hint; old saves without it load as 0), 300 coins, `rods: ["bamboo"]`, `rodEq: "bamboo"`, `baits: { worm: 0, shrimp: 0, golden: 0 }`,
 `baitSel: "none"`, bag capacity 5, `pending: null` (the catch waiting on the Result screen).
 **Old saves** (from before rods/baits) have `rod` (level), `bait` (count) and `useBait`. `load()` migrates them once:
 level 1 → Bamboo; level 2+ → also owns and equips the Sturdy Rod, and each level above 2 is refunded 200 coins; the old
@@ -253,7 +270,7 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   pixelated, `object-position` keeps the fisherman in view; a different position below 700px). No frame. The screen is exactly
   `100dvh` tall (`100vh` fallback, no page scroll) and its padding uses `env(safe-area-inset-top / bottom)` (`viewport-fit=cover`), so the
   sign stays at least 12px from the top on iPhones, even at the top of its bob. The sign floats
-  near the top and the 4 buttons sit at the bottom (2x2 on phones) over a dark gradient (`.title-shade`). The only
+  near the top and the 5 buttons (NEW GAME, CONTINUE, HOW TO PLAY, SOUND, MUSIC) sit at the bottom in one row (phones: NEW GAME | CONTINUE, HOW TO PLAY across, SOUND | MUSIC) over a dark gradient (`.title-shade`). The only
   effect is `.title-shimmer`, a soft blurred light band. Its fade-in is opacity-only, because a transform on the screen would
   detach the fixed picture.
 - **Backdrop** (`#backdrop` in `index.html`, `.bd-*` layers in CSS, `setBackdrop()` / `preloadBackdrops()` in `js/screens.js`): one

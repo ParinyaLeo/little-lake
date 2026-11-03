@@ -339,7 +339,7 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 // the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
 // (both use visibility, never display, so nothing below them moves)
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
@@ -516,7 +516,7 @@ function cast(power = POWER.mid, jitter = POWER.jitterQuick) {
   $("fMsg").textContent = !usedBait ? "Waiting for a bite..." : left ? `Cast with ${BAITS[usedBait].name} (${left} left)... waiting` : `Cast with your last ${BAITS[usedBait].name}... waiting`;
   renderFishingHud();
   $("actBtn").disabled = true;
-  later(() => { F.phase = "waiting"; }, 500);
+  later(() => { F.phase = "waiting"; sfx.splash(); }, 500);   // the bobber lands: splash
   later(bite, 500 + 1000 + Math.random() * 4000);   // 1-5 s random wait
 }
 function bite() {
@@ -533,7 +533,7 @@ function hook() {
     speed: d.speed * (S.mastery.frost ? .8 : 1) * rod().speed, zoneW: d.zone * rod().zone });   // rod + Steady Hands
   newZone(); showMeter(true);
   const a = $("actBtn"); a.textContent = "REEL"; a.className = "btn green";
-  $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit();
+  $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit(); musicDuck(true);   // the music dips while reeling so the effects stay clear
 }
 function newZone() { F.zoneX = .1 + Math.random() * (.8 - F.zoneW); $("zone").style.left = F.zoneX * 100 + "%"; $("zone").style.width = F.zoneW * 100 + "%"; }
 // HIT dots, and one heart per miss you can still afford (a miss with no hearts left = the fish escapes)
@@ -555,11 +555,12 @@ function reel() {
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
-  sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
+  musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; fisherEvent("escaped"); renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
 // reeled = caught on the fishing screen: the fisherman lifts the rod for a moment before the Result screen
 function caught(reeled) {
+  musicDuck(false);
   const f = F.fish; clearTimers(); F = { phase: "idle" }; showMeter(false);
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);

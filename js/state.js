@@ -2,7 +2,7 @@
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
 const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none",
-  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, pending: null, holdCasts: 0 });
+  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0 });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
@@ -32,6 +32,7 @@ function cleanSave(raw) {
     totalCaught: num(raw.totalCaught, 0), mythical: raw.mythical === true,
     holdCasts: num(raw.holdCasts, 0),               // hold-to-charge casts so far (the "hold CAST" hint stops after 3); old saves: 0
     sound: raw.sound !== false,                       // older saves have no sound setting: default on
+    music: raw.music !== false,                       // ... and no music setting: default on
     pending: validCatch(raw.pending) ? raw.pending : null,   // a catch still waiting for KEEP / RELEASE
   };
   s.bag = s.bag.slice(0, s.bagMax);
@@ -41,15 +42,15 @@ function cleanSave(raw) {
 function validCatch(p) { return !!p && typeof p === "object" && !!fishById(p.fishId) && Number.isFinite(p.weight) && Number.isFinite(p.price); }
 let S = load();
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
-// A game exists if the save holds anything besides the sound setting (toggling sound on the
-// Title screen before starting a game stores only { sound }).
+// A game exists if the save holds anything besides the sound / music settings (toggling them on the
+// Title screen before starting a game stores only { sound, music }).
 function hasSave() {
-  try { const raw = JSON.parse(localStorage.getItem(SAVE_KEY)); return !!raw && typeof raw === "object" && Object.keys(raw).some(k => k !== "sound"); }
+  try { const raw = JSON.parse(localStorage.getItem(SAVE_KEY)); return !!raw && typeof raw === "object" && Object.keys(raw).some(k => k !== "sound" && k !== "music"); }
   catch (e) { return false; }
 }
-function saveSound() {
+function saveSound() {                               // Sound and Music settings (also used for both toggles)
   if (hasSave()) return save();
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sound: S.sound })); } catch (e) {}
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sound: S.sound, music: S.music })); } catch (e) {}
 }
 
 // Another tab of the game saved: reload, so this tab doesn't later overwrite that progress with its old copy.
@@ -66,23 +67,170 @@ function toast(m) { const t = $("toast"); t.textContent = m; t.classList.add("sh
 // short bounce on a number that just changed (e.g. the bag counter after KEEP)
 function bump(id) { const e = $(id); e.classList.remove("bump"); void e.offsetWidth; e.classList.add("bump"); }
 function vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
-let AC;
-function beep(freq, dur = .12, type = "square", vol = .06) {
-  if (!S.sound) return;                               // every sfx goes through beep()
+/* ===================== AUDIO (Playtest 1, part 11) =====================
+   One shared AudioContext, created and resumed on the first user gesture (browsers keep it suspended before that, and iOS needs the resume inside a
+   touch). Graph: sfx bus ----------------------\
+                  theme gain > duck > music bus --+> master > compressor > speakers.
+   Sound (S.sound) opens the sfx bus, Music (S.music) the music bus (quieter: MUSIC_VOL). Everything is made in code; no audio files.
+   Music is a small step sequencer: a 120 ms timer schedules the next notes ~0.35 s ahead on the audio clock, so CPU use stays tiny. */
+let AC;                                              // the AudioContext; stays undefined until the first gesture
+const MUSIC_VOL = .25, DUCK_VOL = .4, MUSIC_TRIM = .5;   // music bus .25; each theme's own level .5 keeps the song well below the effects
+const AUD = { master: null, sfx: null, music: null, duck: null, noise: null, cur: null, ducked: false, notes: 0 };
+function audioInit() {
+  if (AC) return true;
   try {
-    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
-    const o = AC.createOscillator(), g = AC.createGain();
-    o.type = type; o.frequency.value = freq; g.gain.value = vol;
-    o.connect(g); g.connect(AC.destination); o.start();
-    g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + dur); o.stop(AC.currentTime + dur);
+    const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return false;
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}   // iOS: play even with the silent switch on
+    const ctx = new Ctx(), comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 24; comp.ratio.value = 3; comp.attack.value = .004; comp.release.value = .2;
+    AUD.master = ctx.createGain(); AUD.sfx = ctx.createGain(); AUD.music = ctx.createGain(); AUD.duck = ctx.createGain();
+    AUD.sfx.connect(AUD.master); AUD.duck.connect(AUD.music); AUD.music.connect(AUD.master); AUD.master.connect(comp); comp.connect(ctx.destination);
+    const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = nb.getChannelData(0);   // 1 s of white noise, looped by every noise voice
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    AUD.noise = nb; AC = ctx; audioApply();
+    AC.addEventListener && AC.addEventListener("statechange", () => { if (AC.state === "running") { audioGestureDone(); musicSync(); } });
+    return true;
+  } catch (e) { return false; }
+}
+// the switches: master is open while either Sound or Music is on; each bus has its own level
+function audioApply() {
+  if (!AC) return;
+  try {
+    AUD.master.gain.value = S.sound || S.music ? 1 : 0;
+    AUD.sfx.gain.value = S.sound ? 1 : 0;
+    AUD.music.gain.value = S.music ? MUSIC_VOL : 0;
+    AUD.duck.gain.setTargetAtTime(AUD.ducked ? DUCK_VOL : 1, AC.currentTime, .06);
   } catch (e) {}
 }
+function audioUnlock() {
+  if (!audioInit()) return;
+  try {
+    if (AC.state !== "running") { const p = AC.resume(); if (p && p.then) p.then(() => { if (AC.state === "running") { audioGestureDone(); musicSync(); } }, () => {}); }
+    const s = AC.createBufferSource(); s.buffer = AC.createBuffer(1, 1, 22050); s.connect(AC.destination); s.start(0);   // a silent blip inside the gesture wakes iOS audio
+  } catch (e) {}
+  musicSync();
+}
+const GESTURES = ["pointerdown", "keydown", "touchend", "click"];
+function audioGestureDone() { if (AC && AC.state === "running") GESTURES.forEach(ev => document.removeEventListener(ev, audioUnlock, true)); }
+GESTURES.forEach(ev => document.addEventListener(ev, audioUnlock, true));
+document.addEventListener("visibilitychange", () => {      // a hidden tab is silent and idle; coming back resumes it
+  if (!AC) return;
+  try {
+    if (document.hidden) { musicPause(); AC.suspend && AC.suspend(); }
+    else { const p = AC.resume(); const go = () => { musicResume(); musicSync(); }; p && p.then ? p.then(go, go) : go(); }
+  } catch (e) {}
+});
+
+/* ---- one voice: an oscillator with an envelope, on any bus, at an absolute time ---- */
+function voice(freq, t, dur, type, vol, bus, o = {}) {
+  const osc = AC.createOscillator(), g = AC.createGain(); let out = osc;
+  osc.type = type; osc.frequency.setValueAtTime(freq, t);
+  if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+  if (o.lp) { const f = AC.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(o.lp, t); f.frequency.exponentialRampToValueAtTime(Math.max(200, o.lp / 3), t + dur); osc.connect(f); out = f; }
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + (o.attack || .008)); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  out.connect(g); g.connect(bus); osc.start(t); osc.stop(t + dur + .03);
+}
+function noiseVoice(t, dur, vol, ftype, f0, f1, bus, q = 1) {
+  const src = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain();
+  src.buffer = AUD.noise; src.loop = true; f.type = ftype; f.Q.value = q;
+  f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(.04, dur * .35)); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(bus); src.start(t); src.stop(t + dur + .03);
+}
+// sound effects only run with Sound on and a running context; a failure never reaches the game
+const sfxOn = () => !!(S.sound && AC && AC.state === "running" && AUD.sfx);
+function tone(freq, dur = .12, type = "square", vol = .22, delay = 0, o) { if (!sfxOn()) return; try { voice(freq, AC.currentTime + .005 + delay, dur, type, vol, AUD.sfx, o); } catch (e) {} }
+function noise(dur, vol, ftype, f0, f1, delay = 0, q = 1) { if (!sfxOn()) return; try { noiseVoice(AC.currentTime + .005 + delay, dur, vol, ftype, f0, f1, AUD.sfx, q); } catch (e) {} }
+function beep(freq, dur = .12, type = "square", vol = .22) { tone(freq, dur, type, vol); }   // kept for old callers
 const sfx = {
-  cast: () => beep(300, .15, "triangle"), bite: () => { beep(880, .1); setTimeout(() => beep(880, .1), 130); },
-  hit: () => beep(660, .08), miss: () => beep(140, .2, "sawtooth"),
-  catch: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, .15, "triangle"), i * 110)),
-  coin: () => beep(1200, .06), fail: () => beep(110, .35, "sawtooth"),
+  whoosh: () => noise(.4, 1.1, "bandpass", 350, 2600, 0, .9),                                    // cast: a rising filtered-noise sweep
+  splash: () => { noise(.3, .34, "lowpass", 2200, 350); tone(260, .12, "sine", .16, .02, { to: 120 }); },   // bobber lands: a low-passed noise burst + a plop
+  bite: () => { tone(1320, .16, "sine", .26); tone(1976, .2, "triangle", .2); tone(1320, .16, "sine", .26, .15); tone(1976, .22, "triangle", .2, .15); },   // two bright pings
+  hit: () => tone(520, .12, "square", .2, 0, { to: 1040 }),                                          // a rising blip
+  miss: () => { tone(110, .24, "sawtooth", .24, 0, { lp: 900 }); tone(104, .24, "square", .12); },   // a low buzz
+  fail: () => tone(560, .5, "triangle", .27, 0, { to: 150 }),                                        // escape: a falling tone
+  catch: () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(f, i === 3 ? .42 : .16, "triangle", .27, i * .11); tone(f * 2, i === 3 ? .3 : .12, "sine", .1, i * .11); }),   // 4-note fanfare
+  coin: () => { tone(1318.5, .09, "square", .17); tone(1760, .2, "square", .17, .075); },            // two quick high notes
+  click: () => tone(760, .05, "triangle", .2, 0, { to: 380 }),                                       // equip / lock / toggle: a soft click
 };
+sfx.cast = sfx.whoosh;                               // the cast sound is the whoosh
+
+/* ---- music: themes ---- */
+// root: MIDI note of scale degree 1; scale: semitones (any length); chords: scale degree of the chord root for each of 8 bars (stacked in thirds from the scale);
+// mel: two 4-bar phrases, 8 eighth-note slots per bar ("." rest, 1..n scale degrees, n above the scale length = next octave); bass: 8 slots (1 root, 2 fifth, 3 octave);
+// hat: 8 slots; lead: instrument; pad: held chord volume; bpm counts quarter notes (a slot is an eighth)
+const THEMES = {
+  home: { root: 60, scale: [0, 2, 4, 5, 7, 9, 11], bpm: 80, lead: "tri", chords: [1, 5, 6, 4, 1, 5, 4, 5], bass: [1, 0, 0, 0, 2, 0, 0, 0], hat: [0, 0, 0, 0, 0, 0, 0, 0], pad: .16,
+    mel: "3 . 5 . 6 . 5 3 | 2 . 3 . 5 . . . | 3 . 5 . 8 . 6 5 | 3 . 2 . 1 . . . | 6 . 8 . 9 . 8 6 | 5 . 6 . 8 . . . | 9 . 8 . 6 . 5 3 | 2 . 3 . 5 . 1 ." },
+  harbor: { root: 62, scale: [0, 2, 4, 5, 7, 9, 10], bpm: 112, lead: "square", chords: [1, 4, 1, 5, 1, 4, 5, 1], bass: [1, 0, 2, 0, 1, 0, 2, 0], hat: [0, 0, 1, 0, 0, 0, 1, 0], pad: .08,
+    mel: "1 . 3 5 6 . 5 3 | 4 . 6 8 6 . 4 . | 1 . 3 5 6 . 5 3 | 5 . 4 3 2 . 1 . | 5 . 6 8 9 . 8 6 | 8 . 9 11 9 . 8 . | 7 . 6 5 4 . 5 6 | 8 . 5 3 1 . . ." },
+  frost: { root: 72, scale: [0, 2, 4, 7, 9], bpm: 64, lead: "bell", chords: [1, 3, 4, 2, 1, 3, 5, 1], bass: [1, 0, 0, 0, 0, 0, 0, 0], hat: [0, 0, 0, 0, 0, 0, 0, 0], pad: .12,
+    mel: "5 . . . 3 . . . | . . 4 . 2 . . . | 5 . . . 6 . 5 . | . . 3 . . . . . | 6 . . . 8 . . . | . . 7 . 5 . . . | 6 . 5 . 3 . . . | 2 . . . 1 . . ." },
+  desert: { root: 64, scale: [0, 1, 4, 5, 7, 8, 10], bpm: 104, lead: "pluck", chords: [1, 1, 2, 1, 1, 4, 5, 1], bass: [1, 0, 1, 0, 2, 0, 3, 0], hat: [0, 0, 1, 0, 0, 0, 1, 1], pad: .06,
+    mel: "1 . 2 3 4 . 3 2 | 1 . 2 3 5 . 4 3 | 2 . 3 4 5 . 4 3 | 2 . 1 . . . . . | 5 . 6 7 8 . 7 6 | 5 . 6 7 9 . 8 7 | 6 . 5 4 3 . 2 3 | 1 . . . 1 . . ." },
+  forest: { root: 67, scale: [0, 2, 4, 5, 7, 9, 11], bpm: 76, lead: "flute", chords: [1, 6, 4, 5, 1, 6, 4, 5], bass: [1, 0, 0, 0, 2, 0, 0, 0], hat: [0, 0, 0, 0, 0, 0, 0, 0], pad: .12,
+    mel: "1 2 3 5 3 2 1 . | 6 7 8 6 5 3 2 . | 4 5 6 8 6 5 4 . | 5 3 2 3 5 . . . | 3 5 6 8 9 8 6 5 | 6 8 9 10 9 . 8 . | 8 6 5 4 5 6 4 . | 5 . 3 . 1 . . ." },
+  secret: { root: 50, scale: [0, 1, 3, 5, 7, 8, 10], bpm: 54, lead: "flute", melOct: 12, chords: [1, 1, 2, 1, 6, 5, 2, 1], bass: [1, 0, 0, 0, 0, 0, 0, 0], hat: [0, 0, 0, 0, 0, 0, 0, 0], pad: .26,
+    mel: "5 . . . . . 6 . | . . . . 5 . . . | 4 . . . 3 . . . | . . 2 . . . . . | 5 . . . 8 . 7 . | . . . . 6 . . . | 5 . . . 4 . 3 . | 2 . . . 1 . . ." },
+};
+for (const id in THEMES) {                           // parse the melody once: slot -> MIDI note + length in slots
+  const T = THEMES[id], toks = T.mel.split(/[\s|]+/).filter(Boolean), L = T.scale.length;
+  T.note = i => T.root + T.scale[((i % L) + L) % L] + 12 * Math.floor(i / L);
+  T.m = toks.map((k, i) => { if (k === ".") return null; let n = 1; while (toks[i + n] === "." && n < 4) n++; return { midi: T.note(parseInt(k, 10) - 1) + (T.melOct || 0), len: n }; });
+}
+const MUSIC_BARS = 8, MUSIC_LOOK = .35;
+function musicTheme() { return typeof current !== "undefined" && current === "fishing" && THEMES[island] ? island : "home"; }
+const mhz = m => 440 * Math.pow(2, (m - 69) / 12);
+function musicStep(inst, step, t) {                  // schedule everything that sounds on one eighth-note slot
+  const T = THEMES[inst.id], bus = inst.gain, sd = 30 / T.bpm, slot = step % 8, bar = Math.floor(step / 8) % MUSIC_BARS, deg = T.chords[bar] - 1, n = T.m[step % T.m.length];
+  if (n) {
+    const m = n.midi, d = n.len * sd * .95, f = mhz(m);
+    if (T.lead === "bell") { voice(f, t, d * 3.2, "sine", .55, bus, { attack: .004 }); voice(f * 2.76, t, d * 1.4, "sine", .16, bus, { attack: .004 }); }
+    else if (T.lead === "pluck") voice(f, t, Math.min(d, .4), "sawtooth", .34, bus, { lp: 2600, attack: .004 });
+    else if (T.lead === "flute") { voice(f, t, d * 1.1, "sine", .5, bus, { attack: .07 }); voice(f * 2, t, d, "sine", .06, bus, { attack: .09 }); }
+    else if (T.lead === "square") voice(f, t, Math.min(d, .5), "square", .2, bus, { lp: 3200, attack: .006 });
+    else voice(f, t, d * 1.05, "triangle", .55, bus, { attack: .012 });
+    AUD.notes++;
+  }
+  const b = T.bass[slot];
+  if (b) { const bi = deg + (b === 2 ? 4 : 0), m = T.note(bi) - 24 + (b === 3 ? 12 : 0); voice(mhz(m), t, sd * 1.8, "triangle", .6, bus, { attack: .01 }); AUD.notes++; }
+  if (slot === 0 && T.pad) for (const k of [0, 2, 4]) voice(mhz(T.note(deg + k) - 12), t, sd * 8, "sine", T.pad, bus, { attack: sd * 1.5 });
+  if (T.hat[slot]) noiseVoice(t, .05, .1, "highpass", 7000, 9000, bus);
+}
+function musicTick(inst) {
+  if (inst.dead || !AC) return;
+  const T = THEMES[inst.id], sd = 30 / T.bpm;
+  try { while (inst.next < AC.currentTime + MUSIC_LOOK) { musicStep(inst, inst.step, inst.next); inst.step++; inst.next += sd; } } catch (e) {}
+  inst.timer = setTimeout(() => musicTick(inst), 120);
+}
+function musicStop(fade = .25) {
+  const inst = AUD.cur; AUD.cur = null; if (!inst) return;
+  inst.dead = true; clearTimeout(inst.timer); inst.timer = null;
+  try { inst.gain.gain.cancelScheduledValues(AC.currentTime); inst.gain.gain.setValueAtTime(inst.gain.gain.value, AC.currentTime); inst.gain.gain.linearRampToValueAtTime(0, AC.currentTime + fade);
+    setTimeout(() => { try { inst.gain.disconnect(); } catch (e) {} }, fade * 1000 + 250); } catch (e) {}
+}
+function musicStart(id) {
+  const old = AUD.cur; if (old) musicStop(.6);        // crossfade: the old theme fades out while the new one fades in
+  const g = AC.createGain(); g.gain.setValueAtTime(0, AC.currentTime); g.gain.linearRampToValueAtTime(MUSIC_TRIM, AC.currentTime + .6); g.connect(AUD.duck);
+  const inst = { id, gain: g, step: 0, next: AC.currentTime + .08, timer: null, dead: false }; AUD.cur = inst; musicTick(inst);
+}
+// start, change or stop the music so it matches the screen / island and the Music switch (called by go(), the toggles and the gesture)
+function musicSync() {
+  try {
+    if (!AC || AC.state !== "running") return;
+    if (!S.music || document.hidden) { if (AUD.cur && !document.hidden) musicStop(); return; }
+    const id = musicTheme(); if (AUD.cur && AUD.cur.id === id) return;
+    musicStart(id);
+  } catch (e) {}
+}
+function musicPause() { const c = AUD.cur; if (c) { clearTimeout(c.timer); c.timer = null; } }
+function musicResume() { const c = AUD.cur; if (c && !c.timer && AC) { c.next = Math.max(c.next, AC.currentTime + .05); musicTick(c); } }
+function musicDuck(on) { AUD.ducked = !!on; if (AC) try { AUD.duck.gain.setTargetAtTime(on ? DUCK_VOL : 1, AC.currentTime, .06); } catch (e) {} }
+// for the tests: what the audio layer is doing right now
+function audioState() {
+  return { ctx: AC ? AC.state : null, master: AUD.master ? AUD.master.gain.value : null, sfx: AUD.sfx ? AUD.sfx.gain.value : null, music: AUD.music ? AUD.music.gain.value : null,
+    duck: AUD.duck ? AUD.duck.gain.value : null, theme: AUD.cur ? AUD.cur.id : null, ticking: !!(AUD.cur && AUD.cur.timer), notes: AUD.notes, ducked: AUD.ducked };
+}
 function confetti() {
   const cols = ["#ffd54f", "#4caf50", "#64b5f6", "#ef5350", "#ce93d8"];
   for (let i = 0; i < 40; i++) {
@@ -438,12 +586,13 @@ function rodFx(id) {
 const baitName = id => BAITS[id] ? BAITS[id].name : "No bait";
 // equip a rod you own / select a bait you have (or "none"); used by the Tackle Box and the fishing HUD
 function equipRod(id) {
+  sfx.click();
   if (!S.rods.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
   S.rodEq = id; save(); toast(`Equipped: ${RODS[id].name}`); render();
 }
 function selectBait(id) {
   if ((id !== "none" && !(S.baits[id] > 0)) || (typeof F !== "undefined" && F.phase !== "idle")) return;
-  S.baitSel = id; save(); toast(id === "none" ? "No bait: your bait is saved for later." : `Using ${BAITS[id].name}: ${BAITS[id].blurb}`); render();
+  S.baitSel = id; save(); sfx.click(); toast(id === "none" ? "No bait: your bait is saved for later." : `Using ${BAITS[id].name}: ${BAITS[id].blurb}`); render();
 }
 const misses = n => `${n} miss${n === 1 ? "" : "es"}`;
 

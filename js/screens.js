@@ -26,6 +26,7 @@ function go(id, back = false) {
   document.body.classList.toggle("fit", FIT_SCREENS.includes(id));
   document.body.classList.toggle("center", CENTER_SCREENS.includes(id));
   setBackdrop();
+  audioApply(); musicSync();                           // the theme follows the screen / island
   render(); window.scrollTo(0, 0);
 }
 // BACK: the previous screen (skipping a Result screen whose fish was already kept or released), else Home;
@@ -81,6 +82,8 @@ function renderTitle() {
   $("contBtn").disabled = !hasSave();
   $("soundBtn").textContent = S.sound ? "🔊 SOUND: ON" : "🔇 SOUND: OFF";
   $("soundBtn").setAttribute("aria-pressed", S.sound);
+  $("musicBtn").textContent = S.music ? "🎵 MUSIC: ON" : "🔇 MUSIC: OFF";
+  $("musicBtn").setAttribute("aria-pressed", S.music);
 }
 let modalReturn = null;
 function openModal(id, focusId) {
@@ -91,8 +94,8 @@ function closeModal(id) {
 }
 function openNameBox() { $("nameInput").value = ""; $("nameErr").textContent = ""; openModal("nameBox", "nameInput"); }
 function startNewGame(name) {
-  const sound = S.sound;                              // keep the player's sound choice
-  S = DEFAULT(); S.name = name; S.sound = sound; save();
+  const sound = S.sound, music = S.music;            // keep the player's sound and music choices
+  S = DEFAULT(); S.name = name; S.sound = sound; S.music = music; save();
   island = "harbor"; collTab = "harbor";
   go("home"); toast(`Welcome to Little Lake, ${name}!`);
 }
@@ -110,7 +113,8 @@ $("nameForm").onsubmit = e => {
 $("contBtn").onclick = () => { if (!hasSave()) return; S = load(); go("home"); };
 $("howBtn").onclick = () => openModal("howBox", "howPanel");
 $("howOk").onclick = () => closeModal("howBox");
-$("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); renderTitle(); sfx.coin(); };
+$("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); audioApply(); renderTitle(); sfx.click(); };   // the click confirms (only when Sound is on)
+$("musicBtn").onclick = () => { S.music = !S.music; saveSound(); audioApply(); musicSync(); renderTitle(); sfx.click(); };
 // Esc closes an open popup and does nothing else; with no popup open it works as BACK on the screens with the
 // BACK bar (so never on Home, where BACK would leave the game for the Title screen)
 document.addEventListener("keydown", e => {
@@ -168,7 +172,7 @@ function renderBag() {
     const lk = document.createElement("button"); lk.className = "lockbtn"; lk.type = "button";
     lk.setAttribute("aria-label", b.locked ? "Unlock fish" : "Lock fish"); lk.setAttribute("aria-pressed", b.locked ? "true" : "false");
     lk.innerHTML = `<span class="ico ${b.locked ? "i-padlock" : "i-padlock-open"}"></span>`;
-    lk.onclick = () => { b.locked = !b.locked; save(); renderBag(); };
+    lk.onclick = () => { b.locked = !b.locked; save(); sfx.click(); renderBag(); };
     row.append(lk); row.classList.toggle("locked", !!b.locked);
     const s = document.createElement("button"); s.className = "btn green"; s.textContent = `SELL ${fmt(b.price)}`;
     if (b.locked) { s.classList.add("is-locked"); }
