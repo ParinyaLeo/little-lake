@@ -2291,15 +2291,15 @@ with sync_playwright() as p:
           drawFloat(g, 30, 44, id, t, still); return Array.from(g.getImageData(0, 0, 60, 70).data).join(','); };
         const diff = (a, b) => { a = a.split(','); b = b.split(','); let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) n++; return n; };
         const s = Object.fromEntries(ids.map(id => [id, snap(id, 0, true)])), d = {}; for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) d[ids[i] + '/' + ids[j]] = diff(s[ids[i]], s[ids[j]]);
-        const ext = id => { const c = document.createElement('canvas'); c.width = 60; c.height = 70; const g = c.getContext('2d'); drawFloat(g, 30, 44, id, 0, true); const a = g.getImageData(0, 0, 60, 70).data; let x0 = 99, x1 = -1, y0 = 99, y1 = -1;
+        const ext = (id, t = 0, st = true) => { const c = document.createElement('canvas'); c.width = 60; c.height = 70; const g = c.getContext('2d'); drawFloat(g, 30, 44, id, t, st); const a = g.getImageData(0, 0, 60, 70).data; let x0 = 99, x1 = -1, y0 = 99, y1 = -1;
           for (let y = 0; y < 70; y++) for (let x = 0; x < 60; x++) if (a[(y * 60 + x) * 4 + 3]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return [x1 - x0 + 1, y1 - y0 + 1, y0]; };
         return { d, g0: diff(snap('golden', 0, false), snap('golden', 500, false)), gStill: diff(snap('golden', 0, true), snap('golden', 500, true)), g0still: diff(snap('golden', 0, false), snap('golden', 0, true)),
-                 others: ['classic', 'candy', 'frog', 'duck'].map(id => diff(snap(id, 0, false), snap(id, 500, false))), ext: ids.map(ext) }; }""")
-    check("the five float styles draw clearly different pixels (every pair differs in at least 60 pixels)", len(px["d"]) == 10 and min(px["d"].values()) >= 60, str(px["d"]))
+                 others: ['classic', 'candy', 'frog', 'duck'].map(id => diff(snap(id, 0, false), snap(id, 500, false))), ext: ids.map(id => ext(id)), extSp: [ext('golden', 0, false), ext('golden', 500, false)] }; }""")
+    check("the five float styles draw clearly different pixels (every pair differs in at least 10 pixels)", len(px["d"]) == 10 and min(px["d"].values()) >= 10, str(px["d"]))
     check("golden: the 2-frame sparkle alternates every 500 ms; with prefers-reduced-motion there is no sparkle and no change; the other floats never animate",
           px["g0"] > 0 and px["gStill"] == 0 and px["g0still"] > 0 and px["others"] == [0, 0, 0, 0], str(px))
-    check("every float is about twice the old bobber: 24px wide and at least 36px tall (the old one was 12 x 19), and each ties the line on 28px above the anchor",
-          all(e[0] >= 22 and e[0] <= 30 and e[1] >= 36 and e[1] <= 40 for e in px["ext"]), str(px["ext"]))
+    check("every float is no bigger than the original classic float (12 x 19 px), also with the golden sparkle, and the line ties on 14px above the anchor",
+          all(e[0] <= 12 and e[1] <= 19 for e in px["ext"] + px["extSp"]) and all(e[0] >= 9 and e[1] >= 17 for e in px["ext"]), str(px["ext"]) + str(px["extSp"]))
     # a float can't change mid-cast: chip disabled, popup refuses, equipFloat refuses; the cast keeps its float
     bp.evaluate("() => { stopFishing(); S.floatEq = 'candy'; S.baitSel = 'none'; save(); go('home'); go('fishing'); }"); bp.wait_for_timeout(300)
     seen = {}
@@ -2335,8 +2335,8 @@ with sync_playwright() as p:
     qd = pos["out"]["classic/waiting"]["quad"].split(":")[1].split(",")
     bx = pos["exp"]["waiting"][0] * pos["W"]; by = pos["exp"]["waiting"][1] * pos["H"]
     check("the bobber's anchor and the dip on a bite / reel are exactly as before for all five floats (same formulas, same position)", exact)
-    check("the line starts at the rod tip and is drawn identically for every float; it ties on at the top of the float (28px above the anchor)",
-          same and abs(float(mv[0]) - pos["tip"][0]) < .01 and abs(float(mv[1]) - pos["tip"][1]) < .01 and abs(float(qd[2]) - bx) < .01 and abs(float(qd[3]) - (by - pos["top"])) < .01 and pos["top"] == 28, f"{mv} {qd} {bx} {by}")
+    check("the line starts at the rod tip and is drawn identically for every float; it ties on at the top of the float (14px above the anchor)",
+          same and abs(float(mv[0]) - pos["tip"][0]) < .01 and abs(float(mv[1]) - pos["tip"][1]) < .01 and abs(float(qd[2]) - bx) < .01 and abs(float(qd[3]) - (by - pos["top"])) < .01 and pos["top"] == 14, f"{mv} {qd} {bx} {by}")
     # screenshots (the five floats on the water, full scene + close-up) at 1536x730 and 360x640
     bp.close()
     for vw, vh in [(1536, 730), (360, 640)]:
