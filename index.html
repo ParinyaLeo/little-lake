@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=54">
+<link rel="stylesheet" href="css/style.css?v=55">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -180,6 +180,7 @@
       <div class="aq-main">
         <div class="aq-tank"><canvas id="tankCv" aria-label="Your aquarium"></canvas><div class="aq-tip" id="tankTip" hidden></div></div>
         <div class="aq-side">
+          <div class="tabs aq-tabs" id="aqTabs" role="tablist"><button class="tab on" data-tab="fish" role="tab">FISH</button><button class="tab" data-tab="theme" role="tab">THEME</button><button class="tab" data-tab="decor" role="tab">DECOR</button></div>
           <p class="small aq-msg" id="aqMsg"></p>
           <div class="aq-lists scroll-list" id="aqLists"></div>
         </div>
@@ -200,6 +201,8 @@
       <div class="shop" id="shopBaits"></div>
       <h3 class="shop-h">Floats <small>only a look: choose your bobber (no effect on fishing)</small></h3>
       <div class="shop" id="shopFloats"></div>
+      <h3 class="shop-h">Aquarium <small>only a look: tank themes and decorations (no effect on fishing or selling)</small></h3>
+      <div class="shop" id="shopTank"></div>
       <h3 class="shop-h">Bag</h3>
       <div class="shop">
         <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span class="fx" id="sBagFx"></span><span>In your bag: <span id="sBag"></span></span><button class="btn green" data-nosound id="buyBag">150 COINS</button></div>
@@ -285,11 +288,11 @@
 </div>
 
 
-<script src="js/data.js?v=54"></script>
-<script src="js/fight.js?v=54"></script>
-<script src="js/state.js?v=54"></script>
-<script src="js/fisherman.js?v=54"></script>
-<script src="js/fishing.js?v=54"></script>
-<script src="js/screens.js?v=54"></script>
+<script src="js/data.js?v=55"></script>
+<script src="js/fight.js?v=55"></script>
+<script src="js/state.js?v=55"></script>
+<script src="js/fisherman.js?v=55"></script>
+<script src="js/fishing.js?v=55"></script>
+<script src="js/screens.js?v=55"></script>
 </body>
 </html>

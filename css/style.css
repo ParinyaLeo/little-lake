@@ -770,3 +770,11 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
 }
 #tankCount { margin-left: 10px; }
 .aq-lists .row canvas { width: 60px; height: 40px; }
+
+/* Playtest 2, part 9: tank theme / decoration pictures (Shop cards, Aquarium lists) and the FISH | THEME | DECOR tabs */
+.tkthumb { width: 72px; height: 48px; image-rendering: pixelated; border: 2px solid var(--gold); display: block; margin-bottom: 6px; flex-shrink: 0; }
+.aq-lists .row .tkthumb { margin: 0; width: 60px; height: 40px; }
+.aq-lists .row.on { border-color: #7ad957; box-shadow: inset 0 0 0 2px #3f8f35; }
+.aq-tabs { display: flex; gap: 6px; margin: 0 0 6px; }
+.aq-tabs .tab { flex: 1; padding: 6px 4px; font-size: 14px; min-width: 0; }
+.aq-lists .row .small { font-size: 12px; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; }

@@ -2245,7 +2245,7 @@ with sync_playwright() as p:
                  names: items.map(i => i.querySelector('b').textContent.trim()), btns: items.map(i => i.querySelector('button').textContent.trim()), dis: items.map(i => i.querySelector('button').disabled),
                  need: items.map(i => (i.querySelector('.need') || {}).textContent || ''), desc: items.every(i => i.querySelector('.fx').textContent.length > 12) }; }""")
     check("Shop: a Floats section after Bait lists the five floats with a 24-32px preview, name and description; classic is EQUIPPED, the others show their price",
-          sh["heads"][:4] == ["Rods", "Bait", "Floats", "Bag"] and sh["n"] == 5 and sh["icons"] and sh["desc"] and sh["btns"] == ["EQUIPPED", "150 COINS", "250 COINS", "350 COINS", "600 COINS"], str(sh))
+          sh["heads"][:5] == ["Rods", "Bait", "Floats", "Aquarium", "Bag"] and sh["n"] == 5 and sh["icons"] and sh["desc"] and sh["btns"] == ["EQUIPPED", "150 COINS", "250 COINS", "350 COINS", "600 COINS"], str(sh))
     check("Shop: floats you can't afford are disabled and say 'Need N more coins'; the affordable one is enabled", sh["dis"] == [True, False, True, True, True] and sh["need"][2] == "Need 50 more coins" and sh["need"][4] == "Need 400 more coins", str(sh["need"]))
     bp.click("#shopFloats [data-buy='float:candy']"); bp.wait_for_timeout(200)
     check("buying with enough coins deducts the price, owns the float, equips it and toasts 'Bought: Candy Float'",
@@ -3311,8 +3311,8 @@ with sync_playwright() as p:
         function a2len(x) { return x.tank.length; } }""")
     check("invalid tank / theme data is cleaned: unknown fish and junk dropped, cut to 12, bad theme falls back to pond, locked is a real boolean",
           cl["a"] == 2 and cl["at"] == "pond" and cl["b"] == 12 and cl["bt"] == "pond" and cl["c"] == [] and cl["ct"] == "pond" and cl["d"] == [] and cl["dt"] == "pond" and cl["lock"] is True and cl["al"] == [False, False], str(cl))
-    check("one TANK_SIZE constant (12) and a THEMES-style table with only the Classic Pond",
-          ap.evaluate("TANK_SIZE") == 12 and ap.evaluate("Object.keys(TANK_THEMES).join()") == "pond" and ap.evaluate("TANK_THEMES.pond.name") == "Classic Pond")
+    check("one TANK_SIZE constant (12) and the TANK_THEMES table (Classic Pond first; the other four came in part 9)",
+          ap.evaluate("TANK_SIZE") == 12 and ap.evaluate("Object.keys(TANK_THEMES).join()") == "pond,reef,deep,garden,ship" and ap.evaluate("TANK_THEMES.pond.name") == "Classic Pond")
     # hub button, screen, HOME
     ap.evaluate("() => go('home')"); ap.wait_for_timeout(200)
     check("the hub has an AQUARIUM button", ap.is_visible("#aquariumBtn") and "AQUARIUM" in ap.inner_text("#aquariumBtn"))
@@ -3443,6 +3443,111 @@ with sync_playwright() as p:
     sm.evaluate("() => stopFishing()"); cast_reset(sm)
     x, y = center(sm, "#actBtn"); sm.mouse.move(x, y); sm.mouse.down(); sm.wait_for_timeout(1500); sm.screenshot(path=str(SHOTS / "114_charge_smooth_1536x730.png")); sm.keyboard.press("Escape"); sm.mouse.up()
     sm.close()
+
+    # ---------- Playtest 2, part 9: tank themes and decorations sold in the shop and applied in the Aquarium (cosmetic only) ----------
+    tp = aq_page(1536, 730, "Themer")
+    tbl = tp.evaluate("() => ({ th: TANK_THEME_IDS.map(i => [i, TANK_THEMES[i].price]), de: TANK_DECO_IDS.map(i => [i, TANK_DECOS[i].price]), max: TANK_DECO_MAX, d: DEFAULT(), key: Object.keys(TANK_THEMES).join() })")
+    check("data tables: Classic Pond free, Coral Reef 400, Deep Sea 600, Japanese Garden 800, Sunken Ship 1000; Treasure Chest 150, Anchor 120, Castle 250, Big Coral 200, Bubble Maker 180; max 4 shown",
+          tbl["th"] == [["pond", 0], ["reef", 400], ["deep", 600], ["garden", 800], ["ship", 1000]] and tbl["de"] == [["chest", 150], ["anchor", 120], ["castle", 250], ["bigcoral", 200], ["bubbler", 180]] and tbl["max"] == 4, str(tbl["th"]) + str(tbl["de"]))
+    d0 = tbl["d"]
+    check("a new game starts with only the Classic Pond owned and in use, and no decorations", d0["tankThemes"] == ["pond"] and d0["tankTheme"] == "pond" and d0["tankDecos"] == [] and d0["tankDecoOn"] == [], str((d0["tankThemes"], d0["tankTheme"])))
+    ol = tp.evaluate("() => { const o = cleanSave({ coins: 5, tank: [], bagMax: 5 }); return [o.tankThemes, o.tankTheme, o.tankDecos, o.tankDecoOn]; }")
+    check("an old save (no theme or decoration fields) loads with the defaults", ol == [["pond"], "pond", [], []], str(ol))
+    cl = tp.evaluate("""() => { const a = cleanSave({ tankThemes: ['reef', 'nope', 'reef', 5, null], tankTheme: 'reef', tankDecos: ['chest', 'zzz', 'chest', 'castle'], tankDecoOn: ['castle', 'anchor', 'chest', 'chest'] }),
+        b = cleanSave({ tankThemes: ['pond'], tankTheme: 'ship', tankDecos: TANK_DECO_IDS, tankDecoOn: TANK_DECO_IDS }), c = cleanSave({ tankThemes: 'junk', tankTheme: 7, tankDecos: { a: 1 }, tankDecoOn: 'x' }), d = cleanSave({ tankThemes: ['deep'], tankTheme: 'deep' });
+        return { a: [a.tankThemes, a.tankTheme, a.tankDecos, a.tankDecoOn], b: [b.tankTheme, b.tankDecoOn], c: [c.tankThemes, c.tankTheme, c.tankDecos, c.tankDecoOn], d: d.tankThemes }; }""")
+    check("saves are cleaned: unknown ids and duplicates dropped, the Classic Pond always owned, the theme in use must be owned, only owned decorations can be shown, at most 4 shown",
+          cl["a"] == [["pond", "reef"], "reef", ["chest", "castle"], ["castle", "chest"]] and cl["b"] == ["pond", ["chest", "anchor", "castle", "bigcoral"]] and cl["c"] == [["pond"], "pond", [], []] and cl["d"] == ["pond", "deep"], str(cl))
+    # the shop section
+    tp.evaluate("() => { S.coins = 0; save(); go('shop'); }"); tp.wait_for_timeout(300)
+    sh0 = tp.evaluate("() => ({ n: document.querySelectorAll('#shopTank .item').length, imgs: [...document.querySelectorAll('#shopTank .tkthumb')].map(i => i.naturalWidth), btns: [...document.querySelectorAll('#shopTank .btn')].map(b => [b.textContent, b.disabled]), head: [...document.querySelectorAll('#shop .shop-h')].map(h => h.textContent.split(' only')[0].trim()) })")
+    check("the Shop has an Aquarium section: 5 themes + 5 decorations, each with a drawn thumbnail, no coins = every BUY disabled (the Classic Pond is IN USE)",
+          sh0["n"] == 10 and all(w > 0 for w in sh0["imgs"]) and len(sh0["imgs"]) == 10 and sh0["btns"][0] == ["IN USE", True] and all(b[1] for b in sh0["btns"]) and "Aquarium" in sh0["head"], str(sh0["btns"][:3]) + str(sh0["head"]))
+    tp.evaluate("() => { S.coins = 5000; save(); render(); }")
+    c0 = tp.evaluate("S.coins"); tp.locator("#shopTank [data-buy='theme:reef']").click(); tp.wait_for_timeout(150)
+    b1 = tp.evaluate("() => ({ coins: S.coins, own: S.tankThemes, use: S.tankTheme, saved: JSON.parse(localStorage.getItem('littleLakeSave')).tankThemes })")
+    check("buying Coral Reef deducts 400 coins, adds it to the owned themes, uses it at once (like a float) and saves", b1["coins"] == c0 - 400 and b1["own"] == ["pond", "reef"] and b1["use"] == "reef" and b1["saved"] == ["pond", "reef"], str(b1))
+    again = tp.evaluate("() => { const c = S.coins; buyTheme('reef'); return [c, S.coins, S.tankThemes.length]; }")
+    dis = tp.evaluate("document.querySelector(\"#shopTank [data-buy='theme:reef']\").disabled")
+    check("a theme cannot be bought twice (button disabled, the function refuses, no coins lost)", again[0] == again[1] and again[2] == 2 and dis is True, str(again))
+    tp.evaluate("() => { S.coins = 799; save(); render(); }")
+    poor = tp.evaluate("() => { buyTheme('garden'); return [S.coins, S.tankThemes.length, document.querySelector(\"#shopTank [data-buy='theme:garden']\").disabled, document.querySelector('#shopTank .need') && true]; }")
+    check("not enough coins (799 of 800): the BUY button is disabled with 'Need N more coins', and buying anyway changes nothing", poor[0] == 799 and poor[1] == 2 and poor[2] is True and poor[3], str(poor))
+    tp.evaluate("() => { S.coins = 5000; save(); render(); }")
+    for did in ["chest", "anchor", "castle", "bigcoral", "bubbler"]: tp.locator(f"#shopTank [data-buy='deco:{did}']").click(); tp.wait_for_timeout(80)
+    dc = tp.evaluate("() => ({ coins: S.coins, own: S.tankDecos, on: S.tankDecoOn })")
+    check("buying the 5 decorations costs 150+120+250+200+180 coins; the first 4 are shown at once, the 5th is owned but not shown (max 4)", dc["coins"] == 5000 - 900 and dc["own"] == ["chest", "anchor", "castle", "bigcoral", "bubbler"] and dc["on"] == ["chest", "anchor", "castle", "bigcoral"], str(dc))
+    tp.evaluate("() => { S.coins = 0; save(); }"); tp.reload(); tp.wait_for_timeout(300)
+    rl = tp.evaluate("() => ({ th: S.tankThemes, use: S.tankTheme, de: S.tankDecos, on: S.tankDecoOn })")
+    check("owned themes and decorations, the theme in use and the shown decorations survive a reload", rl == {"th": ["pond", "reef"], "use": "reef", "de": ["chest", "anchor", "castle", "bigcoral", "bubbler"], "on": ["chest", "anchor", "castle", "bigcoral"]}, str(rl))
+    # the Aquarium: tabs, using a theme, switching decorations, max 4
+    tp.evaluate("() => go('aquarium')"); tp.wait_for_timeout(300)
+    tp.click("#aqTabs [data-tab=theme]"); tp.wait_for_timeout(100)
+    th = tp.evaluate("() => ({ names: [...document.querySelectorAll('#aqLists .row b')].map(b => b.textContent), btns: [...document.querySelectorAll('#aqLists .row .btn')].map(b => b.textContent), tab: document.querySelector('#aqTabs .tab.on').dataset.tab })")
+    check("THEME tab: only owned themes are listed (Classic Pond, Coral Reef), the one in use is marked", th["names"] == ["Classic Pond", "Coral Reef"] and th["btns"] == ["USE", "IN USE"] and th["tab"] == "theme", str(th))
+    tp.locator("#aqLists .row .btn").first.click(); tp.wait_for_timeout(100)
+    check("tapping a theme uses it at once (S.tankTheme and the saved value change)", tp.evaluate("S.tankTheme") == "pond" and tp.evaluate("JSON.parse(localStorage.getItem('littleLakeSave')).tankTheme") == "pond")
+    nu = tp.evaluate("() => { tankUse('ship'); return S.tankTheme; }")
+    check("a theme that is not owned cannot be used", nu == "pond")
+    tp.click("#aqTabs [data-tab=decor]"); tp.wait_for_timeout(100)
+    dl = tp.evaluate("() => ({ names: [...document.querySelectorAll('#aqLists .row b')].map(b => b.textContent), btns: [...document.querySelectorAll('#aqLists .row .btn')].map(b => b.textContent), msg: document.getElementById('aqMsg').textContent })")
+    check("DECOR tab: all 5 owned decorations are listed, 4 ON and 1 OFF, and the message says 'Max 4 decorations'", len(dl["names"]) == 5 and dl["btns"] == ["ON", "ON", "ON", "ON", "OFF"] and "Max 4 decorations" in dl["msg"], str(dl))
+    tp.locator("#aqLists .row .btn").nth(4).click(); tp.wait_for_timeout(100)
+    mx = tp.evaluate("() => ({ on: S.tankDecoOn.length, msg: document.getElementById('aqMsg').textContent })")
+    check("switching a 5th decoration on is refused with 'Max 4 decorations'", mx["on"] == 4 and "Max 4 decorations" in mx["msg"], str(mx))
+    tp.locator("#aqLists .row .btn").nth(0).click(); tp.wait_for_timeout(100); tp.locator("#aqLists .row .btn").nth(4).click(); tp.wait_for_timeout(100)
+    sw = tp.evaluate("S.tankDecoOn")
+    check("switching one off makes room: the Bubble Maker can then be switched on (changes apply at once and are saved)", sw == ["anchor", "castle", "bigcoral", "bubbler"] and tp.evaluate("JSON.parse(localStorage.getItem('littleLakeSave')).tankDecoOn") == sw, str(sw))
+    tp.click("#aqTabs [data-tab=fish]"); tp.wait_for_timeout(100)
+    check("the FISH tab still lists the tank and the bag (PUT IN TANK / TAKE OUT work as before)", "In the tank" in tp.inner_text("#aqLists") and tp.evaluate("tankState().on"))
+    # drawing: every theme and every decoration on a canvas, not blank, no errors
+    DRAW = """() => { const out = {}, mk = () => { const cv = document.createElement('canvas'); cv.width = 240; cv.height = 140; return cv; };
+        const sig = cv => { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, set = new Set(); let r = 0, g = 0, b = 0, n = 0; for (let i = 0; i < d.length; i += 4) { set.add((d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4)); r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; } return { colors: set.size, avg: [r / n, g / n, b / n].map(Math.round) }; };
+        const fish = [0, 3, 7].map((k, i) => { const f = FISH[k * 5]; return { x: 60 + i * 50, y: 40 + i * 12, dir: i % 2 ? -1 : 1, w: 36, h: 24, spr: fishSprite(f), bobS: .002, ph: i }; });
+        for (const th of TANK_THEME_IDS) { const cv = mk(); drawTank(cv.getContext('2d'), 240, 140, 2300, th, TANK_DECO_IDS, fish); out[th] = sig(cv); }
+        const base = mk(); drawTank(base.getContext('2d'), 240, 140, 2300, 'pond', [], []); const bd = base.getContext('2d').getImageData(0, 0, 240, 140).data; out.decos = {};
+        for (const de of TANK_DECO_IDS) { const cv = mk(); drawTank(cv.getContext('2d'), 240, 140, 2300, 'pond', [de], []); const d = cv.getContext('2d').getImageData(0, 0, 240, 140).data; let diff = 0; for (let i = 0; i < d.length; i += 4) if (d[i] !== bd[i] || d[i + 1] !== bd[i + 1] || d[i + 2] !== bd[i + 2]) diff++; out.decos[de] = diff; }
+        const t1 = mk(), t2 = mk(); drawTank(t1.getContext('2d'), 240, 140, 0, 'deep', [], []); drawTank(t2.getContext('2d'), 240, 140, 3000, 'deep', [], []); const a = t1.getContext('2d').getImageData(0, 0, 240, 140).data, b = t2.getContext('2d').getImageData(0, 0, 240, 140).data; let mv = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i]) mv++; out.moves = mv;
+        out.thumbs = [...TANK_THEME_IDS.map(i => tankThumb('theme', i)), ...TANK_DECO_IDS.map(i => tankThumb('deco', i))].map(u => u.length); return out; }"""
+    dr = tp.evaluate(DRAW)
+    check("drawTank paints every theme with every decoration and fish: not blank (many colours) and each theme has its own average colour",
+          all(dr[t]["colors"] > 25 for t in ("pond", "reef", "deep", "garden", "ship")) and len({tuple(dr[t]["avg"]) for t in ("pond", "reef", "deep", "garden", "ship")}) == 5, str({t: (dr[t]["colors"], dr[t]["avg"]) for t in ("pond", "reef", "deep", "garden", "ship")}))
+    check("every decoration is drawn (it changes the pixels of an empty pond) and the animated themes move over time", all(v > 40 for v in dr["decos"].values()) and dr["moves"] > 100 and all(n > 100 for n in dr["thumbs"]), str(dr["decos"]) + f" moves={dr['moves']}")
+    # the decorations stand at their own slots and never overlap each other
+    sl = tp.evaluate("() => { const e = Object.entries(TANK_DECO_SLOT).sort((a, b) => a[1] - b[1]); return e.map(x => x[0]).join() + ':' + e.map((x, i) => i ? +(x[1] - e[i - 1][1]).toFixed(2) : 0).join(); }")
+    check("the decorations have fixed floor slots in a set order, at least .17 of the width apart", sl.startswith("chest,anchor,castle,bigcoral,bubbler") and all(float(v) >= .17 for v in sl.split(":")[1].split(",")[1:]), sl)
+    # no gameplay effect: the economy, odds and selling do not read any of it
+    eco = tp.evaluate("() => { const a = JSON.stringify(rarityWeights('none')), c = S.coins; S.tankTheme = 'pond'; S.tankDecoOn = []; const b = JSON.stringify(rarityWeights('none')); return [a === b, c === S.coins]; }")
+    check("themes and decorations are cosmetic: the odds and the coins do not depend on them", eco == [True, True])
+    tp.close()
+    # NEW GAME resets the looks
+    tn = aq_page(1536, 730, "Reset")
+    tn.evaluate("() => { S.tankThemes = ['pond', 'deep']; S.tankTheme = 'deep'; S.tankDecos = ['chest']; S.tankDecoOn = ['chest']; save(); }")
+    tn.reload(); tn.wait_for_timeout(300); tn.click("#newBtn"); tn.click("#confirmYes"); tn.fill("#nameInput", "Fresh"); tn.click("#nameStart"); tn.wait_for_timeout(300)
+    nw = tn.evaluate("() => ({ th: S.tankThemes, use: S.tankTheme, de: S.tankDecos, on: S.tankDecoOn, saved: JSON.parse(localStorage.getItem('littleLakeSave')).tankThemes })")
+    check("NEW GAME resets the owned themes, the theme in use and the decorations", nw == {"th": ["pond"], "use": "pond", "de": [], "on": [], "saved": ["pond"]}, str(nw))
+    tn.close()
+    # layout and screenshots: the Shop section and the Aquarium (Deep Sea + two decorations) at 1536x730 and 360x640
+    for vw, vh in [(1536, 730), (360, 640), (1280, 600)]:
+        tl = aq_page(vw, vh, "Look")
+        tl.evaluate("() => { S.coins = 100; S.bagMax = 20; for (let i = 0; i < 9; i++) { const f = FISH[(i * 4) % 40]; S.tank.push({ fishId: f.id, weight: f.min, price: f.price, time: 0, locked: false }); } S.tankThemes = ['pond', 'deep']; S.tankTheme = 'deep'; S.tankDecos = ['castle', 'bubbler']; S.tankDecoOn = ['castle', 'bubbler']; save(); go('shop'); }")
+        tl.wait_for_timeout(300)
+        m = tl.evaluate("() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight, over: [...document.querySelectorAll('#shopTank .item')].filter(i => i.scrollWidth > i.clientWidth + 1).length })")
+        check(f"{vw}x{vh}: the Shop with the Aquarium section has no sideways scroll, no clipped card" + (" and fits the window" if vw >= 900 else ""), m["sw"] <= vw and m["over"] == 0 and (vw < 900 or m["sh"] <= m["ih"]), str(m))
+        tl.evaluate("() => { const l = document.getElementById('shopScroll'); l.scrollTop = document.getElementById('shopTank').offsetTop - l.offsetTop - 40; window.scrollTo(0, 0); }")
+        if vw < 900: tl.evaluate("() => document.getElementById('shopTank').scrollIntoView()")
+        tl.wait_for_timeout(250)
+        if vw != 1280: tl.screenshot(path=str(SHOTS / f"115_shop_aquarium_{vw}x{vh}.png"))
+        tl.evaluate("() => go('aquarium')"); tl.wait_for_timeout(700)
+        m2 = tl.evaluate("() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight, tabs: document.querySelectorAll('#aqTabs .tab').length, tank: document.getElementById('tankCv').getBoundingClientRect().height })")
+        check(f"{vw}x{vh}: the Aquarium with the THEME | DECOR tabs has no sideways scroll" + (" and fits the window" if vw >= 900 else "") + ", tank still big", m2["sw"] <= vw and m2["tabs"] == 3 and (vw < 900 or m2["sh"] <= m2["ih"]) and m2["tank"] >= (150 if vw < 900 else 250), str(m2))
+        for tab in ("theme", "decor"):
+            tl.click(f"#aqTabs [data-tab={tab}]"); tl.wait_for_timeout(150)
+            mm = tl.evaluate("() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight })")
+            check(f"{vw}x{vh}: the {tab.upper()} tab fits (no sideways scroll" + (", no page scroll)" if vw >= 900 else ")"), mm["sw"] <= vw and (vw < 900 or mm["sh"] <= mm["ih"]), str(mm))
+        tl.click("#aqTabs [data-tab=fish]"); tl.wait_for_timeout(200)
+        if vw != 1280: tl.screenshot(path=str(SHOTS / f"116_aquarium_deepsea_{vw}x{vh}.png"))
+        tl.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

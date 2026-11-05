@@ -50,10 +50,27 @@ const RODS = {
 const ROD_IDS = Object.keys(RODS);
 // Baits: bought in packs, one is used per cast from the selected kind. odds = change to the
 // [Common, Rare, Epic, Legendary] chances (in % points) on top of BASE_ODDS.
-// Aquarium (Playtest 2, part 8): the tank holds up to TANK_SIZE caught fish (cosmetic only); TANK_THEMES (not THEMES: that name is the music table in state.js) lists the tank looks (only the Classic Pond for now, more come in part 9)
+// Aquarium (Playtest 2, parts 8 and 9): the tank holds up to TANK_SIZE caught fish (cosmetic only). Tank themes and decorations are sold in the Shop (a one-off price, no effect on the game);
+// TANK_THEMES (not THEMES: that name is the music table in state.js) and TANK_DECOS hold the names and prices, TANK_DECO_MAX decorations can be shown at once.
 const TANK_SIZE = 12;
-const TANK_THEMES = { pond: { id: "pond", name: "Classic Pond" } };
+const TANK_THEMES = {
+  pond:   { id: "pond",   name: "Classic Pond",    price: 0,    blurb: "Calm blue water, green plants and grey rocks." },
+  reef:   { id: "reef",   name: "Coral Reef",      price: 400,  blurb: "Bright turquoise water, colourful coral and sea fans." },
+  deep:   { id: "deep",   name: "Deep Sea",        price: 600,  blurb: "Dark water, glowing specks and drifting jellyfish." },
+  garden: { id: "garden", name: "Japanese Garden", price: 800,  blurb: "Calm teal water, round stones, a stone lantern and petals." },
+  ship:   { id: "ship",   name: "Sunken Ship",     price: 1000, blurb: "Deep blue water with a broken ship on the sand." },
+};
+const TANK_THEME_IDS = Object.keys(TANK_THEMES);
 const DEFAULT_THEME = "pond";
+const TANK_DECOS = {
+  chest:    { id: "chest",    name: "Treasure Chest", price: 150, blurb: "Now and then it opens and lets out a few bubbles." },
+  anchor:   { id: "anchor",   name: "Anchor",         price: 120, blurb: "An old iron anchor resting on the floor." },
+  castle:   { id: "castle",   name: "Castle",         price: 250, blurb: "A little sand castle with three towers." },
+  bigcoral: { id: "bigcoral", name: "Big Coral",      price: 200, blurb: "A tall branching coral that sways." },
+  bubbler:  { id: "bubbler",  name: "Bubble Maker",   price: 180, blurb: "A steady stream of bubbles." },
+};
+const TANK_DECO_IDS = Object.keys(TANK_DECOS);
+const TANK_DECO_MAX = 4;
 const BAITS = {
   worm:   { name: "Worm",        pack: 5, price: 60,  odds: [-10, 10, 0, 0],   blurb: "Small boost to Rare fish." },
   shrimp: { name: "Shrimp",      pack: 5, price: 100, odds: [-20, 0, 16, 4],   blurb: "Better chance of Epic and Legendary fish." },
