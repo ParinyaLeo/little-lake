@@ -5,7 +5,7 @@
    is only remembered on the way to the Bag (to make room for the waiting fish), and the same screen is never stored
    twice in a row, so catching fish over and over doesn't grow the history. */
 // screens with the BACK bar (Home is the root screen: no BACK bar, it has its MENU button)
-const NAV_SCREENS = { map: "TOWN MAP", bag: "BAG", shop: "SHOP", collection: "COLLECTION", tackle: "TACKLE BOX" };
+const NAV_SCREENS = { map: "TOWN MAP", bag: "BAG", shop: "SHOP", collection: "COLLECTION", tackle: "TACKLE BOX", aquarium: "AQUARIUM" };
 let current = "titleScreen", navStack = [];
 function go(id, back = false) {
   // a caught fish is waiting for KEEP / RELEASE: only the Result screen (and the Bag, to make room) can be opened
@@ -32,7 +32,7 @@ function go(id, back = false) {
 // BACK: the previous screen (skipping a Result screen whose fish was already kept or released), else Home;
 // on Home it goes back to the Title screen, where the player came from
 // wide windows: these screens are exactly one window tall and their list scrolls inside the panel (css: body.fit)
-const FIT_SCREENS = ["bag", "shop", "tackle"];
+const FIT_SCREENS = ["bag", "shop", "tackle", "aquarium"];
 // wide windows: the panel + buttons of these screens are centred (slightly high) below the header and grow with the window (css: body.center)
 const CENTER_SCREENS = ["home", "map", "collection"];   // the Bag is anchored at the top so its buttons never move
 function goBack() {
@@ -70,6 +70,7 @@ function render() {
   }
   if (current === "map") renderMap();
   if (current === "fishing") renderFishingHud();
+  if (current === "aquarium") { renderAquarium(); tankStart(); } else tankStop();      // the tank loop runs only while this screen is open
   if (current === "bag") renderBag();
   if (current === "result") renderResult();
   if (current === "shop") renderShop();
@@ -304,6 +305,101 @@ function renderCollection() {
     d.insertAdjacentHTML("beforeend", known ? `<div><b>${f.name}</b></div><div class="rar-${f.rarity}">${f.rarity}</div><div>Best: ${S.records[f.id] || "-"} kg</div>` : `<div><b>Not found yet</b></div><div>${f.rarity}</div>`);
     G.append(d);
   });
+}
+
+/* ===================== AQUARIUM (Playtest 2, part 8) =====================
+   S.tank = up to TANK_SIZE caught fish (the same entries as the bag; a fish MOVES between bag and tank, a locked fish keeps its lock). Cosmetic only: SELL / SELL ALL never touch the tank,
+   it gives no money. drawTank() paints the whole tank (water, light rays, plants, rocks, sand, bubbles, the swimming fish) on a small canvas (1 tank pixel = TANK_SCALE screen pixels);
+   the requestAnimationFrame loop runs only while this screen is open (render() starts it, any other screen stops it). */
+const TANK_SCALE = 2;
+const TK = { on: false, raf: 0, last: 0, sim: [], tip: null, grad: null, gradH: 0 };
+function tankMake(b, i) {                            // one swimming fish: its own depth, speed, bob and size
+  const f = fishById(b.fishId), r = seededRng(9100 + i * 37 + b.fishId.length * 7 + Math.round(b.weight * 100)), norm = Math.min(1, Math.max(0, (b.weight - f.min) / Math.max(.001, f.max - f.min)));
+  return { b, f, spr: fishSprite(f), norm, u: r(), dir: r() < .5 ? -1 : 1, spd: 10 + r() * 16, depth: .1 + .62 * ((i * .61803 + r() * .25) % 1), ph: r() * 6.28, bobA: 1.5 + r() * 2.5, bobS: .0012 + r() * .0012, x: 0, y: 0, w: 24, h: 16 };
+}
+function tankSync() {                                // rebuild the swimmers when the set of tank fish changed (a fish that stays keeps its place)
+  if (TK.sim.length === S.tank.length && TK.sim.every((s, i) => s.b === S.tank[i])) return;
+  TK.sim = S.tank.map((b, i) => TK.sim.find(s => s.b === b) || tankMake(b, i));
+}
+// the whole tank. w, h = tank pixels, t = ms, themeId picks the look (only "pond" for now; more themes come later)
+function drawTank(c, w, h, t, themeId) {
+  c.imageSmoothingEnabled = false;
+  if (!TK.grad || TK.gradH !== h) { TK.gradH = h; TK.grad = c.createLinearGradient(0, 0, 0, h); TK.grad.addColorStop(0, "#5fd0e8"); TK.grad.addColorStop(.55, "#1f8fbd"); TK.grad.addColorStop(1, "#0b4a6e"); }
+  c.fillStyle = TK.grad; c.fillRect(0, 0, w, h);
+  const sandY = Math.round(h * .86);
+  c.fillStyle = "rgba(255,255,255,.07)";             // light rays from the surface, slowly swaying
+  for (let i = 0; i < 4; i++) { const x = w * (.12 + i * .26) + Math.sin(t / 2600 + i * 1.7) * w * .03, rw = w * .07; c.beginPath(); c.moveTo(x, 0); c.lineTo(x + rw, 0); c.lineTo(x + rw * 2.2 + h * .25, sandY); c.lineTo(x - rw * .6 + h * .25, sandY); c.closePath(); c.fill(); }
+  for (let i = 0; i < 5; i++) {                      // plants behind the fish
+    const x = Math.round(w * (.07 + i * .22)), ph = Math.round(h * (.22 + (i % 3) * .08));
+    for (let j = 0; j < ph; j += 3) { c.fillStyle = j % 6 ? "#2e9e52" : "#3fbf68"; c.fillRect(Math.round(x + Math.sin(t / 700 + j * .09 + i * 2) * (j * .06)), sandY - j, 3, 3); }
+  }
+  for (let k = 0; k < TK.sim.length; k++) {          // the fish: mirrored when they swim left, a gentle bob and tilt
+    const s = TK.sim[k]; c.save(); c.translate(Math.round(s.x), Math.round(s.y)); c.scale(s.dir, 1); c.rotate(Math.sin(t * s.bobS + s.ph) * .06);
+    c.drawImage(s.spr, -s.w / 2, -s.h / 2, s.w, s.h); c.restore();
+  }
+  c.fillStyle = "#d9c07a"; c.fillRect(0, sandY, w, h - sandY);   // sandy bottom with a few darker and lighter grains
+  c.fillStyle = "#b99d5c"; for (let x = 3; x < w; x += 11) c.fillRect(x, sandY + 2 + (x * 7) % 5, 2, 2);
+  c.fillStyle = "#efdca0"; for (let x = 8; x < w; x += 17) c.fillRect(x, sandY + 1 + (x * 3) % 6, 2, 1);
+  for (let i = 0; i < 3; i++) {                      // rocks
+    const rx = Math.round(w * (.16 + i * .34)), rw = Math.round(h * (.09 + (i % 2) * .05)), rh = Math.round(rw * .62);
+    c.fillStyle = "#6f7d86"; c.fillRect(rx, sandY - rh + 3, rw, rh); c.fillStyle = "#8c9aa3"; c.fillRect(rx + 2, sandY - rh + 3, rw - 6, 2); c.fillStyle = "#515d65"; c.fillRect(rx, sandY - 1, rw, 4);
+  }
+  for (let i = 0; i < 3; i++) {                      // a plant in front
+    const x = Math.round(w * (.31 + i * .3)), ph = Math.round(h * .16);
+    for (let j = 0; j < ph; j += 3) { c.fillStyle = j % 6 ? "#237f42" : "#2e9e52"; c.fillRect(Math.round(x + Math.sin(t / 600 + j * .12 + i) * (j * .08)), sandY + 3 - j, 3, 3); }
+  }
+  c.strokeStyle = "rgba(255,255,255,.7)"; c.lineWidth = 1;   // rising bubbles
+  for (let i = 0; i < 12; i++) { const p = ((t / 1000) * (.07 + (i % 4) * .025) + i * .37) % 1, bx = Math.round(w * ((i * .137 + .05) % 1) + Math.sin(t / 600 + i) * 2), by = Math.round(sandY * (1 - p)), r = 1 + (i % 3); c.strokeRect(bx + .5, by + .5, r, r); }
+}
+function tankFrame(t, dt) {
+  const cv = $("tankCv"), W = cv.clientWidth, H = cv.clientHeight; if (!W || !H) return;
+  const w = Math.max(40, Math.round(W / TANK_SCALE)), h = Math.max(30, Math.round(H / TANK_SCALE));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const k = Math.min(2.4, Math.max(.6, Math.min(w / 230, h / 105)));
+  for (let i = 0; i < TK.sim.length; i++) {
+    const s = TK.sim[i]; s.w = Math.round(24 * k * (.8 + .7 * s.norm)); s.h = Math.round(s.w * 2 / 3);
+    const range = Math.max(1, w - s.w); s.u += s.dir * s.spd * k * dt / range;
+    if (s.u >= 1) { s.u = 1; s.dir = -1; } else if (s.u <= 0) { s.u = 0; s.dir = 1; }            // turns (mirrors) at the edges
+    s.x = s.w / 2 + s.u * range; s.y = s.h / 2 + s.depth * (h * .86 - s.h) + Math.sin(t * s.bobS + s.ph) * s.bobA;
+  }
+  drawTank(cv.getContext("2d"), w, h, t, S.tankTheme);
+  const tip = $("tankTip");
+  if (TK.tip && t < TK.tip.until) { const s = TK.tip.s; tip.hidden = false; tip.style.transform = `translate(${Math.round(s.x * TANK_SCALE)}px, ${Math.round((s.y - s.h / 2) * TANK_SCALE)}px) translate(-50%, -110%)`; }
+  else if (!tip.hidden) { tip.hidden = true; TK.tip = null; }
+}
+function tankLoop(t) { if (!TK.on) return; TK.raf = requestAnimationFrame(tankLoop); const dt = Math.min(.05, Math.max(0, (t - TK.last) / 1000)); TK.last = t; tankFrame(t, dt); }
+function tankStart() { if (TK.on) return; TK.on = true; TK.last = performance.now(); TK.raf = requestAnimationFrame(tankLoop); }
+function tankStop() { TK.on = false; if (TK.raf) cancelAnimationFrame(TK.raf); TK.raf = 0; TK.tip = null; }
+function tankState() { return { on: TK.on, raf: TK.raf, fish: TK.sim.map(s => ({ id: s.f.id, x: s.x, y: s.y, dir: s.dir, w: s.w })), tip: TK.tip && !$("tankTip").hidden ? $("tankTip").textContent : null, w: $("tankCv").width, h: $("tankCv").height }; }   // tests only
+// tap a swimming fish: its name and rarity show for a moment
+$("tankCv").addEventListener("pointerdown", e => {
+  const cv = $("tankCv"), r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / TANK_SCALE, y = (e.clientY - r.top) / TANK_SCALE;
+  for (let i = TK.sim.length - 1; i >= 0; i--) {
+    const s = TK.sim[i];
+    if (Math.abs(x - s.x) <= s.w / 2 + 2 && Math.abs(y - s.y) <= s.h / 2 + 2) { $("tankTip").innerHTML = `<b>${s.f.name}</b> <span class="rar-${s.f.rarity}">${s.f.rarity}</span>`; TK.tip = { s, until: performance.now() + 2200 }; $("tankTip").hidden = false; return; }
+  }
+});
+function tankPut(b) { if (S.tank.length >= TANK_SIZE) return; const i = S.bag.indexOf(b); if (i < 0) return; S.bag.splice(i, 1); S.tank.push(b); save(); render(); }
+function tankTake(b) { if (bagFull()) return; const i = S.tank.indexOf(b); if (i < 0) return; S.tank.splice(i, 1); S.bag.push(b); save(); render(); }
+function aqRow(b, label, fn, disabled, why) {
+  const f = fishById(b.fishId), row = document.createElement("div"); row.className = "row"; row.classList.toggle("locked", !!b.locked);
+  const c = document.createElement("canvas"); drawFish(c, f); row.append(c);
+  row.insertAdjacentHTML("beforeend", `<div class="grow"><b>${f.name}</b>${b.locked ? ' <span class="ico i-padlock"></span>' : ""}<br><span class="rar-${f.rarity}">${f.rarity}</span> · ${b.weight} kg</div>`);
+  const btn = document.createElement("button"); btn.className = "btn no-rivets"; btn.type = "button"; btn.textContent = label; btn.disabled = !!disabled; if (why) btn.title = why; btn.onclick = fn; row.append(btn); return row;
+}
+function renderAquarium() {
+  const full = S.tank.length >= TANK_SIZE;
+  $("tankCount").textContent = `Tank: ${S.tank.length} / ${TANK_SIZE}`;
+  const msg = [full ? `Tank is full (${S.tank.length}/${TANK_SIZE})` : "", S.tank.length && bagFull() ? "Bag is full" : ""].filter(Boolean).join(" · ");
+  $("aqMsg").textContent = msg || "Tap a swimming fish to see its name. Fish in the tank are safe from SELL ALL.";
+  const L = $("aqLists"); L.innerHTML = "";
+  L.insertAdjacentHTML("beforeend", `<h3 class="aq-h">In the tank <small>${S.tank.length} / ${TANK_SIZE}</small></h3>`);
+  if (!S.tank.length) L.insertAdjacentHTML("beforeend", `<div class="row aq-empty">The tank is empty. Put a fish in from your bag.</div>`);
+  S.tank.forEach(b => L.append(aqRow(b, "TAKE OUT", () => tankTake(b), bagFull(), "Bag is full")));
+  L.insertAdjacentHTML("beforeend", `<h3 class="aq-h">In your bag <small>${S.bag.length} / ${S.bagMax}</small></h3>`);
+  if (!S.bag.length) L.insertAdjacentHTML("beforeend", `<div class="row aq-empty">Your bag is empty. Go fishing!</div>`);
+  S.bag.forEach(b => L.append(aqRow(b, "PUT IN TANK", () => tankPut(b), full, `Tank is full (${S.tank.length}/${TANK_SIZE})`)));
+  tankSync();
 }
 
 /* ===================== DEMO MODE ===================== */

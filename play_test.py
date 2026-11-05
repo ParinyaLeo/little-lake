@@ -241,7 +241,7 @@ with sync_playwright() as p:
     check("pixel font loads from assets/fonts", t.evaluate("document.fonts.check('700 20px \"Pixelify Sans\"')")
           and "Pixelify Sans" in t.evaluate("getComputedStyle(document.querySelector('.btn')).fontFamily"))
     check("Home stat cards and buttons have pixel icons",
-          t.evaluate("document.querySelectorAll('#home .stat > .ico').length") == 6 and t.evaluate("document.querySelectorAll('#home .btns .ico').length") == 5)
+          t.evaluate("document.querySelectorAll('#home .stat > .ico').length") == 6 and t.evaluate("document.querySelectorAll('#home .btns .ico').length") == 6)   # 6 with the AQUARIUM button (Playtest 2, part 8)
     check("Home shows the full-screen harbor backdrop (no pixel clouds or dashes)", t.evaluate("document.querySelector('#backdrop .bd.on').dataset.isle") == "harbor"
           and t.evaluate("!document.querySelector('.bgfx, .clouds, .water')"))
     t.evaluate("() => { F = { phase: 'idle', fish: fishById('harbor_9') }; caught(); }"); t.wait_for_timeout(400)
@@ -273,7 +273,7 @@ with sync_playwright() as p:
     avg = [tuple(v[1:]) for v in looks.values()]
     check("each painted island is detailed and looks different",
           all(v[0] >= 25 for v in looks.values()) and all(sum(abs(a - b) for a, b in zip(avg[i], avg[j])) > 40 for i in range(4) for j in range(i + 1, 4)), str(looks))
-    t.click("#actBtn"); t.wait_for_timeout(700)
+    t.click("#actBtn"); t.wait_for_timeout(1000)
     check("casting on a painted island still works", t.evaluate("F.phase") == "waiting")
     t.evaluate("() => { stopFishing(); for (const k in SCENES) if (SCENES[k].paint) SCENES[k].img = SCENES[k].saved; }")
     shapes = t.evaluate("[...new Set(FISH.map(fishShape))].sort()")
@@ -2682,7 +2682,7 @@ with sync_playwright() as p:
 
     # ---------- Playtest 2, part 1: the fish shadow approaches the bait and fights during REEL (visual only) ----------
     import math
-    SAMPLER = """() => { window.__sh = []; window.__shRun = true; const f = () => { const s = fishShadowState(); window.__sh.push({ t: performance.now(), ph: F.phase, s, fid: F.fish && F.fish.id, ca: F.castAt, ba: F.biteAt, bp: F.bobPos && [F.bobPos.x, F.bobPos.y] });
+    SAMPLER = """() => { window.__sh = []; window.__shRun = true; const f = () => { const s = fishShadowState(); window.__sh.push({ t: performance.now(), ph: F.phase, s, fid: F.fish && F.fish.id, ca: F.castAt, cd: F.cd, ba: F.biteAt, bp: F.bobPos && [F.bobPos.x, F.bobPos.y] });
         if (window.__shRun) requestAnimationFrame(f); }; requestAnimationFrame(f); }"""
     def sh_collect(pg):
         pg.evaluate("() => { window.__shRun = false; }"); pg.wait_for_timeout(60); return pg.evaluate("window.__sh")
@@ -2726,7 +2726,7 @@ with sync_playwright() as p:
         fsp.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); fsp.wait_for_timeout(350)
         sh_cast(fsp); smp = sh_collect(fsp)
         wt = [a for a in smp if a["ph"] == "waiting"]; sd = [a for a in wt if a["s"]]
-        bite_t = next(a["t"] for a in smp if a["ph"] == "bite"); c0 = next(a for a in smp if a["ca"]); span = c0["ba"] - (c0["ca"] + 500)
+        bite_t = next(a["t"] for a in smp if a["ph"] == "bite"); c0 = next(a for a in smp if a["ca"]); span = c0["ba"] - (c0["ca"] + (c0["cd"] or 500))
         waits.append(span)
         ok["exists"] &= len(sd) >= 0.8 * len(wt) and len(sd) > 30
         ok["id"] &= all(a["s"]["fishId"] == a["fid"] for a in smp if a["s"] and a["ph"] in ("waiting", "bite"))
@@ -2804,7 +2804,7 @@ with sync_playwright() as p:
           len({s["phase"] for s in sd}) > 1 and dev > 2, f"phases={ {s['phase'] for s in sd} } deviation={dev:.2f}px")
     rms.click("#actBtn"); rms.wait_for_timeout(500)
     xs = []
-    for _ in range(10): xs.append(sh_now(rms)["x"] * 900); rms.wait_for_timeout(30)
+    for _ in range(30): xs.append(sh_now(rms)["x"] * 900); rms.wait_for_timeout(80)      # the same sampling as the normal-motion thrash test (10 quick samples were borderline)
     check("reduced-motion emulated: the shadow still thrashes while reeling", max(xs) - min(xs) > 2, f"spread {max(xs) - min(xs):.2f}px")
     sh_miss(rms); rms.wait_for_timeout(100); sh_miss(rms); rms.wait_for_timeout(100); r1 = sh_now(rms); rms.wait_for_timeout(400); r2 = sh_now(rms)
     check("reduced-motion emulated: on escape it still swims away and fades out", bool(r1 and r2) and r1["phase"] == "leave" and r2["x"] > r1["x"] and r2["alpha"] < r1["alpha"], f"{r1 and r1['phase']}")
@@ -2843,7 +2843,7 @@ with sync_playwright() as p:
         return pg_
     def fh_hook(pg_, fish_id, isl="harbor"):
         """cast, then (skipping the random wait, which part 1 tests) force the bite for the chosen fish and press HOOK."""
-        pg_.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); pg_.wait_for_timeout(300)
+        pg_.evaluate(f"() => {{ island = '{isl}'; S.pending = null; go('fishing'); }}"); pg_.wait_for_timeout(300)
         pg_.click("#actBtn"); pg_.wait_for_function("F.phase === 'waiting'", timeout=4000); pg_.wait_for_timeout(150)
         pg_.evaluate(f"() => {{ clearTimers(); F.fish = fishById('{fish_id}'); bite(); }}"); pg_.wait_for_timeout(120)
         pg_.click("#actBtn"); pg_.wait_for_timeout(150)
@@ -3100,7 +3100,7 @@ with sync_playwright() as p:
     fh_hook(hp, FIGHT_IDS["Common"])
     HS = "() => [HOLD.on, HOLD.src, F.fight.zx, F.fight.zv]"
     def zone_dir(pg_, label, press, release):
-        pg_.evaluate("() => { F.fight.zx = .3; F.fight.zv = 0; }"); pg_.wait_for_timeout(30); z0 = pg_.evaluate("F.fight.zx"); press(); pg_.wait_for_timeout(350); on = pg_.evaluate(HS); z1 = pg_.evaluate("F.fight.zx")
+        pg_.evaluate("() => { const s = F.fight; s.zx = .3; s.zv = 0; s.started = false; s.progress = .5; s.misses = 0; }"); pg_.wait_for_timeout(30); z0 = pg_.evaluate("F.fight.zx"); press(); pg_.wait_for_timeout(350); on = pg_.evaluate(HS); z1 = pg_.evaluate("F.fight.zx")
         release(); pg_.wait_for_timeout(120); off = pg_.evaluate(HS); pg_.wait_for_timeout(500); z2 = pg_.evaluate("F.fight.zx")
         return on[0] is True and off[0] is False and z1 > z0 + .1 and z2 < z1 - .05, f"{label}: on={on[:2]} zone {z0:.2f}->{z1:.2f}->{z2:.2f} released={not off[0]}"
     bb = hp.evaluate("(() => { const r = document.getElementById('actBtn').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
@@ -3138,6 +3138,7 @@ with sync_playwright() as p:
     hp.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision', 'lucky']; S.rodEq = 'lucky'; S.mastery = {}; save(); }")
     leaps = {}
     for rar in ("Common", "Legendary"):
+        hp.evaluate("() => { S.pending = null; S.bag = []; save(); }")        # a Common fight can be won by the bot: no catch may wait on the Result screen
         fh_hook(hp, FIGHT_IDS[rar]); hp.evaluate("() => { window.__bot = setInterval(() => { const s = F.fight; if (s) holdSet(s.fx > s.zx + s.cfg.zoneW / 2, 'bot'); }, 120); window.__lv = []; window.__ln = 0; window.__lr = true; const f = () => { const q = fightState(); if (q) window.__lv.push([q.leaping, q.lx, q.ly]); if (F.fight) window.__ln = Math.max(window.__ln, F.fight.leapN); if (window.__lr) requestAnimationFrame(f); }; f(); }")
         hp.wait_for_timeout(4500); leaps[rar] = hp.evaluate("() => { window.__lr = false; clearInterval(window.__bot); return [window.__ln, window.__lv.filter(x => x[0]).length, window.__lv.filter(x => x[0])]; }"); fh_end(hp)
     check("Hold Fight personalities: the leap (fish out of the water) happens only for Legendary / Mythical, never for Common", leaps["Common"][0] == 0 and leaps["Common"][1] == 0 and leaps["Legendary"][0] >= 1 and leaps["Legendary"][1] > 3, f"Common {leaps['Common'][:2]} Legendary {leaps['Legendary'][:2]}")
@@ -3232,6 +3233,156 @@ with sync_playwright() as p:
         shp.mouse.move(r_[0], r_[1]); shp.mouse.down(); shp.wait_for_timeout(600)
         shp.screenshot(path=str(SHOTS / f"109_powerbar_after_fight_{vw}x{vh}.png")); shp.evaluate("() => chargeReset(true)"); shp.mouse.up()
         shp.close()
+
+    # ---------- Playtest 2, part 7: the cast animation follows the charge power (wind-up pose, swing, arc, splash); the wait, bite, hook and reel are unchanged ----------
+    cs = fh_page(1536, 730, name="CastAnim")
+    ANG = "() => ({ pose: fisherPose(), a: P.a, f: P.f, cs: castState(), phase: F.phase })"
+    cast_reset(cs)
+    hold_btn(cs, 600); c_lo = cs.evaluate(ANG)
+    cs.wait_for_timeout(860); c_hi = cs.evaluate(ANG)                                   # ~1460 ms held: the meter is at (or near) full power
+    check("charging pose: while the meter is shown the fisherman is in the 'charging' pose and the rod leans back further as the power grows",
+          c_lo["pose"] == c_hi["pose"] == "charging" and c_hi["a"] > c_lo["a"] + 25 and c_hi["a"] > 100 and c_lo["a"] > 38, f"{c_lo['pose']} {c_lo['a']:.0f} deg -> {c_hi['a']:.0f} deg")
+    cs.keyboard.press("Escape"); cs.mouse.up(); cs.wait_for_timeout(200)
+    c_end = cs.evaluate(ANG)
+    check("a cancelled charge (Esc) throws nothing and the fisherman returns to idle", c_end["phase"] == "idle" and c_end["pose"] == "idle" and c_end["cs"] is None, str(c_end))
+    def throw(pg_, power, charged=True):
+        cast_reset(pg_); pg_.evaluate(f"() => cast({power}, 0, {'true' if charged else 'false'})")
+        s0 = pg_.evaluate("castState()"); pg_.wait_for_function("(castState().u || 0) > .45", timeout=3000); pg_.wait_for_timeout(20)
+        s1 = pg_.evaluate("castState()"); pg_.evaluate("() => { stopFishing(); }"); return s0, s1
+    wk0, wk1 = throw(cs, 0.0); st0, st1 = throw(cs, 1.0)
+    check("swing and flight follow the power: weak = a long gentle swing (350 ms), strong = a short fast one (220 ms), flight 350 > 600 ms, arc higher for the longer throw",
+          wk0["swingMs"] == 350 and st0["swingMs"] == 220 and wk0["flightMs"] == 350 and st0["flightMs"] == 600 and st1["arc"] > wk1["arc"] + .03 and 0.08 <= wk1["arc"] <= .4 and st1["arc"] <= .4,
+          f"swing {wk0['swingMs']}/{st0['swingMs']} flight {wk0['flightMs']}/{st0['flightMs']} arc {wk1['arc']:.3f}/{st1['arc']:.3f}")
+    check("landing time = wind-up + swing + flight stays between 560 and 850 ms for every power (cd)", all(560 <= s["cd"] <= 850 for s in (wk0, st0)), f"{wk0['cd']} / {st0['cd']}")
+    cast_reset(cs); cs.click("#actBtn"); cs.wait_for_timeout(60); q0 = cs.evaluate("castState()")
+    check("a quick tap is still the medium cast (power .5, 200 ms wind-up, 285 ms swing, not charged)", q0 and q0["pw"] == .5 and q0["windMs"] == 200 and q0["swingMs"] == 285 and not q0["charged"], str(q0))
+    cs.evaluate("() => { F.castAt = performance.now() - F.launchMs - F.flightMs; }"); cs.wait_for_timeout(50); q1 = cs.evaluate("castState()")
+    check("the bobber ends exactly at F.land (the last frame of the flight)", q1["phase"] in ("casting", "waiting") and abs(q1["bob"]["x"] - q1["land"]["x"]) < 1e-6 and (q1["phase"] == "waiting" or abs(q1["bob"]["y"] - q1["land"]["y"]) < 1e-6), str((q1["bob"], q1["land"], q1["phase"])))
+    cs.evaluate("() => { stopFishing(); }")
+    # timing after landing is unchanged: waiting starts at castAt + cd, the bite at biteAt (1-5 s after the landing)
+    cast_reset(cs); cs.evaluate("() => cast(1, 0, true)")
+    cs.wait_for_function("F.phase === 'waiting'", timeout=4000); t_land = cs.evaluate("performance.now() - F.castAt"); cdv = cs.evaluate("F.cd")
+    cs.wait_for_function("F.phase === 'bite'", timeout=7000); t_bite = cs.evaluate("performance.now() - F.castAt"); bs = cs.evaluate("F.biteAt - F.castAt")
+    check("wait / bite timing relative to the landing is unchanged: waiting starts at the landing (cd), the bite 1-5 s later, at F.biteAt", abs(t_land - cdv) < 120 and 1000 <= bs - cdv <= 5000 and abs(t_bite - bs) < 120, f"landed {t_land:.0f} vs cd {cdv}, bite {t_bite:.0f} vs {bs:.0f}")
+    cs.evaluate("() => { stopFishing(); }")
+    # Space: hold = charge and throw on release; touch pointer: a long press charges and throws
+    cast_reset(cs); cs.keyboard.down("Space"); cs.wait_for_timeout(700); sp1 = cs.evaluate(ANG); cs.keyboard.up("Space"); cs.wait_for_timeout(80); sp2 = cs.evaluate("castState()")
+    check("Space: holding charges (charging pose) and releasing throws a charged cast", sp1["pose"] == "charging" and sp2 and sp2["charged"] and sp2["pw"] > 0, f"{sp1['pose']} {sp2 and sp2['pw']}")
+    cs.evaluate("() => { stopFishing(); }")
+    cast_reset(cs)
+    cs.evaluate("() => { const b = document.getElementById('actBtn'), r = b.getBoundingClientRect(), o = { pointerType: 'touch', pointerId: 7, isPrimary: true, bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, button: 0 }; b.dispatchEvent(new PointerEvent('pointerdown', o)); window.__to = o; }")
+    cs.wait_for_timeout(700); tp1 = cs.evaluate(ANG)
+    cs.evaluate("() => { document.dispatchEvent(new PointerEvent('pointerup', window.__to)); }"); cs.wait_for_timeout(80); tp2 = cs.evaluate("castState()")
+    check("touch pointer: a long press charges (charging pose) and the release throws a charged cast", tp1["pose"] == "charging" and tp2 and tp2["charged"], f"{tp1['pose']} {tp2 and tp2['charged']}")
+    cs.evaluate("() => { stopFishing(); }")
+    # splash size follows the power (the canvas draw is recorded: the biggest ripple radius drawn right after the landing)
+    SPL = """(pw) => { const g = cv.getContext('2d'), os = window.splash; let r = [];
+        window.splash = function (bx, by, k, W, p) { const o = g.ellipse; g.ellipse = function (...a) { r.push(a[2]); return o.apply(this, a); }; os(bx, by, k, W, p); g.ellipse = o; };
+        stopFishing(); island = 'harbor'; go('fishing'); F = { phase: 'waiting', castAt: performance.now() - 700, cd: 600, pw, land: { x: .6, y: .65 }, floatId: 'classic' }; drawScene(performance.now()); window.splash = os; return r[0]; }"""
+    rs_weak = cs.evaluate(SPL, 0.0); rs_strong = cs.evaluate(SPL, 1.0)
+    cs.evaluate("() => { stopFishing(); }")
+    check("the splash ripple is bigger for a strong throw than for a weak one", rs_strong > rs_weak * 1.4, f"{rs_weak:.1f}px vs {rs_strong:.1f}px")
+    cs.close()
+    # --- screenshots: the full charge pose and the bobber mid-flight (1536x730 and 360x640) ---
+    for vw, vh in [(1536, 730), (360, 640)]:
+        sp_ = fh_page(vw, vh, name="CastShots"); cast_reset(sp_)
+        hold_btn(sp_, 1460); sp_.screenshot(path=str(SHOTS / f"110_charge_pose_{vw}x{vh}.png")); sp_.keyboard.press("Escape"); sp_.mouse.up(); sp_.wait_for_timeout(150)
+        sp_.evaluate("() => cast(1, 0, true)"); sp_.wait_for_function("(castState().u || 0) > .4", timeout=3000); sp_.screenshot(path=str(SHOTS / f"111_bobber_flight_{vw}x{vh}.png")); sp_.evaluate("() => stopFishing()")
+        sp_.close()
+
+    # ---------- Playtest 2, part 8: the Aquarium (a tank for up to 12 caught fish; cosmetic only) ----------
+    def aq_page(vw, vh, name="Tank"):
+        pg_ = b.new_page(viewport={"width": vw, "height": vh})
+        pg_.on("pageerror", lambda e: errs.append(str(e))); pg_.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        pg_.goto(URL); pg_.evaluate("localStorage.clear()"); pg_.reload(); pg_.wait_for_timeout(300); start_new(pg_, name)
+        pg_.add_style_tag(content="#toast { display: none !important; }")
+        return pg_
+    FILL = """([n, locked]) => { S.bagMax = 100; S.bag = []; S.tank = []; for (let i = 0; i < n; i++) { const f = FISH[(i * 3) % 40]; S.bag.push({ fishId: f.id, weight: +(f.min + (f.max - f.min) * (i % 5) / 4).toFixed(2), price: f.price, time: 0, locked: locked === i }); } save(); render(); }"""
+    ap = aq_page(1536, 730)
+    old = ap.evaluate("() => { const o = cleanSave({ coins: 5, bag: [], bagMax: 5 }); return { tank: o.tank, theme: o.tankTheme, d: DEFAULT().tank, dt: DEFAULT().tankTheme }; }")
+    check("an old save without tank / tankTheme loads with an empty tank and the theme 'pond'", old["tank"] == [] and old["theme"] == "pond" and old["d"] == [] and old["dt"] == "pond", str(old))
+    ap.evaluate("() => { localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 77, rods: ['bamboo'], rodEq: 'bamboo', bag: [], bagMax: 5 })); }"); ap.reload(); ap.wait_for_timeout(300)
+    ol2 = ap.evaluate("() => ({ tank: S.tank, theme: S.tankTheme, coins: S.coins })")
+    check("a real old save in localStorage loads without errors (empty tank, pond)", ol2 == {"tank": [], "theme": "pond", "coins": 77}, str(ol2))
+    cl = ap.evaluate("""() => { const ok = { fishId: FISH[0].id, weight: 1, price: 5 }, bad = [ok, { ...ok, fishId: 'nope' }, null, 'x', { fishId: FISH[1].id, weight: 'a', price: 1 }, { ...ok, locked: 'yes' }];
+        const many = []; for (let i = 0; i < 20; i++) many.push({ ...ok });
+        const a = cleanSave({ tank: bad, tankTheme: 'zzz' }), b2 = cleanSave({ tank: many, tankTheme: 'pond' }), c2 = cleanSave({ tank: 'junk', tankTheme: 5 }), d2 = cleanSave({ tank: { a: 1 }, tankTheme: null }), e2 = cleanSave({ tank: [{ ...ok, locked: true }] });
+        return { a: a2len(a), at: a.tankTheme, b: b2.tank.length, bt: b2.tankTheme, c: c2.tank, ct: c2.tankTheme, d: d2.tank, dt: d2.tankTheme, lock: e2.tank[0].locked, al: a.tank.map(x => x.locked) };
+        function a2len(x) { return x.tank.length; } }""")
+    check("invalid tank / theme data is cleaned: unknown fish and junk dropped, cut to 12, bad theme falls back to pond, locked is a real boolean",
+          cl["a"] == 2 and cl["at"] == "pond" and cl["b"] == 12 and cl["bt"] == "pond" and cl["c"] == [] and cl["ct"] == "pond" and cl["d"] == [] and cl["dt"] == "pond" and cl["lock"] is True and cl["al"] == [False, False], str(cl))
+    check("one TANK_SIZE constant (12) and a THEMES-style table with only the Classic Pond",
+          ap.evaluate("TANK_SIZE") == 12 and ap.evaluate("Object.keys(TANK_THEMES).join()") == "pond" and ap.evaluate("TANK_THEMES.pond.name") == "Classic Pond")
+    # hub button, screen, HOME
+    ap.evaluate("() => go('home')"); ap.wait_for_timeout(200)
+    check("the hub has an AQUARIUM button", ap.is_visible("#aquariumBtn") and "AQUARIUM" in ap.inner_text("#aquariumBtn"))
+    ap.click("#aquariumBtn"); ap.wait_for_timeout(300)
+    check("the AQUARIUM button opens the Aquarium screen (with the tank canvas and the counter)", ap.evaluate("current") == "aquarium" and ap.is_visible("#tankCv") and "Tank: 0 / 12" in ap.inner_text("#tankCount"), ap.inner_text("#tankCount"))
+    ap.click("#aquarium .btns [data-go=home]"); ap.wait_for_timeout(200)
+    check("HOME on the Aquarium goes back to the hub", ap.evaluate("current") == "home")
+    # put in / take out, locked fish
+    ap.evaluate(FILL, [5, 1]); ap.click("#aquariumBtn"); ap.wait_for_timeout(250)
+    ap.locator("#aqLists .btn", has_text="PUT IN TANK").nth(1).click(); ap.wait_for_timeout(100)
+    pi = ap.evaluate("() => ({ bag: S.bag.length, tank: S.tank.length, locked: S.tank[0].locked, id: S.tank[0].fishId, saved: JSON.parse(localStorage.getItem('littleLakeSave')).tank.length })")
+    check("PUT IN TANK moves a fish from the bag to the tank (not a copy); a locked fish may go in and keeps its lock; saved at once", pi["bag"] == 4 and pi["tank"] == 1 and pi["locked"] is True and pi["saved"] == 1, str(pi))
+    check("the counters follow: 'Tank: 1 / 12' and the bag shows 4 / 100", "Tank: 1 / 12" in ap.inner_text("#tankCount") and "4 / 100" in ap.inner_text("#aqLists"))
+    ap.locator("#aqLists .btn", has_text="TAKE OUT").first.click(); ap.wait_for_timeout(100)
+    to = ap.evaluate("() => ({ bag: S.bag.length, tank: S.tank.length, locked: S.bag.filter(b => b.locked).length })")
+    check("TAKE OUT moves the fish back to the bag and it keeps its lock", to == {"bag": 5, "tank": 0, "locked": 1}, str(to))
+    # full tank (12) and full bag
+    ap.evaluate(FILL, [14, -1]); ap.evaluate("() => { for (let i = 0; i < 12; i++) S.tank.push(S.bag.shift()); save(); render(); }")
+    full = ap.evaluate("() => ({ tank: S.tank.length, put: [...document.querySelectorAll('#aqLists .btn')].filter(b => b.textContent === 'PUT IN TANK').map(b => b.disabled), msg: document.getElementById('aqMsg').textContent })")
+    check("a full tank (12 / 12): every PUT IN TANK is disabled and the message says 'Tank is full (12/12)'", full["tank"] == 12 and len(full["put"]) == 2 and all(full["put"]) and "Tank is full (12/12)" in full["msg"], str(full))
+    ap.evaluate("() => { tankPut(S.bag[0]); }")
+    check("tankPut refuses a 13th fish", ap.evaluate("S.tank.length") == 12 and ap.evaluate("S.bag.length") == 2)
+    ap.evaluate("() => { S.bagMax = 4; S.tank = S.tank.slice(0, 3); S.bag = []; for (let i = 0; i < 4; i++) S.bag.push({ ...S.tank[0] }); save(); render(); }")
+    fb = ap.evaluate("() => ({ take: [...document.querySelectorAll('#aqLists .btn')].filter(b => b.textContent === 'TAKE OUT').map(b => b.disabled), msg: document.getElementById('aqMsg').textContent, t: S.tank.length })")
+    check("a full bag: every TAKE OUT is disabled and the message says 'Bag is full'", fb["t"] == 3 and len(fb["take"]) == 3 and all(fb["take"]) and "Bag is full" in fb["msg"], str(fb))
+    ap.evaluate("() => { tankTake(S.tank[0]); }")
+    check("tankTake refuses while the bag is full", ap.evaluate("S.tank.length") == 3 and ap.evaluate("S.bag.length") == 4)
+    # SELL ALL leaves the tank untouched, the economy is unchanged
+    ap.evaluate(FILL, [4, -1]); ap.evaluate("() => { for (let i = 0; i < 3; i++) S.tank.push(S.bag.shift()); S.coins = 0; save(); render(); }")
+    pre = ap.evaluate("() => ({ tank: JSON.stringify(S.tank), worth: S.bag.reduce((a, b) => a + b.price, 0), found: Object.keys(S.discovered).length, coins: S.coins })")
+    ap.evaluate("() => go('bag')"); ap.click("#sellAll"); ap.wait_for_timeout(200)
+    post = ap.evaluate("() => ({ tank: JSON.stringify(S.tank), bag: S.bag.length, coins: S.coins, found: Object.keys(S.discovered).length })")
+    check("SELL ALL never touches the fish in the tank, and the money is only from the bag (no tank bonus)", post["tank"] == pre["tank"] and post["bag"] == 0 and post["coins"] == pre["worth"] and post["found"] == pre["found"], f"{pre['worth']} vs {post['coins']}")
+    # reload keeps the tank, NEW GAME clears it
+    ap.evaluate("() => { go('home'); }"); ap.reload(); ap.wait_for_timeout(300)
+    rl = ap.evaluate("() => ({ tank: S.tank.length, theme: S.tankTheme })")
+    check("the tank survives a reload", rl["tank"] == 3 and rl["theme"] == "pond", str(rl))
+    ap.evaluate("() => { S.tankTheme = 'pond'; save(); }")
+    ap.click("#newBtn"); ap.click("#confirmYes"); ap.fill("#nameInput", "Fresh"); ap.click("#nameStart"); ap.wait_for_timeout(300)
+    nw = ap.evaluate("() => ({ tank: S.tank, theme: S.tankTheme, saved: JSON.parse(localStorage.getItem('littleLakeSave')).tank })")
+    check("NEW GAME clears the tank and resets the theme", nw == {"tank": [], "theme": "pond", "saved": []}, str(nw))
+    # swimming, turning at the edges, tap a fish, the loop only runs on this screen
+    ap.evaluate(FILL, [8, -1]); ap.evaluate("() => { while (S.tank.length < 8) S.tank.push(S.bag.shift()); save(); go('aquarium'); }"); ap.wait_for_timeout(500)
+    s0 = ap.evaluate("tankState()"); ap.wait_for_timeout(900); s1 = ap.evaluate("tankState()")
+    check("the loop runs on the Aquarium screen and 8 fish swim (positions change, different depths)", s0["on"] and s0["raf"] and len(s0["fish"]) == 8 and sum(abs(a["x"] - c["x"]) > .5 for a, c in zip(s0["fish"], s1["fish"])) >= 6 and len({round(f["y"] / 6) for f in s1["fish"]}) >= 4, f"{s0['on']} {len(s0['fish'])}")
+    ap.evaluate("() => { TK.sim[0].u = .9995; TK.sim[0].dir = 1; }"); ap.wait_for_timeout(200); ed = ap.evaluate("tankState().fish[0].dir")
+    check("a fish turns (mirrors) at the edge of the tank", ed == -1, str(ed))
+    pos = ap.evaluate("() => { const s = TK.sim[2], r = document.getElementById('tankCv').getBoundingClientRect(); return [r.left + s.x * TANK_SCALE, r.top + s.y * TANK_SCALE, s.f.name]; }")
+    ap.mouse.click(pos[0], pos[1]); ap.wait_for_timeout(120); tp = ap.evaluate("tankState().tip")
+    check("tapping a swimming fish shows its name and rarity for a moment", tp is not None and pos[2] in tp, f"{tp} / {pos[2]}")
+    ap.wait_for_timeout(2600); check("the name label goes away again", ap.evaluate("tankState().tip") is None)
+    ap.evaluate("() => go('home')"); ap.wait_for_timeout(100); sa = ap.evaluate("tankState()"); ap.wait_for_timeout(400); sb = ap.evaluate("tankState()")
+    check("leaving the screen stops the animation loop (no requestAnimationFrame, positions frozen)", not sa["on"] and not sa["raf"] and all(abs(x["x"] - y["x"]) < .001 for x, y in zip(sa["fish"], sb["fish"])), str(sa["on"]))
+    ap.evaluate("() => go('aquarium')"); ap.wait_for_timeout(200); check("and it starts again when the screen is opened", ap.evaluate("tankState().on"))
+    ap.close()
+    # fit: no page scroll on wide windows, no sideways scroll on phones; screenshots
+    for vw, vh in [(1920, 915), (1536, 730), (1366, 625), (1280, 600), (360, 640)]:
+        ap = aq_page(vw, vh, "Fit"); ap.evaluate(FILL, [14, -1]); ap.evaluate("() => { for (let i = 0; i < 8; i++) S.tank.push(S.bag.shift()); save(); go('aquarium'); }"); ap.wait_for_timeout(700)
+        m = ap.evaluate("() => ({ sh: document.documentElement.scrollHeight, ih: innerHeight, sw: document.documentElement.scrollWidth, tank: document.getElementById('tankCv').getBoundingClientRect().height, tw: document.getElementById('tankCv').getBoundingClientRect().width })")
+        check(f"{vw}x{vh}: the Aquarium has no sideways scroll" + (" and fits the window without page scroll" if vw >= 900 else "") + " (tank is big)", m["sw"] <= vw and (vw < 900 or m["sh"] <= m["ih"]) and m["tank"] >= (150 if vw < 900 else 250) and m["tw"] >= (260 if vw < 900 else 500), str(m))
+        if (vw, vh) in [(1536, 730), (360, 640)]:
+            ap.screenshot(path=str(SHOTS / f"112_aquarium_{vw}x{vh}.png"))
+            ap.evaluate("() => go('home')"); ap.wait_for_timeout(300)
+            hm = ap.evaluate("() => ({ sh: document.documentElement.scrollHeight, ih: innerHeight, sw: document.documentElement.scrollWidth })")
+            check(f"{vw}x{vh}: the hub with the AQUARIUM button has no sideways scroll" + (" and no page scroll" if vw >= 900 else ""), hm["sw"] <= vw and (vw < 900 or hm["sh"] <= hm["ih"]), str(hm))
+            ap.screenshot(path=str(SHOTS / f"113_hub_aquarium_{vw}x{vh}.png"))
+        elif vw >= 900:
+            ap.evaluate("() => go('home')"); ap.wait_for_timeout(300)
+            hm = ap.evaluate("() => ({ sh: document.documentElement.scrollHeight, ih: innerHeight })"); check(f"{vw}x{vh}: the hub with the AQUARIUM button fits without page scroll", hm["sh"] <= hm["ih"], str(hm))
+        ap.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

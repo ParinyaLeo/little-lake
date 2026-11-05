@@ -668,8 +668,9 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   body.center .stat .v { font-size: clamp(18px, 3.8vh, 34px); }
   body.center .stat > .ico { width: clamp(26px, 5.4vh, 48px); height: clamp(26px, 5.4vh, 48px); }
   #home > .btns { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); }
-  #home > .btns > [data-go="map"] { grid-row: span 2; font-size: clamp(19px, 3.8vh, 32px); letter-spacing: 2px; }
+  #home > .btns > [data-go="map"] { grid-row: span 3; font-size: clamp(19px, 3.8vh, 32px); letter-spacing: 2px; }
   #home > .btns > [data-go="map"] .ico { width: 1.5em; height: 1.5em; }
+  #home > .btns > [data-go="aquarium"] { grid-column: 2 / span 2; }   /* Playtest 2, part 8: the Aquarium button is a wide bar under the four others */
   /* Town Map cards and Collection cards grow too */
   body.center .islands { grid-template-columns: repeat(4, minmax(0, 260px)); justify-content: center; }
   body.center .island { height: clamp(150px, calc(31vh - 30px), 250px); }
@@ -743,3 +744,29 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
 .pbar i { position: absolute; inset: 0; background: linear-gradient(#ffe27a, #f2a900); transform-origin: left center; transform: scaleX(0); }
 .pbar.low i { background: linear-gradient(#ff8a80, #e53935); }
 @media (max-width: 700px) { .pl { display: none; } .pbar { width: 100px; height: 14px; } }
+
+/* Aquarium (Playtest 2, part 8): the tank canvas on top (phones) or on the left (wide windows), the lists of tank and bag fish beside / below it */
+.aq-main { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.aq-tank { position: relative; height: clamp(190px, 58vw, 300px); border: 4px solid var(--wood-dark); background: #0b4a6e; overflow: hidden; }
+#tankCv { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; touch-action: manipulation; }
+.aq-tip { position: absolute; left: 0; top: 0; z-index: 2; background: rgba(20, 10, 4, .88); border: 2px solid var(--gold); padding: 4px 8px; font-size: 14px; white-space: nowrap; pointer-events: none; will-change: transform; }
+.aq-side { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.aq-msg { margin: 0 0 6px; min-height: 2.6em; }
+.aq-lists { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; padding-right: 6px; min-height: 0; }
+.aq-h { font: 700 18px var(--pixel); color: var(--gold); margin: 6px 0 2px; }
+.aq-h small { font: 13px "Courier New", monospace; color: var(--cream); margin-left: 6px; }
+.aq-lists .row { flex: none; height: 56px; overflow: hidden; }
+.aq-lists .row .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; font-size: 14px; }
+.aq-lists .row .btn { padding: 8px 10px; font-size: 13px; }
+.aq-lists .row .btn:disabled { filter: grayscale(.8) brightness(.8); cursor: not-allowed; }
+.aq-lists .row.locked { border-color: #ffd54f; }
+.aq-lists .aq-empty { justify-content: center; font-size: 14px; }
+.aq-lists .ico { width: 12px; height: 12px; vertical-align: middle; }
+@media (min-width: 900px) {
+  body.fit #aquarium.active > .panel { flex: 1 1 auto; min-height: 0; }
+  body.fit #aquarium.active > .panel > .aq-main { flex: 1 1 auto; flex-shrink: 1; min-height: 0; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); }
+  #aquarium .aq-tank { height: auto; min-height: 0; }
+  #aquarium .aq-lists { flex: 1 1 0; max-height: none; }
+}
+#tankCount { margin-left: 10px; }
+.aq-lists .row canvas { width: 60px; height: 40px; }

@@ -2,7 +2,7 @@
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
 const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none", floatsOwned: ["classic"], floatEq: "classic",
-  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0, fightStyle: DEFAULT_FIGHT });
+  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0, fightStyle: DEFAULT_FIGHT, tank: [], tankTheme: DEFAULT_THEME });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
@@ -29,6 +29,8 @@ function cleanSave(raw) {
     baits, baitSel, bagMax: num(raw.bagMax, 5, 5),
     floatsOwned: floatsOwned, floatEq,          // cosmetic floats: older saves have none, so they own and use the classic float
     bag: Array.isArray(raw.bag) ? raw.bag.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)).map(b => ({ ...b, locked: b.locked === true })) : [],   // locked: kept out of SELL ALL (old saves: unlocked)
+    tank: Array.isArray(raw.tank) ? raw.tank.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)).slice(0, TANK_SIZE).map(b => ({ ...b, locked: b.locked === true })) : [],   // the Aquarium (same entries as the bag, kept out of SELL / SELL ALL); old saves: empty
+    tankTheme: typeof raw.tankTheme === "string" && Object.prototype.hasOwnProperty.call(TANK_THEMES, raw.tankTheme) ? raw.tankTheme : DEFAULT_THEME,
     discovered: raw.discovered && typeof raw.discovered === "object" ? raw.discovered : {},
     records: raw.records && typeof raw.records === "object" ? raw.records : {},
     mastery: raw.mastery && typeof raw.mastery === "object" ? raw.mastery : {},

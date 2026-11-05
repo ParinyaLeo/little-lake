@@ -62,7 +62,7 @@ Keep those names global. Don't wrap the files in IIFEs or modules.
 
 ## Game rules
 
-**Screens:** Title (`titleScreen`), Home, Town Map, Fishing, Result, Bag, Shop, Tackle Box (`tackle`), Collection Book. Move between
+**Screens:** Title (`titleScreen`), Home, Town Map, Fishing, Result, Bag, Shop, Tackle Box (`tackle`), Collection Book, Aquarium (`aquarium`). Move between
 them with `go(id)` or with any element that has `data-go="<screen id>"`.
 
 **Title screen** (shown first; the top bar is hidden here):
@@ -198,6 +198,7 @@ offset (+-5% of the power, +-1% of the height), stored in `F.land`; the line/arc
 are unchanged. HOOK and REEL still act at once (no charge). The charge is cancelled (nothing thrown, meter hidden, message restored) by Esc,
 window blur, the page being hidden, a pointer cancel, a banner/popup opening or leaving the Fishing screen; the meter never shows outside idle.
 Enter on the focused button (a click with `detail` 0) still casts at once.
+**Cast animation** (Playtest 2, part 7; `cast(power, jitter, charged)`, `castState()` in `js/fishing.js`, `CHARGE_POSE` / `CAST` / `fisherCastSet()` in `js/fisherman.js`): the throw follows the power. While the meter is shown the pose is `charging` (rod leans back from ~51 deg at power 0 to 125 at power 1; idle again when the charge is cancelled). On release the cast plays: wind-up 40 ms (charged) or 200 ms (quick tap), swing 350 ms (weak) > 220 ms (strong) with more rod bend for more power, the bobber leaves at 55% of the swing and flies a parabola from the rod tip to `F.land` in 350 ms (weak) > 600 ms (strong), arc height `F.arc` (8-40% of the canvas height) growing with the distance, the line always drawn tip > bobber; `splash(bx, by, k, W, pw)` scales ripple and droplets with the power. The landing is at `F.castAt + F.cd` (about 600-850 ms; `F.cd` replaces the old fixed 500 ms everywhere, with a 500 ms fallback for hand-made `F`); the 1-5 s wait, bite, HOOK, reel, odds, `landing()` and its jitter are unchanged and counted from the landing. `F.biteAt = castAt + cd + wait`.
 **Spread and hint** (parts 6-8): `landing(power, jitter)` adds a uniform random offset of +-`POWER.jitterQuick` / `POWER.jitterHold` (both .05 = +-5% of the
 throw range, so a 10% band) to the power, clamped to 0..1, plus +-1% of the height, for quick presses as well as holds (`cast(power, jitter)`).
 On a 972px-wide scene +-5% is about +-10px, on a 324px phone scene about +-3px: raise the two constants (and re-check the water masks) if casts
@@ -219,6 +220,7 @@ size too; the `stays put in every phase` tests in `play_test.py` check it.
 `showMeter(on)` swaps meter and progress with `visibility`; always use it instead of setting the meter's visibility directly.
 It re-renders with the HUD and right after a catch.
 
+**Aquarium** (Playtest 2, part 8; the AQUARIUM section of `js/screens.js`, `#aquarium` in `index.html`): `S.tank` = up to `TANK_SIZE` (12, `js/data.js`) caught fish, the same entries as the bag (`fishId`, weight, price, `locked`), and `S.tankTheme` (`"pond"`, validated against `TANK_THEMES`; not `THEMES`, which is the music table in `js/state.js`). `cleanSave()` cleans both (old saves: empty tank, pond); NEW GAME resets them. Opened by the AQUARIUM button on the hub (a wide bar under the four small buttons; on wide windows TOWN MAP spans three rows); the screen is in `NAV_SCREENS` and `FIT_SCREENS` and has a bottom HOME button. PUT IN TANK / TAKE OUT (`tankPut` / `tankTake`) MOVE a fish between `S.bag` and `S.tank` (a locked fish keeps its lock); a full tank disables PUT IN TANK ("Tank is full (12/12)"), a full bag disables TAKE OUT ("Bag is full"). Cosmetic only: SELL / SELL ALL, prices, odds, the fish book and rods never look at the tank. `drawTank(ctx, w, h, t, themeId)` draws the whole tank (no images; 1 tank pixel = `TANK_SCALE` 2 screen pixels); the swimmers live in `TK.sim` (rebuilt by `tankSync()`), tapping one shows its name for 2.2 s; the requestAnimationFrame loop (`tankStart` / `tankStop`) runs only while the Aquarium is the current screen (`render()` decides). Themes come later: add an entry to `TANK_THEMES` and a branch in `drawTank`.
 **Bag lock** (Playtest 1, part 9): every Bag row has a 40x40 padlock button (`.lockbtn`, closed gold `i-padlock` = locked, open grey `i-padlock-open`;
 aria-label "Lock fish" / "Unlock fish", `aria-pressed`); a locked row gets a bright gold border (`.row.locked`) and its SELL button is greyed. The flag is an optional
 `locked: true` on the fish in `S.bag` (`cleanSave()` maps every fish to `locked: b.locked === true`, so old saves and garbage load as unlocked). **SELL ALL** sells only
@@ -325,7 +327,7 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
   `cleanPlate()`, which copies water, chest and dock pixels from beside him (`patch` rects and the `rodClear` band, in
   photo pixels) into an offscreen canvas built once. A new 28x36 pixel-art fisherman is drawn at `x, y` with `scale`
   photo pixels per art pixel. Body frames are cached canvases; the rod is a curve of art-pixel blocks drawn each frame,
-  and the line starts at its drawn tip (`ROD_TIP` is updated from it). Poses: idle (breathing), casting (wind-up, swing),
+  and the line starts at its drawn tip (`ROD_TIP` is updated from it). Poses: idle (breathing), charging (rod leans back with the power meter), casting (wind-up, swing; length and bend follow the power),
   waiting (head tilt, tip dips with the bobber), bite (startled), reeling (rod bent; `fisherTug()` = tug on a hit,
   slack wobble on a miss), caught (700 ms) and escaped (1.4 s). With reduced motion each pose is one still frame.
   A scene without `fisher` draws no figure. Don't allocate objects per frame in this code.

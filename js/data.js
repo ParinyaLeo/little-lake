@@ -50,6 +50,10 @@ const RODS = {
 const ROD_IDS = Object.keys(RODS);
 // Baits: bought in packs, one is used per cast from the selected kind. odds = change to the
 // [Common, Rare, Epic, Legendary] chances (in % points) on top of BASE_ODDS.
+// Aquarium (Playtest 2, part 8): the tank holds up to TANK_SIZE caught fish (cosmetic only); TANK_THEMES (not THEMES: that name is the music table in state.js) lists the tank looks (only the Classic Pond for now, more come in part 9)
+const TANK_SIZE = 12;
+const TANK_THEMES = { pond: { id: "pond", name: "Classic Pond" } };
+const DEFAULT_THEME = "pond";
 const BAITS = {
   worm:   { name: "Worm",        pack: 5, price: 60,  odds: [-10, 10, 0, 0],   blurb: "Small boost to Rare fish." },
   shrimp: { name: "Shrimp",      pack: 5, price: 100, odds: [-20, 0, 16, 4],   blurb: "Better chance of Epic and Legendary fish." },

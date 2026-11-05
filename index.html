@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=51">
+<link rel="stylesheet" href="css/style.css?v=53">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -73,6 +73,7 @@
       <button class="btn" data-go="shop"><span class="ico i-shop"></span>SHOP</button>
       <button class="btn" data-go="collection"><span class="ico i-book"></span>COLLECTION</button>
       <button class="btn" data-go="tackle" id="tackleBtn"><span class="ico i-box"></span>TACKLE BOX</button>
+      <button class="btn" data-go="aquarium" id="aquariumBtn"><span class="ico i-fish"></span>AQUARIUM</button>
     </div>
     <div class="panel wood demo" id="demo">
       <h2>Demo mode</h2>
@@ -172,6 +173,21 @@
     </div>
   </section>
 
+  <!-- AQUARIUM (Playtest 2, part 8) -->
+  <section class="screen" id="aquarium">
+    <div class="panel wood aq">
+      <h2><span class="ico i-fish"></span>Aquarium <span id="tankCount"></span></h2>
+      <div class="aq-main">
+        <div class="aq-tank"><canvas id="tankCv" aria-label="Your aquarium"></canvas><div class="aq-tip" id="tankTip" hidden></div></div>
+        <div class="aq-side">
+          <p class="small aq-msg" id="aqMsg"></p>
+          <div class="aq-lists scroll-list" id="aqLists"></div>
+        </div>
+      </div>
+    </div>
+    <div class="btns"><button class="btn" data-go="home">HOME</button></div>
+  </section>
+
   <!-- SHOP -->
   <section class="screen" id="shop">
     <div class="panel wood">
@@ -269,11 +285,11 @@
 </div>
 
 
-<script src="js/data.js?v=51"></script>
-<script src="js/fight.js?v=51"></script>
-<script src="js/state.js?v=51"></script>
-<script src="js/fisherman.js?v=51"></script>
-<script src="js/fishing.js?v=51"></script>
-<script src="js/screens.js?v=51"></script>
+<script src="js/data.js?v=53"></script>
+<script src="js/fight.js?v=53"></script>
+<script src="js/state.js?v=53"></script>
+<script src="js/fisherman.js?v=53"></script>
+<script src="js/fishing.js?v=53"></script>
+<script src="js/screens.js?v=53"></script>
 </body>
 </html>

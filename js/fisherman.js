@@ -298,8 +298,14 @@ const FISH_EVT = { name: "", at: -1e9, tugAt: -1e9, tugHit: false };
 function fisherEvent(name) { FISH_EVT.name = name; FISH_EVT.at = performance.now(); }
 function fisherTug(hit) { FISH_EVT.tugAt = performance.now(); FISH_EVT.tugHit = hit; }
 const FISHER_HOLD = { caught: 700, escaped: 1400 };   // how long the after-catch poses last (ms)
+// Playtest 2, part 7: the cast animation follows the charge power. CHARGE_POSE is set by fishing.js while the power meter is shown (the rod leans back as the power grows);
+// CAST describes the cast being played: wind-up ms, swing ms, power 0..1, and the rod angle at the start of the wind-up / the back angle where the swing starts. The defaults are the old fixed cast (200 ms wind-up, 300 ms swing).
+const CHARGE_POSE = { on: false, p: 0 }, CAST = { w: 200, swing: 300, p: .5, a1: 38, a0: 125 };
+const chargeBackAngle = p => 38 + 87 * (.15 + .85 * p);                              // rod angle (deg) at charge power p: a little back at 0, fully back (125) at 1
+function fisherCastSet(w, swing, p, charged) { CAST.w = w; CAST.swing = swing; CAST.p = p; CAST.a0 = charged ? chargeBackAngle(p) : 125; CAST.a1 = charged ? CAST.a0 : 38; }
 function fisherPoseFor(phase, t) {
   if (phase !== "idle") return phase;
+  if (CHARGE_POSE.on) return "charging";
   return FISH_EVT.name && t - FISH_EVT.at < FISHER_HOLD[FISH_EVT.name] ? FISH_EVT.name : "idle";
 }
 const P = { f: 0, a: 38, bend: 3 }, FISHER = { pose: "idle", since: 0, tipX: 0, tipY: 0, outfit: "harbor", rod: "bamboo" };
@@ -307,9 +313,11 @@ const fEase = k => 1 - (1 - k) * (1 - k) * (1 - k);
 function poseParams(name, lt, t, still) {
   const sin = Math.sin;
   if (name === "casting") {
-    const k = still ? 1 : Math.min(1, lt / 500);
-    if (k < .4) { const e = k / .4; P.f = 2; P.a = 38 + 87 * e * e * (3 - 2 * e); P.bend = -3 * e; }        // wind-up, back over the head
-    else { const e = (k - .4) / .6; P.f = 3; P.a = 125 - 103 * fEase(e); P.bend = still ? 2 : -12 * sin(e * Math.PI) + 2 * e; }   // fast swing forward
+    if (still) { P.f = 3; P.a = 22; P.bend = 2; }
+    else if (lt < CAST.w) { const e = lt / CAST.w; P.f = 2; P.a = CAST.a1 + (CAST.a0 - CAST.a1) * e * e * (3 - 2 * e); P.bend = -3 * e; }        // wind-up, back over the head (none for a charged cast: the rod is already back)
+    else { const e = Math.min(1, (lt - CAST.w) / CAST.swing); P.f = 3; P.a = CAST.a0 - (CAST.a0 - 22) * fEase(e); P.bend = -(6 + 10 * CAST.p) * sin(e * Math.PI) + 2 * e; }   // swing forward: shorter, wider and faster with more power
+  } else if (name === "charging") {
+    P.f = 2; P.a = chargeBackAngle(CHARGE_POSE.p); P.bend = -3 * CHARGE_POSE.p;      // holding CAST: the rod leans back further as the power grows
   } else if (name === "waiting") {
     P.f = still || Math.floor(lt / 1600) % 2 === 0 ? 4 : 5;
     const s = still ? 0 : sin(t / 300);                // same wave as the bobber, so the tip dips with it

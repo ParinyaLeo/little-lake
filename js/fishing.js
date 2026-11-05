@@ -257,11 +257,12 @@ function sceneBackground(W, H) {
   return sceneBg;
 }
 // splash when the bobber lands (k: 0 -> 1 over the splash)
-function splash(bx, by, k, W) {
-  const s = W / 900, a = (1 - k).toFixed(2), r = (10 + k * 34) * s;
+// Playtest 2, part 7: pw (0..1) = the cast power: a weak throw makes a small ripple and a few low droplets, a strong one a big ripple and many high droplets
+function splash(bx, by, k, W, pw = .5) {
+  const m = .55 + .9 * pw, s = W / 900 * m, a = (1 - k).toFixed(2), r = (10 + k * 34) * s, n = 5 + Math.round(4 * pw);
   ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(bx, by + 6, r, r / 3, 0, 0, 7); ctx.stroke();
-  for (let i = 0; i < 9; i++) {
-    const ang = (i - 4) * .32, v = (50 + (i % 3) * 18) * s, size = i % 2 ? 4 : 6;
+  for (let i = 0; i < n; i++) {
+    const ang = (i - (n - 1) / 2) * (.32 * 8 / (n - 1)), v = (50 + (i % 3) * 18) * s, size = i % 2 ? 4 : 6;
     const x = bx + Math.sin(ang) * v * k * 1.3, y = by - (Math.cos(ang) * v * 2.6 * k - 120 * s * k * k);
     ctx.fillStyle = i % 2 ? `rgba(255,255,255,${a})` : `rgba(190,235,255,${a})`; ctx.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size);
   }
@@ -432,7 +433,7 @@ function shadowStep(t, W, H, still) {
     if (s.pm !== F.phase) { s.pm = F.phase; s.t0 = t; if (F.phase === "reeling") { s.prog = 0; s.lastMiss = F.misses; s.kickAt = -1e9; fightStart(t); } }
     let px = 0, py = 8 * k, a = 1, dx = 0;
     if (F.phase === "waiting") {
-      const since = t - F.castAt - 500, span = Math.max(1, F.biteAt - F.castAt - 500), u = Math.min(1, Math.max(0, since / span));
+      const cd = F.cd || 500, since = t - F.castAt - cd, span = Math.max(1, F.biteAt - F.castAt - cd), u = Math.min(1, Math.max(0, since / span));
       shWaitOffset(u, k, still); px = SHO.x; py = SHO.y; s.mode = SHO.m; s.nib = SHO.nib; s.dip = still ? 0 : 4 * k * SHO.nib;
       a = since < 0 ? 0 : still ? Math.min(1, u / .15) : Math.min(1, since / 400);
     } else if (F.phase === "bite") {
@@ -525,14 +526,17 @@ function drawScene(t) {
   if (F.phase !== "idle") {
     const L = F.land || BOB;                                                                   // where this cast lands (BOB for a medium cast)
     let bx = W * L.x, by = H * L.y;
-    if (F.phase === "casting") {
-      let k = Math.min(1, (t - F.castAt) / 500);
-      if (sc.fisher) k = Math.max(0, (k - .4) / .6);                                      // the bobber flies after his wind-up
-      bx = W * (ROD_TIP.x + (L.x - ROD_TIP.x) * k); by = H * (ROD_TIP.y + (L.y - ROD_TIP.y) * k) - Math.sin(k * Math.PI) * H * .25; }
+    if (F.phase === "casting") {                                                              // Playtest 2, part 7: the bobber hangs at the rod tip through the wind-up and swing, then flies a parabola to F.land
+      const lm = F.launchMs === undefined ? 200 : F.launchMs, fl = F.flightMs || 300, u = Math.min(1, Math.max(0, (t - F.castAt - lm) / fl));
+      if (u === 0) { F.u = 0; F.l0 = null; bx = W * ROD_TIP.x; by = H * ROD_TIP.y; }
+      else {
+        if (!F.l0) { F.l0 = { x: ROD_TIP.x, y: ROD_TIP.y }; F.arc = Math.min(.4, Math.max(.08, .3 * Math.hypot((L.x - F.l0.x) * W, (L.y - F.l0.y) * H) / H)); }   // arc height (a share of H) grows with the distance
+        F.u = u; bx = W * (F.l0.x + (L.x - F.l0.x) * u); by = H * (F.l0.y + (L.y - F.l0.y) * u - F.arc * 4 * u * (1 - u));
+      } }
     else if (F.phase === "waiting") by += Math.sin(t / 300) * 3 + SH.dip;                    // SH.dip = a nibble (0 without a shadow)
     else if (F.phase === "bite") by += 8 + Math.sin(t / 40) * 5;
     else if (F.phase === "reeling") { bx += SH.ox; by += Math.sin(t / 60) * 6 + SH.oy; }      // SH.ox / oy: the fish drags the float toward the dock
-    const since = t - F.castAt - 500;                                                         // ms since the bobber landed
+    const since = t - F.castAt - (F.cd || 500);                                              // ms since the bobber landed
     ctx.strokeStyle = F.phase === "reeling" && FIGHT.on ? FIGHT.line : "rgba(255,255,255,.85)"; ctx.lineWidth = 2;   // white > warm red with tension / danger
     const tx = W * ROD_TIP.x, ty = H * ROD_TIP.y;                                          // a drawn rod moves, so the line sags between tip and bobber
     const ey = by - FLOAT_TOP;                                                                // the line ties on at the top of the float
@@ -550,7 +554,7 @@ function drawScene(t) {
       const r = 10 + ((t / 8) % 30); ctx.beginPath(); ctx.ellipse(bx, by + 6, r, r / 3, 0, 0, 7); ctx.stroke();
     }
     drawFloat(ctx, bx, by, F.floatId || S.floatEq, t, still);                                   // the float equipped when THIS cast started (F.floatId)
-    if (F.phase !== "casting" && !still && since >= 0 && since < 450) splash(bx, by, since / 450, W);
+    if (F.phase !== "casting" && !still && since >= 0 && since < 450) splash(bx, by, since / 450, W, F.pw === undefined ? .5 : F.pw);
     F.bobPos = { x: bx / W, y: by / H };
   }
 }
@@ -728,11 +732,11 @@ function chargeTick(now) {
   if (!CH.shown && now - CH.t0 >= POWER.quick) {                                            // held longer than a tap: show the meter (same space as the reel meter)
     CH.shown = true; $("meter").classList.add("charging"); showMeter(true); $("fMsg").textContent = "Release to throw!";
   }
-  if (CH.shown) $("powerFill").style.transform = `scaleX(${(1 - chargePower(now)).toFixed(3)})`;   // the cover shrinks from the right, the bar grows
+  if (CH.shown) { const cp = chargePower(now); $("powerFill").style.transform = `scaleX(${(1 - cp).toFixed(3)})`; CHARGE_POSE.on = true; CHARGE_POSE.p = cp; }   // the cover shrinks from the right, the bar grows; the fisherman leans the rod back with it
 }
 // stop charging without throwing (Esc, focus lost, screen change, bag full...); quiet = leaving the screen, so don't redraw the HUD
 function chargeReset(quiet) {
-  const was = CH.on && CH.shown; CH.on = false; CH.shown = false;
+  const was = CH.on && CH.shown; CH.on = false; CH.shown = false; CHARGE_POSE.on = false;
   $("meter").classList.remove("charging");
   if (was && F.phase === "idle") { showMeter(false); if (!quiet && current === "fishing") renderFishingHud(); }
 }
@@ -741,7 +745,7 @@ function chargeEnd() {
   chargeReset(true);
   if (F.phase === "idle" && current === "fishing" && !$("actBtn").disabled) {
     if (!quick) { S.holdCasts = (S.holdCasts || 0) + 1; save(); }          // the hint "hold CAST" goes away after 3 hold-to-charge casts
-    cast(p, quick ? POWER.jitterQuick : POWER.jitterHold);
+    cast(p, quick ? POWER.jitterQuick : POWER.jitterHold, !quick);
   }
 }
 // where a cast with this power lands: a point on the near > far line, with a uniform random offset of +-`jitter` of the throw range (5%) and +-1% of the height
@@ -749,21 +753,27 @@ function landing(power, jitter = POWER.jitterQuick) {
   const p = Math.min(1, Math.max(0, power + (Math.random() * 2 - 1) * jitter));
   return { x: POWER.near.x + (POWER.far.x - POWER.near.x) * p, y: POWER.near.y + (POWER.far.y - POWER.near.y) * p + (Math.random() - .5) * .02, p };
 }
-function cast(power = POWER.mid, jitter = POWER.jitterQuick) {
+function cast(power = POWER.mid, jitter = POWER.jitterQuick, charged = false) {
   if (bagFull()) { toast("Your bag is full."); return; }
   // one bait of the selected kind; when it runs out the selection goes back to "no bait"
   const usedBait = BAITS[S.baitSel] && S.baits[S.baitSel] > 0 ? S.baitSel : null;
   if (usedBait) { S.baits[usedBait]--; if (!S.baits[usedBait]) S.baitSel = "none"; save(); }
-  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait, floatId: S.floatEq, land: landing(power, jitter) };
+  // Playtest 2, part 7: the cast animation follows the power: wind-up (40 ms if the rod is already back from charging, else 200), swing 350 ms (weak) > 220 ms (strong), the bobber leaves
+  // at 55% of the swing and flies 350 ms (weak) > 600 ms (strong); it lands at castAt + cd, and the wait / bite / hook / reel run from that landing exactly as before
+  const pw = Math.min(1, Math.max(0, power)), wm = charged ? 40 : 200, sm = Math.round(350 - 130 * pw), lm = wm + Math.round(.55 * sm), fm = Math.round(350 + 250 * pw);
+  F = { phase: "casting", castAt: performance.now(), fish: pickFish(usedBait), usedBait, floatId: S.floatEq, land: landing(power, jitter), pw, windMs: wm, swingMs: sm, launchMs: lm, flightMs: fm, cd: lm + fm, charged };
+  fisherCastSet(wm, sm, pw, charged);
   sfx.cast(); $("actBtn").disabled = true; $("actBtn").textContent = "...";
   const left = usedBait && S.baits[usedBait];
   $("fMsg").textContent = !usedBait ? "Waiting for a bite..." : left ? `Cast with ${BAITS[usedBait].name} (${left} left)... waiting` : `Cast with your last ${BAITS[usedBait].name}... waiting`;
   renderFishingHud();
   $("actBtn").disabled = true;
-  later(() => { F.phase = "waiting"; sfx.splash(); }, 500);   // the bobber lands: splash
+  later(() => { F.phase = "waiting"; sfx.splash(); }, F.cd);   // the bobber lands: splash
   const wait = 1000 + Math.random() * 4000;           // 1-5 s random wait (unchanged); F.biteAt only tells the fish shadow when to arrive
-  F.biteAt = F.castAt + 500 + wait; later(bite, 500 + wait);
+  F.biteAt = F.castAt + F.cd + wait; later(bite, F.cd + wait);
 }
+// tests only: the cast being played ({phase, u (flight progress 0..1), arc, swingMs, flightMs, windMs, launchMs, cd, pw, land, bob})
+function castState() { return F.cd === undefined ? null : { phase: F.phase, u: F.u, arc: F.arc, swingMs: F.swingMs, flightMs: F.flightMs, windMs: F.windMs, launchMs: F.launchMs, cd: F.cd, pw: F.pw, charged: F.charged, land: F.land, bob: F.bobPos, castAt: F.castAt, biteAt: F.biteAt }; }
 function bite() {
   F.phase = "bite"; sfx.bite(); vibrate(200);
   const b = $("bang"); b.style.display = "block"; b.style.left = (F.bobPos ? F.bobPos.x * 100 : 58) + "%"; b.style.top = (F.bobPos ? F.bobPos.y * 100 : 66) + "%";
