@@ -315,6 +315,99 @@ function floatIconUrl(id) {
 }
 const floatIcon = id => `<span class="ico fl${FLOAT_ICON_MAPS[id] ? " big" : ""}" style="background-image:url(${floatIconUrl(id)})"></span>`;
 
+/* Fish shadow (Playtest 2, part 1): VISUAL ONLY. A dark, semi-transparent silhouette of the real F.fish swims to the bobber while you wait, nibbles, darts on the bite and thrashes
+   during REEL. Nothing here changes the rules: the wait still ends at F.biteAt (the old 1-5 s random wait, only stored now), HOOK, REEL, hits, misses, odds and saves are untouched.
+   The state lives in SH (not in F) so the shadow can still fade after F is reset (escape / catch). It only runs for a real cast (F.biteAt is set by cast()), so a hand-made F draws no shadow.
+   Positions are canvas pixels (the canvas is always 900 px wide). The shadow starts on the deep side (right, a little up), so it never crosses the dock on the left; the end of the
+   reel pulls it (and the float it drags) toward SH.dk, a point of open water in front of the dock. No allocations per frame: SH and SHO are reused, sprites are cached per fish id. */
+const SH = { on: false, mode: "", cast: -1, pm: "", fish: null, size: 2, x: 0, y: 0, face: 1, alpha: 0, bx: 0, by: 0, ox: 0, oy: 0, dip: 0, nib: 0, dx: 0, prog: 0, lastT: 0, lx: 0, lastMiss: 0, kickAt: -1e9, t0: 0, fx: 0, fy: 0, fa: 1, k: 1, W: 900, H: 400, dk: { x: 0, y: 0 } };
+const SHO = { x: 0, y: 0, m: "approach", nib: 0 }, SH_KY = .42, SH_CACHE = {};
+const shadowClear = () => { SH.on = false; SH.mode = ""; SH.cast = -1; SH.pm = ""; SH.ox = SH.oy = SH.dip = 0; };
+function shadowSprite(f) { let c = SH_CACHE[f.id]; if (!c) { c = document.createElement("canvas"); silhouette(c, f); SH_CACHE[f.id] = c; } return c; }   // one dark colour, 24 x 16
+function shadowSize(f) { const m = (f.min + f.max) / 2, t = Math.min(1, Math.max(0, (Math.log10(m) + 1.5) / 3.5)); return 1.6 + 1.6 * t; }   // screen px per art pixel: heavier fish = bigger, only a little
+const shPulse = (w, a) => { const v = Math.sin(Math.PI * Math.min(1, Math.max(0, (w - a) / .3))); return v * v; };
+// where the shadow is while waiting, relative to the bobber, for u = 0..1 over the wait: approach (0-.5), one circle (.5-.8), two nibbles (.8-1); ends 8 px under the float
+function shWaitOffset(u, k, still) {
+  const S0x = 170 * k, S0y = -24 * k, by0 = 8 * k; SHO.nib = 0;
+  if (still) { SHO.m = "approach"; SHO.x = S0x * (1 - u); SHO.y = S0y + (by0 - S0y) * u; return; }   // reduced motion: a straight line, no circling
+  const R0 = 34 * k, R1 = 12 * k, a0 = -.3;
+  if (u < .5) { const p = u / .5, e = 1 - (1 - p) * (1 - p), cx = R0 * Math.cos(a0), cy = R0 * SH_KY * Math.sin(a0) + by0;
+    SHO.m = "approach"; SHO.x = S0x + (cx - S0x) * e; SHO.y = S0y + (cy - S0y) * e + Math.sin(p * 6) * 6 * k * (1 - p); }
+  else if (u < .8) { const v = (u - .5) / .3, r = R0 + (R1 - R0) * v, a = a0 + 6.2832 * v; SHO.m = "circle"; SHO.x = r * Math.cos(a); SHO.y = r * SH_KY * Math.sin(a) + by0; }
+  else { const w = (u - .8) / .2, ex = R1 * Math.cos(a0), ey = R1 * SH_KY * Math.sin(a0) + by0; SHO.m = "nibble"; SHO.x = ex * (1 - w); SHO.y = ey + (by0 - ey) * w; SHO.nib = Math.min(1, shPulse(w, .1) + shPulse(w, .55)); }
+}
+function shadowLeave() { if (!SH.on || !SH.fish) return; SH.mode = "leave"; SH.t0 = performance.now(); SH.fx = SH.x; SH.fy = SH.y; SH.fa = SH.alpha; SH.ox = SH.oy = SH.dip = 0; }   // missed HOOK / escaped
+function shadowCatch(reeled) {                                                              // third hit: pulled to the surface in front of the dock, a splash, then the Result screen
+  if (reeled && SH.on && SH.fish && F.biteAt) { SH.mode = "catch"; SH.t0 = performance.now(); SH.fx = SH.x; SH.fy = SH.y; SH.fa = SH.alpha; SH.ox = SH.oy = SH.dip = 0; } else shadowClear();
+}
+// advances the shadow for this frame (sets SH.x / y / alpha / mode, and SH.ox / oy / dip = how the bobber follows it); true when it should be drawn
+function shadowStep(t, W, H, still) {
+  const s = SH, k = W / 900; s.W = W; s.H = H; s.k = k; s.ox = s.oy = s.dip = s.nib = s.dx = 0;
+  s.dk.x = W * .36; s.dk.y = H * .68;
+  if (F.biteAt && F.fish && (F.phase === "waiting" || F.phase === "bite" || F.phase === "reeling")) {
+    if (s.cast !== F.castAt) { s.cast = F.castAt; s.fish = F.fish; s.size = shadowSize(F.fish); s.pm = ""; s.on = true; s.face = 1; s.prog = 0; s.lastMiss = 0; s.kickAt = -1e9; }
+    const L = F.land || BOB, dt = Math.min(.05, Math.max(0, (t - s.lastT) / 1000)); s.lastT = t;
+    s.bx = W * L.x; s.by = H * L.y;
+    if (s.pm !== F.phase) { s.pm = F.phase; s.t0 = t; if (F.phase === "reeling") { s.prog = 0; s.lastMiss = F.misses; s.kickAt = -1e9; } }
+    let px = 0, py = 8 * k, a = 1, dx = 0;
+    if (F.phase === "waiting") {
+      const since = t - F.castAt - 500, span = Math.max(1, F.biteAt - F.castAt - 500), u = Math.min(1, Math.max(0, since / span));
+      shWaitOffset(u, k, still); px = SHO.x; py = SHO.y; s.mode = SHO.m; s.nib = SHO.nib; s.dip = still ? 0 : 4 * k * SHO.nib;
+      a = since < 0 ? 0 : still ? Math.min(1, u / .15) : Math.min(1, since / 400);
+    } else if (F.phase === "bite") {
+      s.mode = "bite"; const e = (t - s.t0) / 140;
+      if (!still) { px = Math.sin(Math.min(1, Math.max(0, e)) * Math.PI) * 22 * k + Math.sin(t / 35) * 3 * k; py += Math.sin(t / 50) * 2 * k; }   // a quick dart, then a tremble
+    } else {
+      s.mode = "reel";
+      if (F.misses > s.lastMiss) { s.lastMiss = F.misses; s.kickAt = t; }                  // a miss: it darts back
+      const goal = Math.max(0, F.hits / 3 - .06 * F.misses);                                // each hit pulls it a third of the way to the dock, each miss gives a little back
+      s.prog += (goal - s.prog) * (still ? 1 : Math.min(1, dt * 8));
+      const kick = still ? 0 : 20 * k * Math.exp(-(t - s.kickAt) / 180);
+      s.ox = (s.dk.x - s.bx) * s.prog + kick; s.oy = (s.dk.y - s.by) * s.prog;             // the float is dragged along
+      if (!still) { const rr = 1 + .15 * ["Common", "Rare", "Epic", "Legendary", "Mythical"].indexOf(F.fish.rarity); dx = (Math.sin(t / 55) * 9 + Math.sin(t / 21) * 3) * k * rr; py += Math.sin(t / 80) * 3 * k; }
+      px = 0;
+    }
+    s.dx = dx; s.x = s.bx + s.ox + px + dx; s.y = Math.min(H * .9, Math.max(H * .5, s.by + s.oy + py));
+    if (F.phase === "reeling" && !still) s.face = Math.sin(t / 110) > 0 ? 1 : -1;            // thrashing: it keeps turning
+    else if (Math.abs(s.x - s.lx) > .05) s.face = s.x < s.lx ? -1 : 1;                       // the sprite faces right: turn to where it swims
+    s.lx = s.x;
+    s.alpha = a;
+    return a > .01;
+  }
+  if (s.on && (s.mode === "leave" || s.mode === "catch")) {
+    const e = Math.max(0, t - s.t0) / (s.mode === "leave" ? 1000 : FISHER_HOLD.caught);
+    if (e >= 1) { shadowClear(); return false; }
+    if (s.mode === "leave") { const p = still ? e : 1 - (1 - e) * (1 - e); s.face = 1; s.x = s.fx + 230 * k * p; s.y = Math.min(H * .9, Math.max(H * .5, s.fy - 30 * k * p)); s.alpha = s.fa * (1 - e); }
+    else { const p = Math.min(1, e / .35), q = 1 - (1 - p) * (1 - p); s.x = s.fx + (s.dk.x - s.fx) * q; s.y = s.fy + (s.dk.y - s.fy) * q; s.alpha = e < .6 ? s.fa : s.fa * (1 - (e - .6) / .4); s.face = -1;
+      if (!still && e > .45) splash(s.x, s.y, Math.min(1, (e - .45) / .45), W); }
+    return s.alpha > .01;
+  }
+  if (s.on) shadowClear();
+  return false;
+}
+function shadowDraw(t, still) {
+  const s = SH, sp = shadowSprite(s.fish), u = s.size * s.k, w = 24 * u, h = 16 * u, rows = 8, sh = h / rows, ss = 16 / rows;
+  const ring = s.mode === "bite" || s.mode === "reel" || s.nib > .05;
+  if (ring && !still) {                                                                      // ripples over the shadow (they stay under the float and the line)
+    ctx.lineWidth = 2;
+    for (let j = 0; j < 2; j++) { const p = (t / (s.mode === "reel" ? 380 : 600) + j * .5) % 1, r = (6 + p * 30) * s.k;
+      ctx.strokeStyle = `rgba(255,255,255,${(.5 * (1 - p) * Math.min(1, s.alpha)).toFixed(2)})`; ctx.beginPath(); ctx.ellipse(s.x, s.y + 2, r, r / 3.2, 0, 0, 7); ctx.stroke(); }
+  }
+  ctx.save(); ctx.translate(Math.round(s.x), Math.round(s.y)); ctx.scale(s.face, 1);
+  ctx.globalAlpha = .18 * s.alpha; ctx.drawImage(sp, 0, 0, 24, 16, -w * .56, -h * .56, w * 1.12, h * 1.12);   // soft edge: a slightly bigger, fainter copy under the shadow
+  ctx.globalAlpha = .6 * s.alpha;
+  for (let r = 0; r < rows; r++) { const off = still ? 0 : Math.round(Math.sin(t / 260 + r * .9) * 1.5 * s.k); ctx.drawImage(sp, 0, r * ss, 24, ss, -w / 2 + off, -h / 2 + r * sh, w, sh + .5); }   // wavy slices = seen through water
+  ctx.restore();
+}
+// for the tests only (not used by the UI): where the shadow is, in canvas fractions, and its distances in canvas px
+function fishShadowState() {
+  if (!SH.on || !SH.fish) return null;
+  const bobX = SH.bx + SH.ox, bobY = SH.by + SH.oy;
+  return { fishId: SH.fish.id, x: SH.x / SH.W, y: SH.y / SH.H, phase: SH.mode, alpha: SH.alpha, face: SH.face, size: SH.size, dBob: Math.hypot(SH.x - bobX, SH.y - (bobY + 8 * SH.k)), dDock: Math.hypot(SH.x - SH.dk.x, SH.y - SH.dk.y), dDockC: Math.hypot(SH.x - SH.dx - SH.dk.x, SH.y - SH.dk.y),   // C = without the thrash wiggle
+   
+    bob: { x: bobX / SH.W, y: bobY / SH.H }, W: SH.W, H: SH.H, prog: SH.prog };
+}
+
 function drawScene(t) {
   const W = cv.width, H = cv.height, sc = SCENES[island], still = !!(REDUCED && REDUCED.matches), ft = still ? 0 : t;
   ctx.imageSmoothingEnabled = false;
@@ -344,6 +437,7 @@ function drawScene(t) {
     fxWater(ctx, W, H, ft, bg.info);
     if (sc.fx) sc.fx(ctx, W, H, ft, bg.info, bg.canvas);
   }
+  if (shadowStep(t, W, H, still)) shadowDraw(t, still);                                       // the fish under the water: below the line and the float
   // line + bobber
   if (F.phase !== "idle") {
     const L = F.land || BOB;                                                                   // where this cast lands (BOB for a medium cast)
@@ -352,14 +446,14 @@ function drawScene(t) {
       let k = Math.min(1, (t - F.castAt) / 500);
       if (sc.fisher) k = Math.max(0, (k - .4) / .6);                                      // the bobber flies after his wind-up
       bx = W * (ROD_TIP.x + (L.x - ROD_TIP.x) * k); by = H * (ROD_TIP.y + (L.y - ROD_TIP.y) * k) - Math.sin(k * Math.PI) * H * .25; }
-    else if (F.phase === "waiting") by += Math.sin(t / 300) * 3;
+    else if (F.phase === "waiting") by += Math.sin(t / 300) * 3 + SH.dip;                    // SH.dip = a nibble (0 without a shadow)
     else if (F.phase === "bite") by += 8 + Math.sin(t / 40) * 5;
-    else if (F.phase === "reeling") by += Math.sin(t / 60) * 6;
+    else if (F.phase === "reeling") { bx += SH.ox; by += Math.sin(t / 60) * 6 + SH.oy; }      // SH.ox / oy: the fish drags the float toward the dock
     const since = t - F.castAt - 500;                                                         // ms since the bobber landed
     ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 2;
     const tx = W * ROD_TIP.x, ty = H * ROD_TIP.y;                                          // a drawn rod moves, so the line sags between tip and bobber
     const ey = by - FLOAT_TOP;                                                                // the line ties on at the top of the float
-    const qx = sc.fisher ? (tx + bx) / 2 : W * .45, qy = sc.fisher ? (ty + ey) / 2 + (F.phase === "reeling" ? 0 : H * .06) : H * .45;
+    const qx = sc.fisher ? (tx + bx) / 2 : W * .45, qy = sc.fisher ? (ty + ey) / 2 + (F.phase === "reeling" ? (SH.on && !still ? Math.sin(t / 45) * 3 : 0) : H * .06) : H * .45;   // taut line that wobbles while a fish fights
     ctx.beginPath(); ctx.moveTo(tx, ty); ctx.quadraticCurveTo(qx, qy, bx, ey); ctx.stroke();
     if (F.phase === "waiting" && since > 0) {                                                // soft rings while waiting
       ctx.lineWidth = 2;
@@ -389,7 +483,7 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 // the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
 // (both use visibility, never display, so nothing below them moves)
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
@@ -579,7 +673,8 @@ function cast(power = POWER.mid, jitter = POWER.jitterQuick) {
   renderFishingHud();
   $("actBtn").disabled = true;
   later(() => { F.phase = "waiting"; sfx.splash(); }, 500);   // the bobber lands: splash
-  later(bite, 500 + 1000 + Math.random() * 4000);   // 1-5 s random wait
+  const wait = 1000 + Math.random() * 4000;           // 1-5 s random wait (unchanged); F.biteAt only tells the fish shadow when to arrive
+  F.biteAt = F.castAt + 500 + wait; later(bite, 500 + wait);
 }
 function bite() {
   F.phase = "bite"; sfx.bite(); vibrate(200);
@@ -617,13 +712,13 @@ function reel() {
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
-  musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
+  shadowLeave(); musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; fisherEvent("escaped"); renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
 // reeled = caught on the fishing screen: the fisherman lifts the rod for a moment before the Result screen
 function caught(reeled) {
   musicDuck(false);
-  const f = F.fish; clearTimers(); F = { phase: "idle" }; showMeter(false);
+  const f = F.fish; shadowCatch(reeled && current === "fishing"); clearTimers(); F = { phase: "idle" }; showMeter(false);
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);
   const mid = (f.min + f.max) / 2;
