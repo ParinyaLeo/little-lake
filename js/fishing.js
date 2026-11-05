@@ -566,7 +566,7 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { holdRelease(); shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { holdEnd(); shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 // the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
 // (both use visibility, never display, so nothing below them moves)
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
@@ -711,6 +711,7 @@ window.addEventListener("blur", () => { chargeReset(); holdRelease(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) { chargeReset(); holdRelease(); } });
 function chargeStart(src, pid = -1) {
   if (CH.on || F.phase !== "idle" || current !== "fishing" || $("actBtn").disabled || document.querySelector(".banner.show")) return;
+  $("meter").classList.remove("hold");
   Object.assign(CH, { on: true, src, pid, t0: performance.now(), shown: false });
 }
 // power 0..1: the meter fills in POWER.fill ms after the quick-press time, then ping-pongs; with reduced motion it fills once and holds at max
@@ -796,10 +797,11 @@ const HOLD = { on: false, src: "", pid: -1 };
 let HOLD_CW = 300, HOLD_PF = null, HOLD_PQ = -1;
 function holdSet(on, src, pid) { if (on) { if (F.phase !== "reeling" || F.mode !== "hold") return; HOLD.on = true; HOLD.src = src || ""; HOLD.pid = pid === undefined ? -1 : pid; } else { HOLD.on = false; HOLD.src = ""; HOLD.pid = -1; } }
 function holdRelease() { holdSet(false); }
+function holdEnd() { holdSet(false); $("meter").classList.remove("hold"); }   // the fight is over: the fish icon belongs to the fight only, never to the power bar
 function holdPulse() { holdSet(true, "pulse"); later(() => { if (HOLD.src === "pulse") holdRelease(); }, 170); }
 function hookHold() {
   const hp = holdParams(F.fish.rarity), r = rod(), calm = !!(REDUCED && REDUCED.matches);
-  const cfg = { personality: FIGHT_PERS[F.fish.rarity] || "steady", speed: hp.speed * (S.mastery.frost ? .8 : 1) * r.speed, zoneW: hp.zone * r.zone, hearts: allowedMiss() };   // Steady Hands, Lucky Rod, Precision Rod, Master's Charm
+  const cfg = { rarity: F.fish.rarity, personality: FIGHT_PERS[F.fish.rarity] || "steady", speed: hp.speed * (S.mastery.frost ? .8 : 1) * r.speed, zoneW: hp.zone * r.zone, hearts: allowedMiss() };   // Steady Hands, Lucky Rod, Precision Rod, Master's Charm
   Object.assign(F, { phase: "reeling", mode: "hold", fight: fightInit(cfg, FIGHT_RNG), pos: .6, zoneX: .3, dir: 1, hits: 0, misses: 0, lastT: 0, seenSlips: 0, wasIn: false, speed: cfg.speed, zoneW: cfg.zoneW });
   holdRelease(); HOLD_PQ = -1;
   const m = $("meter"), z = $("zone"); m.classList.add("hold"); z.style.left = "0"; z.style.width = cfg.zoneW * 100 + "%"; z.style.transform = "translateX(0)";
@@ -837,13 +839,13 @@ function reel() {
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
-  holdRelease(); shadowLeave(); musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
+  holdEnd(); shadowLeave(); musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; fisherEvent("escaped"); renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
 // reeled = caught on the fishing screen: the fisherman lifts the rod for a moment before the Result screen
 function caught(reeled) {
   musicDuck(false);
-  holdRelease(); const f = F.fish; shadowCatch(reeled && current === "fishing"); clearTimers(); F = { phase: "idle" }; showMeter(false);
+  holdEnd(); const f = F.fish; shadowCatch(reeled && current === "fishing"); clearTimers(); F = { phase: "idle" }; showMeter(false);
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);
   const mid = (f.min + f.max) / 2;

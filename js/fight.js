@@ -10,8 +10,8 @@ const FIGHT_PERS = { Common: "steady", Rare: "dash", Epic: "zigzag", Legendary: 
 // physics and rules of the Hold Fight. Track = 0..1. The player's zone accelerates right while the hold is pressed and back left when it is released (a little gravity), drag keeps it
 // controllable, the walls bounce it softly. The catch bar fills while the fish is inside the zone and drains (more slowly) while it is outside.
 const HF = {
-  fill: .27, drain: .15,                            // catch progress per second: inside the zone / outside (after the first contact)
-  start: .22, restore: .3,                           // progress at the start; progress after a slip (the bar reached 0 = one heart lost)
+  fill: .27,                                         // catch progress per second while the fish is inside the zone (the same for every rarity)
+  start: .22,                                        // progress at the start
   accUp: 3.4, accDown: 3, drag: 2, bounce: .35, // zone acceleration while holding / released (track lengths per second squared), drag per second, wall bounce
   steadyK: .9, dashK: 2, dashRest: .2, zigK: .45, zigMin: .8, zigVar: .6, leapK: 3.2, leapWander: .55,   // fish speed factors by personality (x the fish's speed)
 };
@@ -21,11 +21,15 @@ function holdParams(rarity) {
   const d = DIFF[rarity] || DIFF.Common;
   return { speed: .35 + (d.speed - .55) / (1.35 - .55) * .55, zone: .14 + (d.zone - .11) / (.26 - .11) * .08 };
 }
+// the catch bar drains this fast (per second) while the fish is outside the zone, by rarity (after the first contact); the secret-island Lake Guardian uses Mythical
+const DRAIN = { Common: .10, Rare: .15, Epic: .185, Legendary: .30, Mythical: .40 };   // tuned with the bot harness (see docs/bug_log.md, Playtest 2 parts 4+5)
+// progress after the Nth lost heart (the bar reached 0): 30%, 24%, 18%, 12%, then 10% for the 5th and later
+const RESTORE = [.30, .24, .18, .12, .10];
 const FISH_MIN = .26;                              // the fish never swims into the first quarter of the track (where the zone rests with no hold), so doing nothing can never win
 const fclamp = (v, a, b) => v < a ? a : v > b ? b : v;
 // cfg = { personality, speed (fish, track lengths/s), zoneW, hearts (misses allowed: allowedMiss()), limit }
 function fightInit(cfg, rng) {
-  const c = Object.assign({ personality: "steady", speed: .35, zoneW: .22, hearts: 1, limit: FIGHT_LIMIT }, cfg);
+  const c = Object.assign({ rarity: "Common", personality: "steady", speed: .35, zoneW: .22, hearts: 1, limit: FIGHT_LIMIT }, cfg);
   return { cfg: c, t: 0, fx: .6, tx: .6, nextAt: 1, dir: rng() < .5 ? -1 : 1, dashing: false, leapAt: -1, leapN: 0, zx: .3, zv: 0, progress: HF.start, started: false,
     misses: 0, slips: 0, slipAt: -1, inside: false, result: null, reason: "" };
 }
@@ -65,10 +69,10 @@ function stepFight(st, dt, holding, rng) {
   if (st.zx < 0) { st.zx = 0; st.zv = Math.abs(st.zv) * HF.bounce; } else if (st.zx > max) { st.zx = max; st.zv = -Math.abs(st.zv) * HF.bounce; }
   st.inside = st.fx >= st.zx && st.fx <= st.zx + c.zoneW;
   if (st.inside) { st.progress += HF.fill * dt; st.started = true; }
-  else if (st.started) st.progress -= HF.drain * dt;
+  else if (st.started) st.progress -= (DRAIN[c.rarity] || DRAIN.Common) * dt;
   if (st.progress >= 1) { st.progress = 1; st.result = "caught"; return st; }
   if (st.started && st.progress <= 0) {             // the bar ran empty: it slips, one heart is lost (a slip with no hearts left = the fish escapes)
-    st.misses++; st.slips++; st.slipAt = st.t; st.progress = HF.restore;
+    st.misses++; st.slips++; st.slipAt = st.t; st.progress = RESTORE[Math.min(st.misses, RESTORE.length) - 1];
     if (st.misses > c.hearts) { st.result = "escaped"; st.reason = "slips"; return st; }
   }
   if (st.t >= c.limit) { st.result = "escaped"; st.reason = "time"; }

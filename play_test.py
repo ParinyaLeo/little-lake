@@ -3019,10 +3019,17 @@ with sync_playwright() as p:
         const a = mk(); a.fx = .5; a.zx = .4; a.zv = 0; const p0 = a.progress; for (let i = 0; i < 6; i++) stepFight(a, 1 / 60, true, rng);
         const b = mk(); b.fx = .8; b.zx = 0; b.started = true; const q0 = b.progress; for (let i = 0; i < 6; i++) stepFight(b, 1 / 60, false, rng);
         const c = mk(); c.fx = .8; c.zx = 0; const r0 = c.progress; for (let i = 0; i < 6; i++) stepFight(c, 1 / 60, false, rng);   // not started yet: nothing drains
-        return { fill: (a.progress - p0) / (6 / 60), drain: (q0 - b.progress) / (6 / 60), idle: c.progress - r0, HF }; }""")
+        return { fill: (a.progress - p0) / (6 / 60), drain: (q0 - b.progress) / (6 / 60), idle: c.progress - r0, HF, dr: DRAIN }; }""")
     check("the catch bar fills while the fish is inside the zone and drains, more slowly, while it is outside (nothing drains before the first contact)",
-          abs(pr["fill"] - pr["HF"]["fill"]) < .01 and abs(pr["drain"] - pr["HF"]["drain"]) < .01 and pr["drain"] < pr["fill"] and pr["idle"] == 0, f"fill {pr['fill']:.3f}/s drain {pr['drain']:.3f}/s")
+          abs(pr["fill"] - pr["HF"]["fill"]) < .01 and abs(pr["drain"] - pr["dr"]["Common"]) < .01 and pr["drain"] < pr["fill"] and pr["idle"] == 0, f"fill {pr['fill']:.3f}/s drain {pr['drain']:.3f}/s")
     lim = hp.evaluate("""() => { const rng = seededRng(5), st = fightInit({ personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng); st.fx = .6; let n = 0; while (!st.result && n < 5000) { stepFight(st, 1 / 60, false, rng); n++; } return { result: st.result, reason: st.reason, t: st.t }; }""")
+    dr = hp.evaluate("""() => { const out = {}; for (const r of ['Common', 'Rare', 'Epic', 'Legendary', 'Mythical']) { const rng = seededRng(1), b = fightInit({ rarity: r, personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng);
+        b.fx = .8; b.zx = 0; b.started = true; const q0 = b.progress; for (let i = 0; i < 6; i++) stepFight(b, 1 / 60, false, rng); out[r] = (q0 - b.progress) / (6 / 60); } return out; }""")
+    want = {"Common": .10, "Rare": .15, "Epic": .185, "Legendary": .30, "Mythical": .40}
+    check("the catch bar drains at the DRAIN table value of each rarity (Common .10 ... Mythical .40, fill stays .27 for all)", all(abs(dr[k] - v) < .01 for k, v in want.items()) and pr["HF"]["fill"] == .27, str(dr))
+    rs = hp.evaluate("""() => { const rng = seededRng(5), st = fightInit({ rarity: 'Rare', personality: 'steady', speed: 0, zoneW: .2, hearts: 9 }, rng); st.fx = .8; st.zx = 0; st.started = true; const seq = [];
+        for (let k = 0; k < 7; k++) { st.progress = .001; stepFight(st, 1 / 60, false, rng); seq.push(+st.progress.toFixed(2)); } return { seq, table: RESTORE }; }""")
+    check("the restore after each lost heart shrinks (the RESTORE table; the 5th and later all use the last value)", rs["seq"] == [.3, .24, .18, .12, .1, .1, .1] and rs["seq"] == sorted(rs["seq"], reverse=True), str(rs))
     check("the 35 second time limit ends the fight as an escape", lim["result"] == "escaped" and lim["reason"] == "time" and 34.9 < lim["t"] < 35.1, str(lim))
     sl = hp.evaluate("""() => { const rng = seededRng(5), st = fightInit({ personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng); st.fx = .8; st.zx = 0; st.started = true; st.progress = .001; const log = [];
         stepFight(st, 1 / 60, false, rng); log.push([st.misses, +st.progress.toFixed(2), st.result]); st.progress = .001; stepFight(st, 1 / 60, false, rng); log.push([st.misses, st.result, st.reason]); return log; }""")
@@ -3043,7 +3050,7 @@ with sync_playwright() as p:
     check("rarer fish are faster and the zone is narrower: Common .35 / .22 ... Legendary .90 / .14", all(prm[i][1] < prm[i + 1][1] and prm[i][2] > prm[i + 1][2] for i in range(4)) and abs(prm[0][1] - .35) < .01 and abs(prm[0][2] - .22) < .01 and abs(prm[3][1] - .9) < .01 and abs(prm[3][2] - .14) < .01, str([(r, round(s, 2), round(z, 3)) for r, s, z in prm]))
     # --- balance bots (seeded, no real time): good = reacts every 120 ms, bad = every 400 ms, idle = never holds ---
     BOT = """([rarity, bot, n, rodId, frost, forest]) => { const rod = RODS[rodId], hp = holdParams(rarity); let w = 0, tw = 0, tl = 0, sl = 0;
-        for (let i = 0; i < n; i++) { const rng = seededRng(9000 + i), st = fightInit({ personality: FIGHT_PERS[rarity], speed: hp.speed * (frost ? .8 : 1) * rod.speed, zoneW: hp.zone * rod.zone, hearts: rod.miss + (forest ? 1 : 0) }, rng);
+        for (let i = 0; i < n; i++) { const rng = seededRng(9000 + i), st = fightInit({ personality: FIGHT_PERS[rarity], speed: hp.speed * (frost ? .8 : 1) * rod.speed, zoneW: hp.zone * rod.zone, hearts: rod.miss + (forest ? 1 : 0), rarity }, rng);
           let holding = false, next = 0; while (!st.result) { if (bot !== 'idle' && st.t >= next) { next = st.t + (bot === 'good' ? .12 : .4); holding = st.fx > st.zx + st.cfg.zoneW / 2; } stepFight(st, 1 / 60, bot === 'idle' ? false : holding, rng); }
           if (st.result === 'caught') { w++; tw += st.t; } else tl += st.t; sl += st.slips; }
         return { win: w / n * 100, tWin: w ? tw / w : 0, tLoss: n - w ? tl / (n - w) : 0, slips: sl / n }; }"""
@@ -3051,20 +3058,45 @@ with sync_playwright() as p:
     for rar in ("Common", "Rare", "Epic", "Legendary", "Mythical"):
         for bot in ("good", "bad", "idle"): bots[(rar, bot)] = hp.evaluate(BOT, [rar, bot, N, "bamboo", False, False])
     luck = {r: hp.evaluate(BOT, ["Legendary", "good", N, r, False, False]) for r in ("bamboo", "lucky", "sturdy", "precision")}
+    luckE = {r: hp.evaluate(BOT, ["Epic", "good", N, r, False, False]) for r in ("bamboo", "lucky", "precision")}
     W = lambda r, b: bots[(r, b)]["win"]
     summary = "good " + "/".join(f"{W(r, 'good'):.0f}" for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")) + "% (C/R/E/L/M), bad " + "/".join(f"{W(r, 'bad'):.0f}" for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")) + "%, idle " + "/".join(f"{W(r, 'idle'):.0f}" for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")) + "%"
-    print("BOTS", summary, "| win time s:", {r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}, "| Legendary good bot by rod:", {k: round(v["win"], 1) for k, v in luck.items()})
-    check("balance, good bot (120 ms) on Bamboo: Common >= 95%, Rare >= 85%, Epic >= 70%, Legendary >= 50%", W("Common", "good") >= 95 and W("Rare", "good") >= 85 and W("Epic", "good") >= 70 and W("Legendary", "good") >= 50, summary)
-    check("balance, bad bot (400 ms) on Bamboo: Common between 20% and 80%, Legendary below 40%", 20 <= W("Common", "bad") <= 80 and W("Legendary", "bad") < 40, f"{W('Common', 'bad'):.1f}% / {W('Legendary', 'bad'):.1f}%")
+    print("BOTS", summary, "| win time s:", {r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}, "| Legendary good bot by rod:", {k: round(v["win"], 1) for k, v in luck.items()}, "| Epic by rod:", {k: round(v["win"], 1) for k, v in luckE.items()})
+    check("balance, good bot (120 ms) on Bamboo: Common >= 95%, Rare >= 80%, Epic >= 55%, Legendary 22-45%, Mythical 10-30% and below Legendary", W("Common", "good") >= 95 and W("Rare", "good") >= 80 and W("Epic", "good") >= 55 and 22 <= W("Legendary", "good") <= 45 and 10 <= W("Mythical", "good") <= 30 and W("Mythical", "good") < W("Legendary", "good"), summary)
+    check("balance, bad bot (400 ms) on Bamboo: Rare, Epic, Legendary and Mythical stay low (below 30%); Common stays forgiving", all(W(r, "bad") < 30 for r in ("Rare", "Epic", "Legendary", "Mythical")) and W("Common", "bad") > W("Rare", "bad"), f"{W('Common', 'bad'):.1f}% / {W('Legendary', 'bad'):.1f}%")
     check("balance, idle bot never wins (any rarity)", all(W(r, "idle") == 0 for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")), summary)
-    check("balance: a good bot with the Lucky Rod does at least as well as with Bamboo on Legendary (and Precision much better)", luck["lucky"]["win"] >= luck["bamboo"]["win"] and luck["precision"]["win"] > luck["bamboo"]["win"] + 15, str({k: round(v["win"], 1) for k, v in luck.items()}))
-    check("balance: a typical fight (good bot, wins) lasts 6 to 25 seconds on every rarity", all(6 <= bots[(r, "good")]["tWin"] <= 25 for r in ("Common", "Rare", "Epic", "Legendary")), str({r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}))
+    check("balance: Lucky Rod (5 hearts) beats Bamboo by 10+ points on Epic and is not worse on Legendary; Precision is clearly easier on Epic and Legendary", luckE["lucky"]["win"] >= luckE["bamboo"]["win"] + 10 and luck["lucky"]["win"] >= luck["bamboo"]["win"] - 1 and luckE["precision"]["win"] > luckE["bamboo"]["win"] + 20 and luck["precision"]["win"] > luck["bamboo"]["win"] + 15, str({"E": {k: round(v["win"], 1) for k, v in luckE.items()}, "L": {k: round(v["win"], 1) for k, v in luck.items()}}))
+    check("balance: a typical fight (good bot, wins) lasts 5 to 25 seconds on every rarity", all(5 <= bots[(r, "good")]["tWin"] <= 25 for r in ("Common", "Rare", "Epic", "Legendary")), str({r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}))
     # --- the fight on screen: Hold Fight layout, inputs (button, Space, scene), releases ---
     fh_hook(hp, FIGHT_IDS["Common"])
     lay = hp.evaluate("""() => ({ mode: F.mode, hold: document.getElementById('meter').classList.contains('hold'), icon: getComputedStyle(document.getElementById('fishIcon')).display, marker: getComputedStyle(document.getElementById('marker')).display,
         bar: !!document.getElementById('pbar'), dotsText: document.getElementById('dots').textContent, hearts: document.querySelectorAll('#hearts .ico').length, hr: allowedMiss(), cfg: F.fight.cfg.hearts, pers: F.fight.cfg.personality })""")
     check("Hold Fight layout: fish icon and catch bar shown, marker and HIT dots hidden, one heart per allowed miss, personality steady for a Common fish",
           lay["mode"] == "hold" and lay["hold"] and lay["icon"] == "block" and lay["marker"] == "none" and lay["bar"] and "HIT" not in lay["dotsText"] and lay["hearts"] == lay["hr"] == lay["cfg"] and lay["pers"] == "steady", str(lay))
+    # --- the fish icon belongs to the fight only: never on the power bar (after a finished fight, after a cancelled fight) ---
+    ICON = "() => { const m = document.getElementById('meter'); return { hold: m.classList.contains('hold'), charging: m.classList.contains('charging'), icon: getComputedStyle(document.getElementById('fishIcon')).display, phase: F.phase }; }"
+    def charge_state(pg_):
+        r = pg_.evaluate("(() => { const r = document.getElementById('actBtn').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+        pg_.mouse.move(r[0], r[1]); pg_.mouse.down(); pg_.wait_for_timeout(600); s = pg_.evaluate(ICON); pg_.evaluate("() => chargeReset(true)"); pg_.mouse.up(); pg_.wait_for_timeout(100); return s
+    ic_reel = hp.evaluate(ICON)
+    check("the fish icon is visible while reeling a Hold Fight", ic_reel["phase"] == "reeling" and ic_reel["hold"] and ic_reel["icon"] == "block", str(ic_reel))
+    fh_end(hp); hp.wait_for_timeout(800)
+    ic_end = hp.evaluate(ICON)
+    check("after the fight ends the meter loses its hold class and the icon is hidden", not ic_end["hold"] and ic_end["icon"] == "none", str(ic_end))
+    hp.wait_for_function("F.phase === 'idle' && !document.getElementById('actBtn').disabled", timeout=5000)
+    ic_ch = charge_state(hp)
+    check("the power bar after a finished fight shows no fish icon (charging, computed display none)", ic_ch["charging"] and not ic_ch["hold"] and ic_ch["icon"] == "none", str(ic_ch))
+    hp.wait_for_timeout(1500)
+    fh_hook(hp, FIGHT_IDS["Common"]); hp.evaluate("() => { stopFishing(); renderFishingHud(); }"); hp.wait_for_timeout(300)
+    ic_stop = hp.evaluate(ICON)
+    ic_ch2 = charge_state(hp)
+    check("a cancelled fight (stopFishing) also leaves no icon, and the power bar after it is clean", not ic_stop["hold"] and ic_stop["icon"] == "none" and ic_ch2["charging"] and ic_ch2["icon"] == "none", str([ic_stop, ic_ch2]))
+    hp.evaluate("() => { chargeReset(true); }"); hp.wait_for_timeout(1500)
+    hp.evaluate("() => { document.getElementById('meter').classList.add('hold'); }")
+    ic_cs = charge_state(hp)
+    check("starting a charge removes a stale hold class, and CSS hides the icon while charging", ic_cs["charging"] and not ic_cs["hold"] and ic_cs["icon"] == "none", str(ic_cs))
+    hp.wait_for_timeout(1500)
+    fh_hook(hp, FIGHT_IDS["Common"])
     HS = "() => [HOLD.on, HOLD.src, F.fight.zx, F.fight.zv]"
     def zone_dir(pg_, label, press, release):
         pg_.evaluate("() => { F.fight.zx = .3; F.fight.zv = 0; }"); pg_.wait_for_timeout(30); z0 = pg_.evaluate("F.fight.zx"); press(); pg_.wait_for_timeout(350); on = pg_.evaluate(HS); z1 = pg_.evaluate("F.fight.zx")
@@ -3192,6 +3224,12 @@ with sync_playwright() as p:
             else: shp.wait_for_timeout(2200)
             shp.screenshot(path=str(SHOTS / f"107_holdfight_{rar.lower()}_{vw}x{vh}.png"))
             shp.evaluate("() => { clearInterval(window.__bot); }"); fh_end(shp)
+        fh_hook(shp, FIGHT_IDS["Common"]); shp.wait_for_timeout(400)
+        shp.screenshot(path=str(SHOTS / f"108_reeling_{vw}x{vh}.png")); fh_end(shp)
+        shp.wait_for_function("F.phase === 'idle' && !document.getElementById('actBtn').disabled", timeout=5000)
+        r_ = shp.evaluate("(() => { const r = document.getElementById('actBtn').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+        shp.mouse.move(r_[0], r_[1]); shp.mouse.down(); shp.wait_for_timeout(600)
+        shp.screenshot(path=str(SHOTS / f"109_powerbar_after_fight_{vw}x{vh}.png")); shp.evaluate("() => chargeReset(true)"); shp.mouse.up()
         shp.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
