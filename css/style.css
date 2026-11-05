@@ -499,13 +499,7 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
 #fishing .actions { margin-top: 6px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #fishing .actions .btn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-@media (prefers-reduced-motion: reduce) {
-  .logo, .screen.active, #titleScreen.active, .title-shimmer,
-  .portrait::before, .sparkles::before, .sparkles::after, .record, .zone::after,
-  #result.active .portrait canvas, #result.active .splash::after, .bump { animation: none; }
-  .btn, .bd, .bd-shade::after { transition: none; }
-  .bang { animation: pop .35s ease-out; }
-}
+/* Playtest 2, part 6: no @media (prefers-reduced-motion) block on purpose; animations and transitions always run (many PCs report "reduce" by default). The old rules are in docs/bug_log.md. */
 
 @media (max-width: 700px) {
   .scene { aspect-ratio: 3 / 2; }

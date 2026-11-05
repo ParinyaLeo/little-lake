@@ -292,10 +292,11 @@ with sync_playwright() as p:
 
     rm = b.new_page(viewport={"width": 360, "height": 780}, reduced_motion="reduce")
     rm.goto(URL); rm.wait_for_timeout(300)
-    check("prefers-reduced-motion stops the background animations",
-          rm.evaluate("getComputedStyle(document.querySelector('.title-shimmer')).animationName === 'none'")
-          and rm.evaluate("getComputedStyle(document.querySelector('#backdrop .bd')).transitionDuration") == "0s"
-          and rm.evaluate("getComputedStyle(document.querySelector('.screen.active')).animationName") == "none")
+    check("Playtest 2, part 6: prefers-reduced-motion does NOT stop the background animations (shimmer, backdrop crossfade, screen fade still run)",
+          rm.evaluate("getComputedStyle(document.querySelector('.title-shimmer')).animationName !== 'none'")
+          and rm.evaluate("getComputedStyle(document.querySelector('#backdrop .bd')).transitionDuration") != "0s"
+          and rm.evaluate("getComputedStyle(document.querySelector('.screen.active')).animationName") != "none"
+          and rm.evaluate("motionReduced()") is False and rm.evaluate("typeof REDUCED") == "undefined")
 
     # ---------- playtest fixes: missing fish, Tackle Box, bait toggle, hearts, shop effects (see docs/bug_log.md) ----------
     qc = b.new_context(viewport={"width": 1280, "height": 800}); q = qc.new_page()   # own context so a 2nd tab can share its storage
@@ -747,9 +748,9 @@ with sync_playwright() as p:
     wait_still = []
     for _ in range(4): wait_still.append(rmf.evaluate("[fisherPose(), Math.round(fisherTip().x), Math.round(fisherTip().y)]")); rmf.wait_for_timeout(250)
     rmf.evaluate("() => stopFishing()")
-    check("prefers-reduced-motion: one still fisherman pose per phase",
-          len({tuple(x) for x in still}) == 1 and still[0][0] == "idle" and len({tuple(x) for x in wait_still}) == 1 and wait_still[0][0] == "waiting",
-          f"{still[0]} {wait_still[0]}")
+    check("prefers-reduced-motion emulated: the fisherman still animates (idle breathing and the waiting dip move the rod tip, as without the setting)",
+          still[0][0] == "idle" and len({tuple(x) for x in still}) > 1 and wait_still[0][0] == "waiting" and len({tuple(x) for x in wait_still}) > 1,
+          f"{still[:3]} {wait_still[:3]}")
     rmf.close()
 
     # ---------- island pictures (tools/make_backgrounds.py) on the fishing screen and the Town Map ----------
@@ -1216,7 +1217,7 @@ with sync_playwright() as p:
             check("old pixel clouds and water dashes are gone", d.evaluate("!document.querySelector('.bgfx, .clouds, .water')"))
         dc.close()
     rm2 = b.new_page(viewport={"width": 360, "height": 640}, reduced_motion="reduce"); rm2.goto(URL); rm2.wait_for_timeout(200)
-    check("prefers-reduced-motion: no backdrop crossfade", rm2.evaluate("getComputedStyle(document.querySelector('.bd')).transitionDuration") == "0s")
+    check("prefers-reduced-motion emulated: the backdrop still crossfades", rm2.evaluate("getComputedStyle(document.querySelector('.bd')).transitionDuration") != "0s")
     rm2.close()
     # a backdrop picture that can't load: its gradient stays, no JavaScript errors
     fc = b.new_context(viewport={"width": 1366, "height": 768}); fpg = fc.new_page(); f_errs = []
@@ -1764,8 +1765,7 @@ with sync_playwright() as p:
         res = []
         for ms in (1450, 2400):
             cast_reset(rq); hold_btn(rq, ms); rq.mouse.up(); rq.wait_for_timeout(40); res.append(rq.evaluate("F.land.x"))
-        if reduced: check("reduced motion: the power meter fills once and holds at max (2.4 s lands as far as 1.45 s, no ping-pong)", abs(res[0] - res[1]) <= .025 and res[1] > .65, str(res))
-        else: check("normal motion: the power meter ping-pongs (2.4 s lands nearer than 1.45 s)", res[1] < res[0] - .04, str(res))
+        check(("reduced-motion emulated" if reduced else "normal motion") + ": the power meter ping-pongs (2.4 s lands nearer than 1.45 s), the setting is ignored", res[1] < res[0] - .04, str(res))
         rc2.close()
     # ---------- Playtest 1, parts 6-8: iOS long-press selection, quick casts vary, hold-to-charge hint ----------
     for vw, vh in [(1536, 730), (360, 640)]:
@@ -2800,14 +2800,14 @@ with sync_playwright() as p:
     X0, Y0, X1, Y1 = sd[0]["x"] * 900, sd[0]["y"] * sd[0]["H"], sd[-1]["x"] * 900, sd[-1]["y"] * sd[-1]["H"]
     ln = math.hypot(X1 - X0, Y1 - Y0) or 1
     dev = max(abs((X1 - X0) * (s["y"] * s["H"] - Y0) - (Y1 - Y0) * (s["x"] * 900 - X0)) / ln for s in sd)
-    check("reduced motion: while waiting there is no circling or nibbling (one straight approach with a fade-in)",
-          {s["phase"] for s in sd} == {"approach"} and dev < 2 and sd[0]["alpha"] < .5 and sd[-1]["alpha"] == 1, f"phases={ {s['phase'] for s in sd} } deviation={dev:.2f}px alpha {sd[0]['alpha']:.2f}->{sd[-1]['alpha']:.2f}")
+    check("reduced-motion emulated: while waiting the shadow still circles and nibbles (more than the straight approach, off the straight line)",
+          len({s["phase"] for s in sd}) > 1 and dev > 2, f"phases={ {s['phase'] for s in sd} } deviation={dev:.2f}px")
     rms.click("#actBtn"); rms.wait_for_timeout(500)
     xs = []
     for _ in range(10): xs.append(sh_now(rms)["x"] * 900); rms.wait_for_timeout(30)
-    check("reduced motion: the shadow does not thrash while reeling (it holds still)", max(xs) - min(xs) < 1.0, f"spread {max(xs) - min(xs):.2f}px")
+    check("reduced-motion emulated: the shadow still thrashes while reeling", max(xs) - min(xs) > 2, f"spread {max(xs) - min(xs):.2f}px")
     sh_miss(rms); rms.wait_for_timeout(100); sh_miss(rms); rms.wait_for_timeout(100); r1 = sh_now(rms); rms.wait_for_timeout(400); r2 = sh_now(rms)
-    check("reduced motion: on escape it moves in a straight line away and fades out", bool(r1 and r2) and r1["phase"] == "leave" and r2["x"] > r1["x"] and r2["alpha"] < r1["alpha"], f"{r1 and r1['phase']}")
+    check("reduced-motion emulated: on escape it still swims away and fades out", bool(r1 and r2) and r1["phase"] == "leave" and r2["x"] > r1["x"] and r2["alpha"] < r1["alpha"], f"{r1 and r1['phase']}")
     rms.close()
     # --- screenshots (shadow approaching, bite, mid-reel) on Harbor and Frost at 1536x730 and 360x640 ---
     for vw, vh in [(1536, 730), (360, 640)]:
@@ -2984,10 +2984,11 @@ with sync_playwright() as p:
     xs = []
     for _ in range(12): xs.append(rp.evaluate("SH.dx") ); rp.wait_for_timeout(40)
     r_leap = []; r_part = []
-    for _ in range(8): r_leap.append(fh_state(rp)["leaping"]); r_part.append(fh_state(rp)["particles"]); rp.wait_for_timeout(60)
+    fh_hit(rp)                                                          # a fresh hit: the leap and the splash particles start right now
+    for _ in range(8): r_leap.append(fh_state(rp)["leaping"]); r_part.append(fh_state(rp)["particles"]); rp.wait_for_timeout(40)
     rp.wait_for_timeout(1200); r_tk = rp.evaluate("window.__tk.length"); r_line = fh_state(rp)
-    check("reduced motion: no vibration on hit or miss, no shake / dash / zigzag / leap / particles", r_vib == [] and all(x == 0 for x in xs) and not any(r_leap) and not any(r_part), f"vib={r_vib} dx={set(xs)} leap={any(r_leap)} particles={max(r_part)}")
-    check("reduced motion: the line colour change (danger) and the reel tick sounds stay", r_line is not None and r_line["danger"] and r_line["red"] > .9 and r_tk >= 4, f"red={r_line and r_line['red']} ticks={r_tk}")
+    check("reduced-motion emulated: vibration, shake / dash / leap and particles all still happen", len(r_vib) >= 1 and any(x != 0 for x in xs) and (any(r_leap) or max(r_part) > 0), f"vib={r_vib} dx={set(xs)} leap={any(r_leap)} particles={max(r_part)}")
+    check("reduced-motion emulated: the line colour change (danger) and the reel tick sounds stay", r_line is not None and r_line["danger"] and r_line["red"] > .9 and r_tk >= 4, f"red={r_line and r_line['red']} ticks={r_tk}")
     rp.close()
     # --- screenshots: Common mid-reel, a Legendary leap, the red danger line (1536x730 and 360x640) ---
     for vw, vh in [(1536, 730), (360, 640)]:
@@ -3137,8 +3138,8 @@ with sync_playwright() as p:
     hp.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision', 'lucky']; S.rodEq = 'lucky'; S.mastery = {}; save(); }")
     leaps = {}
     for rar in ("Common", "Legendary"):
-        fh_hook(hp, FIGHT_IDS[rar]); hp.evaluate("() => { window.__bot = setInterval(() => { const s = F.fight; if (s) holdSet(s.fx > s.zx + s.cfg.zoneW / 2, 'bot'); }, 120); window.__lv = []; window.__lr = true; const f = () => { const q = fightState(); if (q) window.__lv.push([q.leaping, q.lx, q.ly]); if (window.__lr) requestAnimationFrame(f); }; f(); }")
-        hp.wait_for_timeout(4500); leaps[rar] = hp.evaluate("() => { window.__lr = false; clearInterval(window.__bot); return [F.fight ? F.fight.leapN : -1, window.__lv.filter(x => x[0]).length, window.__lv.filter(x => x[0])]; }"); fh_end(hp)
+        fh_hook(hp, FIGHT_IDS[rar]); hp.evaluate("() => { window.__bot = setInterval(() => { const s = F.fight; if (s) holdSet(s.fx > s.zx + s.cfg.zoneW / 2, 'bot'); }, 120); window.__lv = []; window.__ln = 0; window.__lr = true; const f = () => { const q = fightState(); if (q) window.__lv.push([q.leaping, q.lx, q.ly]); if (F.fight) window.__ln = Math.max(window.__ln, F.fight.leapN); if (window.__lr) requestAnimationFrame(f); }; f(); }")
+        hp.wait_for_timeout(4500); leaps[rar] = hp.evaluate("() => { window.__lr = false; clearInterval(window.__bot); return [window.__ln, window.__lv.filter(x => x[0]).length, window.__lv.filter(x => x[0])]; }"); fh_end(hp)
     check("Hold Fight personalities: the leap (fish out of the water) happens only for Legendary / Mythical, never for Common", leaps["Common"][0] == 0 and leaps["Common"][1] == 0 and leaps["Legendary"][0] >= 1 and leaps["Legendary"][1] > 3, f"Common {leaps['Common'][:2]} Legendary {leaps['Legendary'][:2]}")
     check("the leap stays in the water area on Harbor", all(.3 <= x[1] <= .92 and .45 <= x[2] <= .9 for x in leaps["Legendary"][2]), str([(round(x[1], 2), round(x[2], 2)) for x in leaps["Legendary"][2][:3]]))
     fr_id = hp.evaluate("FISH.find(f => f.island === 'frost' && f.rarity === 'Legendary').id")
@@ -3210,8 +3211,8 @@ with sync_playwright() as p:
     fh_hook(rmh, FIGHT_IDS["Legendary"]); rmh.evaluate("() => { const s = F.fight; s.cfg.speed = 0; s.fx = .7; s.zx = .2; s.zv = 0; s.progress = .5; s.started = true; }")
     rmh.keyboard.down("Space"); rmh.wait_for_timeout(450); z_up = rmh.evaluate("F.fight.zx"); st_r = fh_state(rmh); rmh.keyboard.up("Space"); rmh.wait_for_timeout(1100); z_dn = rmh.evaluate("F.fight.zx")
     jit = [rmh.evaluate("[FIGHT.jx, FIGHT.dy, FIGHT.leapP, partCount()]") for _ in range(8) if not rmh.wait_for_timeout(40)]
-    check("reduced motion: the Hold Fight still plays (hold lifts the zone, release drops it, the catch bar moves) but nothing shakes, leaps or splashes",
-          z_up > .3 and z_dn < z_up - .05 and all(j[0] == 0 and j[1] == 0 and j[2] == -1 and j[3] == 0 for j in jit), f"zone {z_up:.2f} -> {z_dn:.2f}, effects {jit[0]}")
+    check("reduced-motion emulated: the Hold Fight plays the same and the effects are on (the fish leaps, things shake or splash)",
+          z_up > .3 and z_dn < z_up - .05 and any(j[0] != 0 or j[1] != 0 or j[2] != -1 or j[3] != 0 for j in jit), f"zone {z_up:.2f} -> {z_dn:.2f}, effects {jit[0]}")
     fh_end(rmh); rmh.close()
     # --- screenshots: Hold Fight mid-fight with a Common fish and with a Legendary fish (1536x730 and 360x640) ---
     for vw, vh in [(1536, 730), (360, 640)]:

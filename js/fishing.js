@@ -40,7 +40,10 @@ function preloadScenes() {
     im.src = sc.image;
   }
 }
-const REDUCED = window.matchMedia ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+// Playtest 2, part 6: the effects ignore the system "reduce motion" setting on purpose. Many Windows PCs report it by default ("Animation effects" off), so players
+// and the teacher never saw the leaps, dashes, shadows or sparkles. To honour the system setting again, make this return `matchMedia("(prefers-reduced-motion: reduce)").matches`
+// (and restore the @media (prefers-reduced-motion) block in css/style.css, see docs/bug_log.md).
+function motionReduced() { return false; }
 /* Power cast (Playtest 1, part 4): hold CAST (button, Space or the scene) longer than POWER.quick ms to charge a power meter in the reel meter's
    space, release to throw. Only WHERE the bobber lands changes (a point on the near > far line, plus a small random offset); the wait,
    bite, HOOK, REEL, odds and rewards are untouched. A quick press (< POWER.quick) is the normal medium cast (POWER.mid). */
@@ -489,7 +492,7 @@ function fishShadowState() {
 }
 
 function drawScene(t) {
-  const W = cv.width, H = cv.height, sc = SCENES[island], still = !!(REDUCED && REDUCED.matches), ft = still ? 0 : t;
+  const W = cv.width, H = cv.height, sc = SCENES[island], still = motionReduced(), ft = still ? 0 : t;
   ctx.imageSmoothingEnabled = false;
   if (sc.img || !sc.paint) {
     ctx.fillStyle = "#7fd0f5"; ctx.fillRect(0, 0, W, H);
@@ -717,7 +720,7 @@ function chargeStart(src, pid = -1) {
 // power 0..1: the meter fills in POWER.fill ms after the quick-press time, then ping-pongs; with reduced motion it fills once and holds at max
 function chargePower(now) {
   const d = Math.max(0, (now - CH.t0 - POWER.quick) / POWER.fill);
-  if (REDUCED && REDUCED.matches) return Math.min(1, d);
+  if (motionReduced()) return Math.min(1, d);
   const m = d % 2; return m < 1 ? m : 2 - m;
 }
 function chargeTick(now) {
@@ -800,7 +803,7 @@ function holdRelease() { holdSet(false); }
 function holdEnd() { holdSet(false); $("meter").classList.remove("hold"); }   // the fight is over: the fish icon belongs to the fight only, never to the power bar
 function holdPulse() { holdSet(true, "pulse"); later(() => { if (HOLD.src === "pulse") holdRelease(); }, 170); }
 function hookHold() {
-  const hp = holdParams(F.fish.rarity), r = rod(), calm = !!(REDUCED && REDUCED.matches);
+  const hp = holdParams(F.fish.rarity), r = rod(), calm = motionReduced();
   const cfg = { rarity: F.fish.rarity, personality: FIGHT_PERS[F.fish.rarity] || "steady", speed: hp.speed * (S.mastery.frost ? .8 : 1) * r.speed, zoneW: hp.zone * r.zone, hearts: allowedMiss() };   // Steady Hands, Lucky Rod, Precision Rod, Master's Charm
   Object.assign(F, { phase: "reeling", mode: "hold", fight: fightInit(cfg, FIGHT_RNG), pos: .6, zoneX: .3, dir: 1, hits: 0, misses: 0, lastT: 0, seenSlips: 0, wasIn: false, speed: cfg.speed, zoneW: cfg.zoneW });
   holdRelease(); HOLD_PQ = -1;
@@ -814,7 +817,7 @@ function hookHold() {
 window.addEventListener("resize", () => { if (F.mode === "hold") HOLD_CW = $("meter").clientWidth || HOLD_CW; });
 // one frame of the Hold Fight: step the pure simulation, then draw it and react to its events (slip, catch, escape)
 function holdFrame(dt) {
-  const st = F.fight, calm = !!(REDUCED && REDUCED.matches);
+  const st = F.fight, calm = motionReduced();
   stepFight(st, dt, HOLD.on, FIGHT_RNG); F.misses = st.misses; F.zoneX = st.zx; F.pos = st.fx;
   $("zone").style.transform = `translateX(${(st.zx * HOLD_CW).toFixed(1)}px)`;
   $("fishIcon").style.transform = `translateX(${(st.fx * HOLD_CW - 18).toFixed(1)}px)`;
@@ -830,7 +833,7 @@ function holdFrame(dt) {
 }
 function reel() {
   const inside = F.pos >= F.zoneX && F.pos <= F.zoneX + F.zoneW;
-  const calm = !!(REDUCED && REDUCED.matches);                                      // no vibration with prefers-reduced-motion
+  const calm = motionReduced();                                      // no vibration with prefers-reduced-motion
   if (inside) { F.hits++; sfx.hit(); if (!calm) vibrate(40); } else { F.misses++; sfx.miss(); if (!calm) vibrate([30, 30, 30]); }   // short pulse on a hit, a double pulse on a miss
   fisherTug(inside);                                  // fisherman: strong tug on a hit, slack wobble on a miss
   updateDots();

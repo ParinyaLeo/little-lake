@@ -382,8 +382,7 @@ complete Harbor, complete 4 islands, fill the bag, or reset the save.
 - **Selection / touch:** nothing in the UI can be selected (`user-select: none`, `-webkit-touch-callout: none`, no tap highlight on `*`); text inputs are
   re-enabled with `input, textarea { user-select: text }`. Any new text field must stay selectable. Don't set `touch-action: none` on anything that
   should scroll (Bag list, Collection, page).
-- **Animation:** animate only `transform` and `opacity` so phones stay smooth, and add every new animation to
-  the `prefers-reduced-motion` block.
+- **Animation:** animate only `transform` and `opacity` so phones stay smooth. **Reduced motion is deliberately ignored** (Playtest 2, part 6): many Windows PCs report `prefers-reduced-motion` by default, which hid every effect. `motionReduced()` in `js/fishing.js` returns `false` and there is no `@media (prefers-reduced-motion)` block in the CSS; don't add one back. To honour the system setting again, make `motionReduced()` return the media query and restore the CSS rules listed in `docs/bug_log.md` (Playtest 2, part 6).
 
 ## Releasing (cache-busting)
 
