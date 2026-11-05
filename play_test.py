@@ -3242,7 +3242,7 @@ with sync_playwright() as p:
     cs.wait_for_timeout(860); c_hi = cs.evaluate(ANG)                                   # ~1460 ms held: the meter is at (or near) full power
     check("charging pose: while the meter is shown the fisherman is in the 'charging' pose and the rod leans back further as the power grows",
           c_lo["pose"] == c_hi["pose"] == "charging" and c_hi["a"] > c_lo["a"] + 25 and c_hi["a"] > 100 and c_lo["a"] > 38, f"{c_lo['pose']} {c_lo['a']:.0f} deg -> {c_hi['a']:.0f} deg")
-    cs.keyboard.press("Escape"); cs.mouse.up(); cs.wait_for_timeout(200)
+    cs.keyboard.press("Escape"); cs.mouse.up(); cs.wait_for_timeout(700)      # the rod eases back to idle (part 7b), about 250-500 ms
     c_end = cs.evaluate(ANG)
     check("a cancelled charge (Esc) throws nothing and the fisherman returns to idle", c_end["phase"] == "idle" and c_end["pose"] == "idle" and c_end["cs"] is None, str(c_end))
     def throw(pg_, power, charged=True):
@@ -3383,6 +3383,66 @@ with sync_playwright() as p:
             ap.evaluate("() => go('home')"); ap.wait_for_timeout(300)
             hm = ap.evaluate("() => ({ sh: document.documentElement.scrollHeight, ih: innerHeight })"); check(f"{vw}x{vh}: the hub with the AQUARIUM button fits without page scroll", hm["sh"] <= hm["ih"], str(hm))
         ap.close()
+
+    # ---------- Playtest 2, part 7b: smooth charging pose (ease-in, inertia, ease-out) ----------
+    sm = fh_page(1536, 730, name="SmoothCharge")
+    SAMPLE = """() => { window.__ca = []; window.__cr = true; const f = t => { window.__ca.push({ t, pose: fisherPose(), a: P.a, sa: CHARGE_POSE.a, phase: F.phase }); if (window.__cr) requestAnimationFrame(f); }; requestAnimationFrame(f); }"""
+    def sample_start(pg_): pg_.evaluate(SAMPLE)
+    def sample_stop(pg_): pg_.evaluate("() => { window.__cr = false; }"); pg_.wait_for_timeout(50); return pg_.evaluate("window.__ca")
+    def max_jump(fr, ok_pair):
+        """largest change of the drawn rod angle between two consecutive frames, counting only the pairs ok_pair(prev, cur) accepts"""
+        return max([abs(b["a"] - a["a"]) for a, b in zip(fr, fr[1:]) if ok_pair(a, b)] or [0])
+    SMOOTH = lambda a, b: a["pose"] in ("idle", "charging") and b["pose"] in ("idle", "charging") or (a["pose"] == "charging" and b["pose"] == "casting")
+    def hold_run(pg_, ms, how):
+        """how = 'release' (let go: a charged cast) or 'cancel' (Esc); returns the frames"""
+        cast_reset(pg_); sample_start(pg_); pg_.wait_for_timeout(300)
+        x, y = center(pg_, "#actBtn"); pg_.mouse.move(x, y); pg_.mouse.down(); pg_.wait_for_timeout(ms)
+        if how == "release": pg_.mouse.up(); pg_.wait_for_timeout(500)
+        else: pg_.keyboard.press("Escape"); pg_.mouse.up(); pg_.wait_for_timeout(700)
+        fr = sample_stop(pg_); pg_.evaluate("() => { stopFishing(); }"); return fr
+    # a hold to full power (the meter fills at 1.45 s, then ping-pongs back: the turnaround is inside the hold), released into a cast
+    fr_full = hold_run(sm, 1900, "release")
+    jf = max_jump(fr_full, SMOOTH); ch = [f for f in fr_full if f["pose"] == "charging"]
+    check("smooth charge: no jump bigger than 3 degrees between two frames - idle to charging, the whole hold to full power incl. the ping-pong turnaround, and charging to the swing",
+          len(ch) > 60 and jf <= 3.0 and max(f["a"] for f in ch) > 100 and any(f["pose"] == "casting" for f in fr_full), f"max jump {jf:.2f} deg over {len(ch)} charging frames, peak {max(f['a'] for f in ch):.0f}")
+    t0 = next(f["t"] for f in fr_full if f["pose"] == "charging"); early = [f for f in fr_full if f["pose"] == "charging" and f["t"] - t0 < 400]
+    check("ease-in: the rod starts at the idle angle (38 deg) and travels back gradually (not at the target at the first frame)", abs(early[0]["a"] - 38) < 1.5 and early[-1]["a"] > early[0]["a"] + 5, f"{early[0]['a']:.1f} -> {early[-1]['a']:.1f}")
+    # a hold-release at mid power
+    fr_mid = hold_run(sm, 850, "release"); jm = max_jump(fr_mid, SMOOTH)
+    check("smooth charge: a hold released at mid power has no jump either (charge to swing)", jm <= 3.0 and any(f["pose"] == "casting" for f in fr_mid), f"max jump {jm:.2f} deg")
+    # a cancel: eases back to idle, then the idle pose
+    fr_can = hold_run(sm, 900, "cancel"); jc = max_jump(fr_can, SMOOTH)
+    last_ch = max(i for i, f in enumerate(fr_can) if f["pose"] == "charging")
+    check("ease-out: a cancelled charge (Esc) stays in the charging pose while the rod eases back (no jump above 5.5 degrees per frame), then ends in the idle pose with the idle angle",
+          jc <= 5.5 and fr_can[-1]["pose"] == "idle" and abs(fr_can[-1]["a"] - 38) < 1 and fr_can[-1]["phase"] == "idle" and sum(1 for f in fr_can if f["pose"] == "charging") > 40,
+          f"max jump {jc:.2f}, final {fr_can[-1]['pose']} {fr_can[-1]['a']:.1f}")
+    # convergence at a constant power, tremble only at high power
+    cast_reset(sm); sm.evaluate("() => { window.chargePower = () => .8; }")
+    x, y = center(sm, "#actBtn"); sm.mouse.move(x, y); sm.mouse.down(); sm.wait_for_timeout(1500)
+    conv = sm.evaluate("() => { const a = []; for (let i = 0; i < 1; i++) a.push(CHARGE_POSE.a); return { shown: CHARGE_POSE.a, target: chargeBackAngle(.8) }; }")
+    trem = sm.evaluate("""() => new Promise(res => { const v = []; let n = 0; const f = () => { v.push(P.a - CHARGE_POSE.a); if (++n < 40) requestAnimationFrame(f); else res(v); }; requestAnimationFrame(f); })""")
+    sm.evaluate("() => { window.chargePower = () => .3; }"); sm.wait_for_timeout(900)
+    trem_lo = sm.evaluate("""() => new Promise(res => { const v = []; let n = 0; const f = () => { v.push(P.a - CHARGE_POSE.a); if (++n < 30) requestAnimationFrame(f); else res(v); }; requestAnimationFrame(f); })""")
+    sm.keyboard.press("Escape"); sm.mouse.up(); sm.wait_for_timeout(600); sm.evaluate("() => { delete window.chargePower; }")
+    check("the shown angle converges to the target when the power is constant (.8 -> chargeBackAngle(.8))", abs(conv["shown"] - conv["target"]) < 1.0, str(conv))
+    check("a slight rod tremble at high power (within +-0.6 deg) and none below power .5", .1 < max(abs(v) for v in trem) <= .62 and max(abs(v) for v in trem_lo) < .01, f"high {max(abs(v) for v in trem):.2f}, low {max(abs(v) for v in trem_lo):.3f}")
+    # the swing starts from the shown angle
+    cast_reset(sm); x, y = center(sm, "#actBtn"); sm.mouse.move(x, y); sm.mouse.down(); sm.wait_for_timeout(900)
+    sw = sm.evaluate("() => { const a = CHARGE_POSE.a, b = CHARGE_POSE.b; chargeEnd(); return { shown: a, a0: CAST.a0, a1: CAST.a1, b: b, b0: CAST.b0, live: CHARGE_POSE.live, pose: fisherPoseFor(F.phase, performance.now()) }; }"); sm.mouse.up()
+    check("the swing starts from the SHOWN angle (CAST.a0 = the shown angle at release), the charge pose ends and the cast pose takes over", abs(sw["shown"] - sw["a0"]) < .01 and abs(sw["a0"] - sw["a1"]) < .01 and abs(sw["b"] - sw["b0"]) < .01 and not sw["live"] and sw["pose"] == "casting", str(sw))
+    sm.evaluate("() => stopFishing()")
+    # quick tap, Space and touch are unchanged
+    cast_reset(sm); sm.click("#actBtn"); sm.wait_for_timeout(60); q = sm.evaluate("castState()")
+    check("a quick tap is still the medium cast (no charging pose, 200 ms wind-up)", q and q["pw"] == .5 and not q["charged"] and q["windMs"] == 200 and not sm.evaluate("CHARGE_POSE.live"), str(q))
+    sm.evaluate("() => stopFishing()"); cast_reset(sm); sm.keyboard.down("Space"); sm.wait_for_timeout(700); sp1 = sm.evaluate("fisherPose()"); sm.keyboard.up("Space"); sm.wait_for_timeout(80); sp2 = sm.evaluate("castState()")
+    check("Space still charges (charging pose) and throws a charged cast", sp1 == "charging" and sp2 and sp2["charged"], f"{sp1} {sp2 and sp2['charged']}")
+    sm.evaluate("() => stopFishing()"); cast_reset(sm)
+    sm.evaluate("() => { const b = document.getElementById('actBtn'), r = b.getBoundingClientRect(), o = { pointerType: 'touch', pointerId: 7, isPrimary: true, bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, button: 0 }; b.dispatchEvent(new PointerEvent('pointerdown', o)); window.__to = o; }")
+    sm.wait_for_timeout(700); tp1 = sm.evaluate("fisherPose()"); sm.evaluate("() => { document.dispatchEvent(new PointerEvent('pointerup', window.__to)); }"); sm.wait_for_timeout(80); tp2 = sm.evaluate("castState()")
+    check("a touch long press still charges and throws a charged cast", tp1 == "charging" and tp2 and tp2["charged"], f"{tp1} {tp2 and tp2['charged']}")
+    sm.evaluate("() => stopFishing()"); cast_reset(sm)
+    x, y = center(sm, "#actBtn"); sm.mouse.move(x, y); sm.mouse.down(); sm.wait_for_timeout(1500); sm.screenshot(path=str(SHOTS / "114_charge_smooth_1536x730.png")); sm.keyboard.press("Escape"); sm.mouse.up()
+    sm.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
