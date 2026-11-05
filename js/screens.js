@@ -94,8 +94,8 @@ function closeModal(id) {
 }
 function openNameBox() { $("nameInput").value = ""; $("nameErr").textContent = ""; openModal("nameBox", "nameInput"); }
 function startNewGame(name) {
-  const sound = S.sound, music = S.music;            // keep the player's sound and music choices
-  S = DEFAULT(); S.name = name; S.sound = sound; S.music = music; save();
+  const sound = S.sound, music = S.music, fightStyle = S.fightStyle;            // keep the player's sound, music and fight style choices
+  S = DEFAULT(); S.name = name; S.sound = sound; S.music = music; S.fightStyle = fightStyle; save();
   island = "harbor"; collTab = "harbor";
   go("home"); toast(`Welcome to Little Lake, ${name}!`);
 }
@@ -111,7 +111,9 @@ $("nameForm").onsubmit = e => {
   $("nameBox").classList.remove("show"); modalReturn = null; startNewGame(name);
 };
 $("contBtn").onclick = () => { if (!hasSave()) return; S = load(); go("home"); };
-$("howBtn").onclick = () => openModal("howBox", "howPanel");
+function renderFightBtn() { const b = $("fightBtn"); b.textContent = "FIGHT: " + (S.fightStyle === "tap" ? "TAP" : "HOLD"); b.setAttribute("aria-pressed", String(S.fightStyle !== "tap")); }
+$("fightBtn").onclick = () => { S.fightStyle = S.fightStyle === "tap" ? "hold" : "tap"; saveSound(); renderFightBtn(); };   // the reel minigame style (Playtest 2, part 3); only reachable from the Title screen, never mid-fight
+$("howBtn").onclick = () => { renderFightBtn(); openModal("howBox", "howPanel"); };
 $("howOk").onclick = () => closeModal("howBox");
 $("soundBtn").onclick = () => { S.sound = !S.sound; saveSound(); audioApply(); renderTitle(); sfx.tick(); };   // the click confirms (only when Sound is on)
 $("musicBtn").onclick = () => { S.music = !S.music; saveSound(); audioApply(); musicSync(); renderTitle(); sfx.tick(); };

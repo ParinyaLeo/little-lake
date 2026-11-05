@@ -26,6 +26,7 @@ ROD_IDS_PY = ["bamboo", "sturdy", "precision", "lucky"]
 def start_new(pg, name="Tester"):
     """Title screen -> NEW GAME -> enter name -> Home."""
     pg.click("#newBtn"); pg.fill("#nameInput", name); pg.click("#nameStart"); pg.wait_for_timeout(200)
+    pg.evaluate("() => { S.fightStyle = 'tap'; save(); }")          # Playtest 2, part 3: the default fight is Hold Fight; all the older tests are about the classic tap minigame
 
 def no_side_scroll(pg, width=360):
     return pg.evaluate("document.documentElement.scrollWidth") <= width
@@ -473,7 +474,7 @@ with sync_playwright() as p:
     check("Shop lists 4 rods with exact effects",
           "1 miss allowed, normal zone and speed." in bam["text"] and "2 misses allowed, normal zone and speed." in stu["text"]
           and "3 misses allowed, green zone 35% wider." in pre["text"]
-          and "5 misses allowed, better rarity odds (like Shrimp bait), marker 10% faster." in luc["text"]
+          and "5 misses allowed, better rarity odds (like Shrimp bait), minigame 10% faster." in luc["text"]
           and "Legendary 6%" in luc["text"], luc["text"][:160])
     check("Shop: equipped starter rod is marked and can't be bought", bam["disabled"] and bam["label"] == "EQUIPPED" and "EQUIPPED" in bam["text"])
     check("Shop: items you can't afford are disabled and say how much is missing (300 coins)",
@@ -554,7 +555,7 @@ with sync_playwright() as p:
     rl = cards()
     check("ROD opens 'Choose Rod': all 4 rods with misses, zone, odds, marker speed and EQUIPPED",
           g.inner_text("#pickTitle") == "Choose Rod" and [x[0] for x in rl] == ["bamboo", "sturdy", "precision", "lucky"] and rl[1][2]
-          and "2 misses allowed" in rl[1][3] and "green zone 35% wider" in rl[2][3] and "marker 10% faster" in rl[3][3]
+          and "2 misses allowed" in rl[1][3] and "green zone 35% wider" in rl[2][3] and "minigame 10% faster" in rl[3][3]
           and all("Common" in x[3] for x in rl) and "Legendary 6%" in rl[3][3], str([x[0:3] for x in rl]))
     g.screenshot(path=str(SHOTS / "39_choose_rod.png"))
     g.click("#pick-lucky"); g.wait_for_timeout(100)
@@ -1580,7 +1581,7 @@ with sync_playwright() as p:
           and "3 misses allowed" in pick["precision"] and "5 misses allowed" in pick["lucky"], str({k: v[:40] for k, v in pick.items()}))
     rp.keyboard.press("Escape"); rp.evaluate("() => go('titleScreen')"); rp.click("#howBtn"); rp.wait_for_timeout(150)
     check("HOW TO PLAY (Rods) lists the new misses",
-          "Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster marker)" in rp.inner_text("#howBox"))
+          "Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster minigame)" in rp.inner_text("#howBox"))
     rc.close()
     # ---------- Playtest 1, part 3: the rod you equip is visible (fisherman, icons, toast) ----------
     ICON_BG = """ids => ids.map(id => { const e = document.createElement('span'); e.className = 'ico ' + id; document.body.appendChild(e);
@@ -2998,6 +2999,200 @@ with sync_playwright() as p:
         except Exception: pass
         sp.screenshot(path=str(SHOTS / f"105_fight_leap_{vw}x{vh}.png")); fh_end(sp)
         sp.close()
+
+    # ---------- Playtest 2, part 3: Hold Fight (a player-controlled fight); the classic tap minigame stays as an option ----------
+    def hf_page(vw, vh, reduced=False, name="Hold"):
+        pg_ = fh_page(vw, vh, reduced=reduced, name=name)                 # fh_page starts a new game (the helper forces "tap")
+        pg_.evaluate("() => { S.fightStyle = 'hold'; save(); }")
+        return pg_
+    hp = hf_page(1536, 730)
+    # --- the pure simulation: deterministic for a seed; hold moves the zone right, release moves it left; progress fills inside and drains outside ---
+    SIM = """([seed, script]) => { const rng = seededRng(seed), st = fightInit({ personality: 'dash', speed: .5, zoneW: .2, hearts: 2 }, rng), out = [];
+        for (let i = 0; i < 600; i++) { stepFight(st, 1 / 60, script(i), rng); if (i % 60 === 0) out.push([st.fx.toFixed(4), st.zx.toFixed(4), st.progress.toFixed(4)]); } return JSON.stringify([out, st.result, st.misses]); }"""
+    sim = lambda seed: hp.evaluate("([seed]) => (" + SIM + ")([seed, i => Math.floor(i / 25) % 2 === 0])", [seed])
+    a1, a2, b1 = sim(42), sim(42), sim(43)
+    check("Hold Fight simulation is deterministic for a given seed (and differs for another seed)", a1 == a2 and a1 != b1, a1[:80])
+    mv = hp.evaluate("""() => { const rng = seededRng(1), st = fightInit({ personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng), z0 = st.zx; for (let i = 0; i < 30; i++) stepFight(st, 1 / 60, true, rng);
+        const up = st.zx, vup = st.zv; for (let i = 0; i < 120; i++) stepFight(st, 1 / 60, false, rng); const down = st.zx, vdown = st.zv; return { z0, up, vup, down, vdown }; }""")
+    check("holding moves the zone right (positive velocity) and releasing moves it back left, with a soft wall at the left end", mv["up"] > mv["z0"] + .1 and mv["vup"] > 0 and mv["down"] < mv["up"] - .1 and mv["down"] >= 0, str(mv))
+    pr = hp.evaluate("""() => { const rng = seededRng(1), mk = () => fightInit({ personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng);
+        const a = mk(); a.fx = .5; a.zx = .4; a.zv = 0; const p0 = a.progress; for (let i = 0; i < 6; i++) stepFight(a, 1 / 60, true, rng);
+        const b = mk(); b.fx = .8; b.zx = 0; b.started = true; const q0 = b.progress; for (let i = 0; i < 6; i++) stepFight(b, 1 / 60, false, rng);
+        const c = mk(); c.fx = .8; c.zx = 0; const r0 = c.progress; for (let i = 0; i < 6; i++) stepFight(c, 1 / 60, false, rng);   // not started yet: nothing drains
+        return { fill: (a.progress - p0) / (6 / 60), drain: (q0 - b.progress) / (6 / 60), idle: c.progress - r0, HF }; }""")
+    check("the catch bar fills while the fish is inside the zone and drains, more slowly, while it is outside (nothing drains before the first contact)",
+          abs(pr["fill"] - pr["HF"]["fill"]) < .01 and abs(pr["drain"] - pr["HF"]["drain"]) < .01 and pr["drain"] < pr["fill"] and pr["idle"] == 0, f"fill {pr['fill']:.3f}/s drain {pr['drain']:.3f}/s")
+    lim = hp.evaluate("""() => { const rng = seededRng(5), st = fightInit({ personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng); st.fx = .6; let n = 0; while (!st.result && n < 5000) { stepFight(st, 1 / 60, false, rng); n++; } return { result: st.result, reason: st.reason, t: st.t }; }""")
+    check("the 35 second time limit ends the fight as an escape", lim["result"] == "escaped" and lim["reason"] == "time" and 34.9 < lim["t"] < 35.1, str(lim))
+    sl = hp.evaluate("""() => { const rng = seededRng(5), st = fightInit({ personality: 'steady', speed: 0, zoneW: .2, hearts: 1 }, rng); st.fx = .8; st.zx = 0; st.started = true; st.progress = .001; const log = [];
+        stepFight(st, 1 / 60, false, rng); log.push([st.misses, +st.progress.toFixed(2), st.result]); st.progress = .001; stepFight(st, 1 / 60, false, rng); log.push([st.misses, st.result, st.reason]); return log; }""")
+    check("the bar reaching 0 costs a heart and restores 30% progress; a slip with no hearts left = escape (hearts = misses allowed)", sl[0] == [1, .3, None] and sl[1] == [2, "escaped", "slips"], str(sl))
+    # --- gear: hearts = allowedMiss(); Precision zone x1.35; Steady Hands fish x0.8; Lucky Rod fish x1.1; rarer = faster and narrower ---
+    gear = {}
+    for rid in ("bamboo", "sturdy", "precision", "lucky"):
+        gear[rid] = hp.evaluate(f"""() => {{ S.rods = ['bamboo','sturdy','precision','lucky']; S.rodEq = '{rid}'; S.mastery = {{}}; const hold = r => {{ const q = holdParams(r), rod = RODS['{rid}']; return {{ speed: q.speed * rod.speed, zone: q.zone * rod.zone }}; }};
+            island = 'harbor'; go('fishing'); F = {{ phase: 'bite', fish: fishById('harbor_0'), castAt: performance.now(), biteAt: performance.now() + 500, land: {{ x: .6, y: .65 }}, usedBait: null, floatId: 'classic' }}; hook();
+            const c = F.fight.cfg, base = {{ speed: c.speed, zone: c.zoneW, hearts: c.hearts, allowed: allowedMiss(), mode: F.mode }}; stopFishing(); S.mastery = {{ forest: true, frost: true }}; F = {{ phase: 'bite', fish: fishById('harbor_0'), castAt: performance.now(), biteAt: performance.now() + 500, land: {{ x: .6, y: .65 }}, usedBait: null, floatId: 'classic' }}; hook();
+            const c2 = F.fight.cfg, gear = {{ speed: c2.speed, zone: c2.zoneW, hearts: c2.hearts, allowed: allowedMiss() }}; stopFishing(); S.mastery = {{}}; return {{ base, gear }}; }}""")
+    hearts_ok = all(g["base"]["hearts"] == g["base"]["allowed"] == n and g["base"]["mode"] == "hold" and g["gear"]["hearts"] == g["gear"]["allowed"] == n + 1 for g, n in zip(gear.values(), (1, 2, 3, 5)))
+    check("hearts = allowedMiss(): Bamboo 1, Sturdy 2, Precision 3, Lucky 5, +1 with Master's Charm (read from the real hook)", hearts_ok, str({k: (v["base"]["hearts"], v["gear"]["hearts"]) for k, v in gear.items()}))
+    zb, zp = gear["bamboo"]["base"]["zone"], gear["precision"]["base"]["zone"]
+    check("Precision Rod zone is 35% wider; Steady Hands makes the fish 20% slower; the Lucky Rod makes it 10% faster",
+          abs(zp / zb - 1.35) < 1e-9 and abs(gear["bamboo"]["gear"]["speed"] / gear["bamboo"]["base"]["speed"] - .8) < 1e-9 and abs(gear["lucky"]["base"]["speed"] / gear["bamboo"]["base"]["speed"] - 1.1) < 1e-9, f"zone x{zp / zb:.3f}, frost x{gear['bamboo']['gear']['speed'] / gear['bamboo']['base']['speed']:.2f}, lucky x{gear['lucky']['base']['speed'] / gear['bamboo']['base']['speed']:.2f}")
+    prm = hp.evaluate("['Common', 'Rare', 'Epic', 'Legendary', 'Mythical'].map(r => [r, holdParams(r).speed, holdParams(r).zone])")
+    check("rarer fish are faster and the zone is narrower: Common .35 / .22 ... Legendary .90 / .14", all(prm[i][1] < prm[i + 1][1] and prm[i][2] > prm[i + 1][2] for i in range(4)) and abs(prm[0][1] - .35) < .01 and abs(prm[0][2] - .22) < .01 and abs(prm[3][1] - .9) < .01 and abs(prm[3][2] - .14) < .01, str([(r, round(s, 2), round(z, 3)) for r, s, z in prm]))
+    # --- balance bots (seeded, no real time): good = reacts every 120 ms, bad = every 400 ms, idle = never holds ---
+    BOT = """([rarity, bot, n, rodId, frost, forest]) => { const rod = RODS[rodId], hp = holdParams(rarity); let w = 0, tw = 0, tl = 0, sl = 0;
+        for (let i = 0; i < n; i++) { const rng = seededRng(9000 + i), st = fightInit({ personality: FIGHT_PERS[rarity], speed: hp.speed * (frost ? .8 : 1) * rod.speed, zoneW: hp.zone * rod.zone, hearts: rod.miss + (forest ? 1 : 0) }, rng);
+          let holding = false, next = 0; while (!st.result) { if (bot !== 'idle' && st.t >= next) { next = st.t + (bot === 'good' ? .12 : .4); holding = st.fx > st.zx + st.cfg.zoneW / 2; } stepFight(st, 1 / 60, bot === 'idle' ? false : holding, rng); }
+          if (st.result === 'caught') { w++; tw += st.t; } else tl += st.t; sl += st.slips; }
+        return { win: w / n * 100, tWin: w ? tw / w : 0, tLoss: n - w ? tl / (n - w) : 0, slips: sl / n }; }"""
+    N = 500; bots = {}
+    for rar in ("Common", "Rare", "Epic", "Legendary", "Mythical"):
+        for bot in ("good", "bad", "idle"): bots[(rar, bot)] = hp.evaluate(BOT, [rar, bot, N, "bamboo", False, False])
+    luck = {r: hp.evaluate(BOT, ["Legendary", "good", N, r, False, False]) for r in ("bamboo", "lucky", "sturdy", "precision")}
+    W = lambda r, b: bots[(r, b)]["win"]
+    summary = "good " + "/".join(f"{W(r, 'good'):.0f}" for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")) + "% (C/R/E/L/M), bad " + "/".join(f"{W(r, 'bad'):.0f}" for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")) + "%, idle " + "/".join(f"{W(r, 'idle'):.0f}" for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")) + "%"
+    print("BOTS", summary, "| win time s:", {r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}, "| Legendary good bot by rod:", {k: round(v["win"], 1) for k, v in luck.items()})
+    check("balance, good bot (120 ms) on Bamboo: Common >= 95%, Rare >= 85%, Epic >= 70%, Legendary >= 50%", W("Common", "good") >= 95 and W("Rare", "good") >= 85 and W("Epic", "good") >= 70 and W("Legendary", "good") >= 50, summary)
+    check("balance, bad bot (400 ms) on Bamboo: Common between 20% and 80%, Legendary below 40%", 20 <= W("Common", "bad") <= 80 and W("Legendary", "bad") < 40, f"{W('Common', 'bad'):.1f}% / {W('Legendary', 'bad'):.1f}%")
+    check("balance, idle bot never wins (any rarity)", all(W(r, "idle") == 0 for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")), summary)
+    check("balance: a good bot with the Lucky Rod does at least as well as with Bamboo on Legendary (and Precision much better)", luck["lucky"]["win"] >= luck["bamboo"]["win"] and luck["precision"]["win"] > luck["bamboo"]["win"] + 15, str({k: round(v["win"], 1) for k, v in luck.items()}))
+    check("balance: a typical fight (good bot, wins) lasts 6 to 25 seconds on every rarity", all(6 <= bots[(r, "good")]["tWin"] <= 25 for r in ("Common", "Rare", "Epic", "Legendary")), str({r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}))
+    # --- the fight on screen: Hold Fight layout, inputs (button, Space, scene), releases ---
+    fh_hook(hp, FIGHT_IDS["Common"])
+    lay = hp.evaluate("""() => ({ mode: F.mode, hold: document.getElementById('meter').classList.contains('hold'), icon: getComputedStyle(document.getElementById('fishIcon')).display, marker: getComputedStyle(document.getElementById('marker')).display,
+        bar: !!document.getElementById('pbar'), dotsText: document.getElementById('dots').textContent, hearts: document.querySelectorAll('#hearts .ico').length, hr: allowedMiss(), cfg: F.fight.cfg.hearts, pers: F.fight.cfg.personality })""")
+    check("Hold Fight layout: fish icon and catch bar shown, marker and HIT dots hidden, one heart per allowed miss, personality steady for a Common fish",
+          lay["mode"] == "hold" and lay["hold"] and lay["icon"] == "block" and lay["marker"] == "none" and lay["bar"] and "HIT" not in lay["dotsText"] and lay["hearts"] == lay["hr"] == lay["cfg"] and lay["pers"] == "steady", str(lay))
+    HS = "() => [HOLD.on, HOLD.src, F.fight.zx, F.fight.zv]"
+    def zone_dir(pg_, label, press, release):
+        pg_.evaluate("() => { F.fight.zx = .3; F.fight.zv = 0; }"); pg_.wait_for_timeout(30); z0 = pg_.evaluate("F.fight.zx"); press(); pg_.wait_for_timeout(350); on = pg_.evaluate(HS); z1 = pg_.evaluate("F.fight.zx")
+        release(); pg_.wait_for_timeout(120); off = pg_.evaluate(HS); pg_.wait_for_timeout(500); z2 = pg_.evaluate("F.fight.zx")
+        return on[0] is True and off[0] is False and z1 > z0 + .1 and z2 < z1 - .05, f"{label}: on={on[:2]} zone {z0:.2f}->{z1:.2f}->{z2:.2f} released={not off[0]}"
+    bb = hp.evaluate("(() => { const r = document.getElementById('actBtn').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()")
+    sc = hp.evaluate("(() => { const r = document.getElementById('scene').getBoundingClientRect(); return [r.left + r.width * .8, r.top + r.height * .3]; })()")
+    hp.evaluate("() => { F.fight.progress = .5; }")
+    def keep(): hp.evaluate("() => { F.fight.progress = .5; F.fight.misses = 0; }")
+    ok1, d1 = zone_dir(hp, "REEL button (mouse)", lambda: (hp.mouse.move(bb[0], bb[1]), hp.mouse.down()), lambda: hp.mouse.up()); keep()
+    ok2, d2 = zone_dir(hp, "Space", lambda: hp.keyboard.down("Space"), lambda: hp.keyboard.up("Space")); keep()
+    ok3, d3 = zone_dir(hp, "press on the scene", lambda: (hp.mouse.move(sc[0], sc[1]), hp.mouse.down()), lambda: hp.mouse.up()); keep()
+    check("the REEL button, the Space key and a press on the scene all hold (the zone rises while held and falls when let go)", ok1 and ok2 and ok3, d1 + " | " + d2 + " | " + d3)
+    rel = {}
+    hp.mouse.move(bb[0], bb[1]); hp.mouse.down(); hp.wait_for_timeout(80); hp.mouse.move(sc[0], sc[1]); hp.mouse.up(); hp.wait_for_timeout(60); rel["pointerup anywhere"] = hp.evaluate("HOLD.on")
+    hp.mouse.move(bb[0], bb[1]); hp.mouse.down(); hp.wait_for_timeout(80); on_before = hp.evaluate("HOLD.on"); hp.evaluate("() => document.dispatchEvent(new PointerEvent('pointercancel', { pointerId: HOLD.pid }))"); hp.wait_for_timeout(60); rel["pointercancel"] = hp.evaluate("HOLD.on"); hp.mouse.up()
+    hp.keyboard.down("Space"); hp.wait_for_timeout(80); hp.evaluate("() => window.dispatchEvent(new Event('blur'))"); hp.wait_for_timeout(60); rel["blur"] = hp.evaluate("HOLD.on"); hp.keyboard.up("Space")
+    hp.keyboard.down("Space"); hp.wait_for_timeout(80); hp.evaluate("() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); delete document.hidden; }"); hp.wait_for_timeout(60); rel["visibilitychange"] = hp.evaluate("HOLD.on"); hp.keyboard.up("Space")
+    hp.keyboard.down("Space"); hp.wait_for_timeout(80); hp.keyboard.press("Escape"); hp.wait_for_timeout(60); rel["Escape"] = hp.evaluate("HOLD.on"); hp.keyboard.up("Space")
+    check("the hold is released by pointerup anywhere, pointercancel, blur, visibilitychange and Esc (never stuck)", on_before is True and all(v is False for v in rel.values()), str(rel))
+    fh_end(hp)
+    check("the hold is gone when the fight ends (escape / leaving the screen)", hp.evaluate("HOLD.on") is False and hp.evaluate("F.phase") == "idle")
+    # --- visuals follow the fight: tension, danger, line colour, tick, shadow ---
+    hp.evaluate("() => { S.rods = ['bamboo', 'sturdy']; S.rodEq = 'sturdy'; save(); }")
+    fh_hook(hp, FIGHT_IDS["Common"])
+    PIN = "(v) => { clearInterval(window.__pin); F.fight.cfg.speed = 0; window.__pin = setInterval(() => { if (F.fight) Object.assign(F.fight, v, { zv: 0, started: true }); }, 16); }"        # hold the zone, the fish and the bar still so the state can be read
+    hp.evaluate(PIN, {"zx": .5, "fx": .6, "progress": .9}); hp.wait_for_timeout(700); calm = fh_state(hp)
+    hp.evaluate(PIN, {"zx": .26, "fx": .9, "progress": .5}); hp.wait_for_timeout(500); far = fh_state(hp)
+    check("tension: low while the fish is inside the zone, high when it is far from it (and the reel tick is faster)", calm["tension"] < .45 and far["tension"] > calm["tension"] + .2 and far["tickMs"] < calm["tickMs"] - 50 and not calm["danger"], f"inside {calm['tension']:.2f} ({calm['tickMs']} ms) far {far['tension']:.2f} ({far['tickMs']} ms)")
+    hp.evaluate(PIN, {"zx": .5, "fx": .6, "progress": .15}); hp.wait_for_timeout(700); dgr = fh_state(hp)
+    check("danger = one heart left or catch progress below 20%; then the line turns warm red", dgr["danger"] and dgr["red"] > .9 and rgb(dgr["line"])[0] - rgb(dgr["line"])[2] > 100, f"danger={dgr['danger']} red={dgr['red']:.2f} {dgr['line']}")
+    sdx = []
+    for fx in (.3, .9):
+        hp.evaluate(PIN, {"zx": .5, "fx": fx, "progress": .5}); hp.wait_for_timeout(250); sdx.append(hp.evaluate("SH.x"))
+    check("the fish shadow in the water follows the same fish position (moves right when the fish icon moves right)", sdx[1] > sdx[0] + 40, f"{sdx[0]:.0f} -> {sdx[1]:.0f}")
+    hp.evaluate("() => { clearInterval(window.__pin); }"); fh_end(hp)
+    # --- personality leaps only for Legendary / Mythical in Hold Fight; the leap and the shadow stay in the water ---
+    hp.evaluate("() => { S.rods = ['bamboo', 'sturdy', 'precision', 'lucky']; S.rodEq = 'lucky'; S.mastery = {}; save(); }")
+    leaps = {}
+    for rar in ("Common", "Legendary"):
+        fh_hook(hp, FIGHT_IDS[rar]); hp.evaluate("() => { window.__bot = setInterval(() => { const s = F.fight; if (s) holdSet(s.fx > s.zx + s.cfg.zoneW / 2, 'bot'); }, 120); window.__lv = []; window.__lr = true; const f = () => { const q = fightState(); if (q) window.__lv.push([q.leaping, q.lx, q.ly]); if (window.__lr) requestAnimationFrame(f); }; f(); }")
+        hp.wait_for_timeout(4500); leaps[rar] = hp.evaluate("() => { window.__lr = false; clearInterval(window.__bot); return [F.fight ? F.fight.leapN : -1, window.__lv.filter(x => x[0]).length, window.__lv.filter(x => x[0])]; }"); fh_end(hp)
+    check("Hold Fight personalities: the leap (fish out of the water) happens only for Legendary / Mythical, never for Common", leaps["Common"][0] == 0 and leaps["Common"][1] == 0 and leaps["Legendary"][0] >= 1 and leaps["Legendary"][1] > 3, f"Common {leaps['Common'][:2]} Legendary {leaps['Legendary'][:2]}")
+    check("the leap stays in the water area on Harbor", all(.3 <= x[1] <= .92 and .45 <= x[2] <= .9 for x in leaps["Legendary"][2]), str([(round(x[1], 2), round(x[2], 2)) for x in leaps["Legendary"][2][:3]]))
+    fr_id = hp.evaluate("FISH.find(f => f.island === 'frost' && f.rarity === 'Legendary').id")
+    fh_hook(hp, fr_id, "frost"); hp.evaluate("() => { window.__bot = setInterval(() => { const s = F.fight; if (s) holdSet(s.fx > s.zx + s.cfg.zoneW / 2, 'bot'); }, 120); window.__lp = []; window.__lpr = true; const f = () => { const s = fightState(); window.__lp.push(s ? [s.leaping, SH.x / SH.W, SH.y / SH.H, s.lx, s.ly] : null); if (window.__lpr) requestAnimationFrame(f); }; f(); }")
+    hp.wait_for_timeout(5500); hp.evaluate("() => { window.__lpr = false; clearInterval(window.__bot); }"); hp.wait_for_timeout(50)
+    lp = [x for x in hp.evaluate("window.__lp") if x]; crop = hp.evaluate("[CROP.sx, CROP.sy, CROP.sw, CROP.sh]")
+    pts = [(crop[0] + x[1] * crop[2], crop[1] + x[2] * crop[3]) for x in lp[::6]] + [(crop[0] + x[3] * crop[2], crop[1] + x[4] * crop[3]) for x in lp if x[0]][::4]
+    bad = sum(1 for (x, y) in pts if not hp.evaluate(ON_WATER, [MASKS["frost"], x, y]))
+    check("Frost: the shadow and the leaping fish stay on the water mask during a Hold Fight", bad == 0 and len(pts) > 12, f"{len(pts)} points, {bad} off water")
+    fh_end(hp)
+    # --- the same results as tap mode on success and escape (bag, records, island progress, mastery), and the classic tap minigame is unchanged ---
+    def finish(pg_, mode, fid, how, isl="harbor"):
+        pg_.evaluate(f"() => {{ S.fightStyle = '{mode}'; save(); }}"); fh_hook(pg_, fid, isl)
+        info = pg_.evaluate("({ mode: F.mode, hold: document.getElementById('meter').classList.contains('hold'), dots: document.getElementById('dots').textContent, marker: getComputedStyle(document.getElementById('marker')).display })")
+        before = pg_.evaluate("() => JSON.stringify({ coins: S.coins, bag: S.bag.length, tc: S.totalCaught, disc: Object.keys(S.discovered).length, rec: Object.keys(S.records).length })")
+        if how == "catch":
+            if mode == "hold": pg_.evaluate("() => { const s = F.fight; s.cfg.speed = 0; s.fx = .6; s.zx = .5; s.zv = 0; s.progress = .995; s.started = true; }")
+            else: pg_.evaluate("() => { F.hits = 2; F.pos = F.zoneX + F.zoneW / 2; reel(); }")
+            pg_.wait_for_function("current === 'result'", timeout=6000); pg_.wait_for_timeout(100)
+        else:
+            if mode == "hold": pg_.evaluate("() => { const s = F.fight; s.cfg.speed = 0; s.fx = .9; s.zx = 0; s.started = true; s.misses = s.cfg.hearts; s.progress = .002; }")
+            else: pg_.evaluate("() => { F.misses = allowedMiss(); F.pos = 0; reel(); }")
+            pg_.wait_for_function("F.phase === 'idle'", timeout=6000); pg_.wait_for_timeout(100)
+        after = pg_.evaluate("() => JSON.stringify({ coins: S.coins, bag: S.bag.length, tc: S.totalCaught, disc: Object.keys(S.discovered).length, rec: Object.keys(S.records).length })")
+        pend = pg_.evaluate("() => S.pending && Object.keys(S.pending).sort().join(',')")
+        return info, json.loads(before), json.loads(after), pend, pg_.evaluate("current")
+    res = {}
+    for mode in ("tap", "hold"):
+        fpg = hf_page(1536, 730, name="Cmp")
+        res[(mode, "catch")] = finish(fpg, mode, "harbor_1", "catch")
+        fpg.click("#keepBtn"); fpg.wait_for_timeout(200); res[(mode, "kept")] = fpg.evaluate("() => JSON.stringify({ bag: S.bag.map(b => b.fishId), pend: S.pending })"); fpg.evaluate("() => go('fishing')"); fpg.wait_for_timeout(300)
+        res[(mode, "escape")] = finish(fpg, mode, "harbor_3", "escape")
+        res[(mode, "prog")] = fpg.evaluate("() => [discCount('harbor'), document.getElementById('isleProg').textContent.includes('1 / 10 found')]")
+        fpg.close()
+    def delta(r): return (r[2]["tc"] - r[1]["tc"], r[2]["disc"] - r[1]["disc"], r[2]["rec"] - r[1]["rec"], r[2]["bag"] - r[1]["bag"], r[2]["coins"] - r[1]["coins"])
+    check("catch result is the same in tap and hold: Result screen, same pending fields, +1 caught, +1 discovered, +1 record, nothing in the bag until KEEP",
+          all(res[(m, "catch")][4] == "result" for m in ("tap", "hold")) and res[("tap", "catch")][3] == res[("hold", "catch")][3] and delta(res[("tap", "catch")]) == delta(res[("hold", "catch")]) == (1, 1, 1, 0, 0), f"{delta(res[('tap', 'catch')])} {delta(res[('hold', 'catch')])} {res[('hold', 'catch')][3]}")
+    check("KEEP after a Hold Fight catch puts the same fish in the bag as after a tap catch; island progress shows 1 / 10", res[("tap", "kept")] == res[("hold", "kept")] and res[("hold", "prog")] == [1, True] and res[("tap", "prog")] == [1, True], f"{res[('hold', 'kept')][:80]} {res[('hold', 'prog')]}")
+    check("escape result is the same in tap and hold: back to idle on the fishing screen, nothing caught, no bag, coin or record change, no pending catch",
+          all(res[(m, "escape")][4] == "fishing" for m in ("tap", "hold")) and delta(res[("tap", "escape")]) == delta(res[("hold", "escape")]) == (0, 0, 0, 0, 0) and res[("tap", "escape")][3] is None and res[("hold", "escape")][3] is None, f"{delta(res[('tap', 'escape')])} {delta(res[('hold', 'escape')])}")
+    ti, hi = res[("tap", "catch")][0], res[("hold", "catch")][0]
+    check("the tap style still runs the classic minigame (marker, HIT dots, no fish icon) and the hold style the new one", ti["mode"] == "tap" and not ti["hold"] and "HIT" in ti["dots"] and ti["marker"] != "none" and hi["mode"] == "hold" and hi["hold"] and "HIT" not in hi["dots"] and hi["marker"] == "none", f"{ti} {hi}")
+    # mastery through a Hold Fight catch
+    mpg = hf_page(1536, 730, name="Mast")
+    mpg.evaluate("() => { for (let i = 0; i < 9; i++) S.discovered['harbor_' + i] = true; save(); }")
+    mi = finish(mpg, "hold", "harbor_9", "catch"); mpg.wait_for_timeout(900)
+    check("mastery works through a Hold Fight catch (the 10th Harbor fish unlocks Golden Hook)", mpg.evaluate("S.mastery.harbor") is True, str(mpg.evaluate("S.mastery")))
+    mpg.close()
+    hp.close()
+    # --- the setting: default hold, persists, validated, switch in How to Play, tap kept ---
+    sp_ = b.new_page(viewport={"width": 1280, "height": 800}); sp_.on("pageerror", lambda e: errs.append(str(e))); sp_.on("console", lambda m: m.type == "error" and errs.append(m.text))
+    sp_.goto(URL); sp_.evaluate("localStorage.clear()"); sp_.reload(); sp_.wait_for_timeout(300)
+    d0 = sp_.evaluate("[S.fightStyle, DEFAULT_FIGHT, hasSave()]")
+    sp_.click("#howBtn"); sp_.wait_for_timeout(150); lbl0 = sp_.inner_text("#fightBtn"); sp_.click("#fightBtn"); sp_.wait_for_timeout(100); lbl1 = sp_.inner_text("#fightBtn")
+    stored = sp_.evaluate("localStorage.getItem('littleLakeSave')"); how_text = sp_.inner_text("#howBox")
+    check("the fight style defaults to hold, the switch is in How to Play (FIGHT: HOLD / TAP) and it explains both modes", d0 == ["hold", "hold", False] and lbl0 == "FIGHT: HOLD" and lbl1 == "FIGHT: TAP" and "HOLD fight (default)" in how_text and "TAP fight (classic)" in how_text, f"{d0} {lbl0} -> {lbl1}")
+    check("changing the style before any game does not count as a game (CONTINUE stays disabled) and is stored", sp_.evaluate("hasSave()") is False and json.loads(stored) == {"sound": True, "music": True, "fightStyle": "tap"}, stored)
+    sp_.click("#howOk"); sp_.reload(); sp_.wait_for_timeout(300)
+    check("the chosen style persists after a reload", sp_.evaluate("S.fightStyle") == "tap")
+    sp_.click("#newBtn"); sp_.fill("#nameInput", "Setting"); sp_.click("#nameStart"); sp_.wait_for_timeout(200)
+    saved = sp_.evaluate(SAVED)
+    check("NEW GAME keeps the chosen fight style and saves it", saved["fightStyle"] == "tap" and sp_.evaluate("S.fightStyle") == "tap", str(saved.get("fightStyle")))
+    vals = sp_.evaluate("""() => { const base = JSON.parse(localStorage.getItem('littleLakeSave')), out = {}; for (const [k, v] of [['missing', undefined], ['junk', 'banana'], ['number', 7], ['null', null], ['hold', 'hold'], ['tap', 'tap']]) {
+        const raw = { ...base }; if (v === undefined) delete raw.fightStyle; else raw.fightStyle = v; localStorage.setItem('littleLakeSave', JSON.stringify(raw)); out[k] = load().fightStyle; } return out; }""")
+    check("the saved value is validated on load: missing, junk, a number or null load as the default (hold); hold and tap are kept", vals == {"missing": "hold", "junk": "hold", "number": "hold", "null": "hold", "hold": "hold", "tap": "tap"}, str(vals))
+    sp_.close()
+    # --- reduced motion: no shaking, but the fight is still playable ---
+    rmh = hf_page(1536, 730, reduced=True, name="CalmHold")
+    fh_hook(rmh, FIGHT_IDS["Legendary"]); rmh.evaluate("() => { const s = F.fight; s.cfg.speed = 0; s.fx = .7; s.zx = .2; s.zv = 0; s.progress = .5; s.started = true; }")
+    rmh.keyboard.down("Space"); rmh.wait_for_timeout(450); z_up = rmh.evaluate("F.fight.zx"); st_r = fh_state(rmh); rmh.keyboard.up("Space"); rmh.wait_for_timeout(1100); z_dn = rmh.evaluate("F.fight.zx")
+    jit = [rmh.evaluate("[FIGHT.jx, FIGHT.dy, FIGHT.leapP, partCount()]") for _ in range(8) if not rmh.wait_for_timeout(40)]
+    check("reduced motion: the Hold Fight still plays (hold lifts the zone, release drops it, the catch bar moves) but nothing shakes, leaps or splashes",
+          z_up > .3 and z_dn < z_up - .05 and all(j[0] == 0 and j[1] == 0 and j[2] == -1 and j[3] == 0 for j in jit), f"zone {z_up:.2f} -> {z_dn:.2f}, effects {jit[0]}")
+    fh_end(rmh); rmh.close()
+    # --- screenshots: Hold Fight mid-fight with a Common fish and with a Legendary fish (1536x730 and 360x640) ---
+    for vw, vh in [(1536, 730), (360, 640)]:
+        shp = hf_page(vw, vh, name="HoldShots")
+        for rar in ("Common", "Legendary"):
+            fh_hook(shp, FIGHT_IDS[rar]); shp.evaluate("() => { window.__bot = setInterval(() => { const s = F.fight; if (s) holdSet(s.fx > s.zx + s.cfg.zoneW / 2, 'bot'); }, 120); }")
+            if rar == "Legendary":
+                try: shp.wait_for_function("(() => { const q = fightState(); return q && q.leaping && q.leapP > .05 && q.leapP < .3; })()", timeout=9000, polling=10)
+                except Exception: pass
+            else: shp.wait_for_timeout(2200)
+            shp.screenshot(path=str(SHOTS / f"107_holdfight_{rar.lower()}_{vw}x{vh}.png"))
+            shp.evaluate("() => { clearInterval(window.__bot); }"); fh_end(shp)
+        shp.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

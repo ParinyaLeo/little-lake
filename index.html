@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=48">
+<link rel="stylesheet" href="css/style.css?v=49">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -116,7 +116,7 @@
       </div>
       <!-- the island progress fills the meter's space when not reeling; both keep a fixed size so CAST never moves -->
       <div class="reelarea">
-        <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div><div class="power" aria-hidden="true"><i id="powerFill"></i></div></div>
+        <div class="meter" id="meter"><div class="zone" id="zone"></div><div class="marker" id="marker"></div><canvas class="fishicon" id="fishIcon" width="24" height="16" aria-hidden="true"></canvas><div class="power" aria-hidden="true"><i id="powerFill"></i></div></div>
         <div class="reelinfo"><div class="dots" id="dots"></div><div class="hearts" id="hearts" role="status"></div></div>
         <div class="isle-prog" id="isleProg"></div>
       </div>
@@ -243,8 +243,9 @@
     <dl>
       <dt>🎣 Cast</dt><dd>Pick an island on the Town Map and press CAST. Hold CAST for a stronger throw. Then wait for a bite.</dd>
       <dt>❗ Bite</dt><dd>When a big "!" pops up over the bobber, press HOOK! within 1 second or the fish swims away.</dd>
-      <dt>🟩 Reel</dt><dd>A marker slides across the meter. Press REEL while it is inside the green zone. 3 hits catch the fish. Each miss costs a ❤ heart; miss with no hearts left and the fish escapes.</dd>
-      <dt>🎣 Rods</dt><dd>Buy rods once in the Shop. Equip one in the Tackle Box, or tap ROD on the fishing screen to pick from a list: Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster marker).</dd>
+      <dt>🟩 Reel</dt><dd>HOLD fight (default): hold REEL (the button, Space or the scene) to slide the green zone right, let go to drop it left, and keep the fish inside it until the catch bar is full. If the bar runs empty you lose a ❤ heart; with none left, or after 35 seconds, the fish escapes.<br>TAP fight (classic): a marker slides across the meter; press REEL while it is inside the green zone. 3 hits catch the fish; each miss costs a ❤ heart.</dd>
+      <dt>🎚 Fight style</dt><dd>Switch between the two here: <button type="button" class="btn small" id="fightBtn" aria-pressed="true">FIGHT: HOLD</button></dd>
+      <dt>🎣 Rods</dt><dd>Buy rods once in the Shop. Equip one in the Tackle Box, or tap ROD on the fishing screen to pick from a list: Bamboo (free, 1 miss), Sturdy (2 misses), Precision (3 misses and a 35% wider green zone) or Lucky (5 misses and better odds, but a 10% faster minigame).</dd>
       <dt>🎒 Bag</dt><dd>KEEP puts your catch in the bag; sell it there for coins. If the bag is full you can sell a fish, open the bag or release the new one. You can't cast while the bag is full. Lock a fish in the Bag to keep it from SELL ALL. While fishing, SELL (next to your coins at the top) opens the bag.</dd>
       <dt>🎈 Floats</dt><dd>Buy floats in the Shop (Candy, Frog, Duck or Golden) and choose one in the Tackle Box or with FLOAT on the fishing screen. They only change how your bobber looks.</dd>
       <dt>🪱 Bait</dt><dd>Choose Worm, Shrimp, Golden Lure or no bait in the Tackle Box, or tap BAIT on the fishing screen to see every bait with its odds and pick one. Each cast uses one of the chosen bait for better odds of rarer fish.</dd>
@@ -268,10 +269,11 @@
 </div>
 
 
-<script src="js/data.js?v=48"></script>
-<script src="js/state.js?v=48"></script>
-<script src="js/fisherman.js?v=48"></script>
-<script src="js/fishing.js?v=48"></script>
-<script src="js/screens.js?v=48"></script>
+<script src="js/data.js?v=49"></script>
+<script src="js/fight.js?v=49"></script>
+<script src="js/state.js?v=49"></script>
+<script src="js/fisherman.js?v=49"></script>
+<script src="js/fishing.js?v=49"></script>
+<script src="js/screens.js?v=49"></script>
 </body>
 </html>

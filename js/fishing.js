@@ -347,8 +347,8 @@ function shadowCatch(reeled) {                                                  
    a jerk + small splash particles on every hit / miss, and the fish personality (the shadow's movement): Common "steady", Rare "dash", Epic "zigzag", Legendary / Mythical "leap" (on every hit the real
    fish sprite jumps out of the water for 0.4 s). With prefers-reduced-motion there is no shake, dash, zigzag, leap or particles; the line colour and the sounds stay. */
 const FIGHT = { on: false, tension: 0, personality: "steady", danger: false, tickMs: 520, red: 0, line: "", spike: 0, spikeAt: -1e9, lastHits: 0, lastMiss: 0, evAt: -1e9, evHit: true, tickAt: 0,
-  dashAt: -1e9, nextDash: 0, dashDir: 1, leapAt: -1e9, leapP: -1, lx: 0, ly: 0, dx: 0, dy: 0, jx: 0, dt: 0, lastT: 0, ripAt: -1e9 };
-const FIGHT_BASE = { Common: .35, Rare: .5, Epic: .65, Legendary: .8, Mythical: .8 }, FIGHT_PERS = { Common: "steady", Rare: "dash", Epic: "zigzag", Legendary: "leap", Mythical: "leap" };
+  dashAt: -1e9, nextDash: 0, dashDir: 1, lastLeap: 0, leapAt: -1e9, leapP: -1, lx: 0, ly: 0, dx: 0, dy: 0, jx: 0, dt: 0, lastT: 0, ripAt: -1e9 };
+const FIGHT_BASE = { Common: .35, Rare: .5, Epic: .65, Legendary: .8, Mythical: .8 };   // FIGHT_PERS (personality by rarity) is in fight.js
 const LINE_CSS = Array.from({ length: 21 }, (_, i) => `rgba(255,${Math.round(255 - 150 * i / 20)},${Math.round(255 - 190 * i / 20)},.85)`);   // white > warm red in 20 steps (strings made once)
 FIGHT.line = LINE_CSS[0];
 const PART_N = 24, PART = { x: new Float32Array(PART_N), y: new Float32Array(PART_N), vx: new Float32Array(PART_N), vy: new Float32Array(PART_N), life: new Float32Array(PART_N), i: 0 };   // fixed pool: no allocation per frame
@@ -357,26 +357,36 @@ const partCount = () => { let n = 0; for (let i = 0; i < PART_N; i++) if (PART.l
 const FISH_SPR = {};
 function fishSprite(f) { let c = FISH_SPR[f.id]; if (!c) { c = document.createElement("canvas"); drawFish(c, f); FISH_SPR[f.id] = c; } return c; }   // the real, coloured fish (for the leap)
 const triWave = x => Math.abs(((x % 2) + 2) % 2 - 1) * 2 - 1;
-function fightStart(t) { Object.assign(FIGHT, { spike: 0, spikeAt: -1e9, lastHits: 0, lastMiss: F.misses, evAt: -1e9, tickAt: t + 250, nextDash: t + 1200, dashAt: -1e9, dashDir: 1, leapAt: -1e9, leapP: -1, red: 0, lastT: t }); PART.life.fill(0); }
+function fightStart(t) { Object.assign(FIGHT, { spike: 0, spikeAt: -1e9, lastHits: 0, lastMiss: F.misses, evAt: -1e9, tickAt: t + 250, nextDash: t + 1200, dashAt: -1e9, dashDir: 1, leapAt: -1e9, leapP: -1, red: 0, lastT: t, lastLeap: 0, tension: .4 }); PART.life.fill(0); }
 const fightSpike = t => FIGHT.spike * Math.exp(-(t - FIGHT.spikeAt) / 450);   // the decaying spike after a hit / miss
 // one frame of the fight (called from shadowStep while reeling); sets FIGHT.dx / dy (personality movement), FIGHT.jx (jerk)
 function fightStep(t, k, still, sx, sy) {
   const g = FIGHT, f = F.fish, dt = Math.min(.05, Math.max(0, (t - g.lastT) / 1000)); g.lastT = t; g.dt = dt; g.on = true;
   g.personality = FIGHT_PERS[f.rarity] || "steady";
-  if (F.hits > g.lastHits) {                                                                  // a hit: a short spike, a jerk, splash particles; Legendary / Mythical leap
+  const hold = F.mode === "hold", st = hold ? F.fight : null;
+  if (!hold && F.hits > g.lastHits) {                                                          // a hit: a short spike, a jerk, splash particles; Legendary / Mythical leap
     g.lastHits = F.hits; g.spike = Math.min(.5, fightSpike(t) + .2); g.spikeAt = t; g.evAt = t; g.evHit = true;
     if (!still) { partSpawn(sx, sy, 8, k); if (g.personality === "leap") { g.leapAt = t; sfx.bigSplash(); } }
   }
   if (F.misses > g.lastMiss) { g.lastMiss = F.misses; g.spike = Math.min(.5, fightSpike(t) + .35); g.spikeAt = t; g.evAt = t; g.evHit = false; if (!still) partSpawn(sx, sy, 5, k); }
-  g.tension = Math.min(1, (FIGHT_BASE[f.rarity] || .35) + fightSpike(t));
-  g.danger = allowedMiss() - F.misses <= 1;                                                  // one miss (or none) left
+  if (hold) {                                                                                 // Hold Fight: tension rises when the fish is far from the zone or the catch bar is low, and falls while it is inside
+    const dist = st.inside ? 0 : Math.min(1, Math.abs(st.fx - (st.zx + st.cfg.zoneW / 2)) / .4), goal = Math.min(1, (st.inside ? .2 : .45 + .35 * dist) + .3 * (1 - st.progress) + fightSpike(t));
+    g.tension += (goal - g.tension) * (still ? 1 : Math.min(1, dt * 6));
+    g.danger = allowedMiss() - F.misses <= 1 || st.progress < .2;                              // one heart left, or the catch bar below 20%
+    if (st.leapN > g.lastLeap) { g.lastLeap = st.leapN; if (!still) { g.leapAt = t; sfx.bigSplash(); partSpawn(sx, sy, 8, k); } }   // Legendary / Mythical leap with the fish
+  } else {
+    g.tension = Math.min(1, (FIGHT_BASE[f.rarity] || .35) + fightSpike(t));
+    g.danger = allowedMiss() - F.misses <= 1;                                                  // one miss (or none) left
+  }
   g.tickMs = Math.round(520 - 370 * g.tension);
   const redGoal = g.danger ? 1 : Math.max(0, Math.min(1, (g.tension - .75) / .2));
   g.red += (redGoal - g.red) * (still ? 1 : Math.min(1, dt * 6)); g.line = LINE_CSS[Math.round(g.red * 20)];
   if (t >= g.tickAt) { sfx.reelTick(g.tension); g.tickAt = Math.max(t, g.tickAt) + g.tickMs; }   // the reel ratchet speeds up with tension (silent with Sound off)
   g.dx = g.dy = g.jx = 0; g.leapP = -1;
+  if (hold) g.dx = (st.fx - .5) * 130 * k;                                                    // the shadow follows the fish on the track (gameplay, so also with reduced motion)
   if (still) return;
-  if (g.personality === "steady") { g.dx = Math.sin(t / 450) * 13 * k; g.dy = Math.sin(t / 700) * 2 * k; }
+  if (hold) { g.dy = Math.sin(t / 130) * 2 * k; }
+  else if (g.personality === "steady") { g.dx = Math.sin(t / 450) * 13 * k; g.dy = Math.sin(t / 700) * 2 * k; }
   else if (g.personality === "zigzag") { g.dx = triWave(t / 450) * 22 * k; g.dy = triWave(t / 220) * 6 * k; }
   else if (g.personality === "dash") {
     if (t >= g.nextDash) { g.dashAt = t; g.ripAt = t; g.dashDir = -g.dashDir; const h = Math.sin(t * 12.9898) * 43758.5453; g.nextDash = t + 1000 + 1000 * (h - Math.floor(h)); }   // a dash every 1-2 s (no Math.random)
@@ -428,7 +438,7 @@ function shadowStep(t, W, H, still) {
     } else {
       s.mode = "reel";
       if (F.misses > s.lastMiss) { s.lastMiss = F.misses; s.kickAt = t; }                  // a miss: it darts back
-      const goal = Math.max(0, F.hits / 3 - .06 * F.misses);                                // each hit pulls it a third of the way to the dock, each miss gives a little back
+      const goal = F.mode === "hold" ? F.fight.progress : Math.max(0, F.hits / 3 - .06 * F.misses);   // tap: each hit pulls it a third of the way to the dock, each miss gives a little back; hold: the catch progress
       s.prog += (goal - s.prog) * (still ? 1 : Math.min(1, dt * 8));
       const kick = still ? 0 : 20 * k * Math.exp(-(t - s.kickAt) / 180);
       fightStep(t, k, still, s.x, s.y);                                                    // tension, personality movement, jerk (never touches the rules)
@@ -546,14 +556,17 @@ function loop(t) {
   drawScene(t);
   if (F.phase === "reeling") {
     const dt = Math.min(.05, (t - (F.lastT || t)) / 1000); F.lastT = t;
-    F.pos += F.dir * F.speed * dt;
-    if (F.pos > 1) { F.pos = 1; F.dir = -1; } if (F.pos < 0) { F.pos = 0; F.dir = 1; }
-    $("marker").style.left = `calc(${F.pos * 100}% - 3px)`;
+    if (F.mode === "hold") holdFrame(dt);
+    else {
+      F.pos += F.dir * F.speed * dt;
+      if (F.pos > 1) { F.pos = 1; F.dir = -1; } if (F.pos < 0) { F.pos = 0; F.dir = 1; }
+      $("marker").style.left = `calc(${F.pos * 100}% - 3px)`;
+    }
   }
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { holdRelease(); shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 // the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
 // (both use visibility, never display, so nothing below them moves)
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
@@ -666,35 +679,36 @@ function act() {
   if ($("actBtn").disabled || current !== "fishing") return;
   if (F.phase === "idle") cast();
   else if (F.phase === "bite") hook();
-  else if (F.phase === "reeling") reel();
+  else if (F.phase === "reeling" && F.mode !== "hold") reel();                          // Hold Fight: the button is held, not tapped (see HOLD below)
 }
 // CAST: a press on the button / scene / Space starts a charge when idle (HOOK and REEL act at once, as before); the release throws.
 // A real pointer click while idle is already handled by pointerdown/up; detail 0 (Enter on the focused button, el.click()) still casts at once.
-$("actBtn").addEventListener("pointerdown", e => { if (!e.button && F.phase === "idle") chargeStart("ptr", e.pointerId); });
-$("actBtn").addEventListener("click", e => { if (F.phase === "idle" && e.detail) return; act(); });
-$("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); if (F.phase === "idle") chargeStart("ptr", e.pointerId); else act(); });
-document.addEventListener("pointerup", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeEnd(); });      // anywhere on the page
-document.addEventListener("pointercancel", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); });
+$("actBtn").addEventListener("pointerdown", e => { if (e.button) return; if (F.phase === "idle") chargeStart("ptr", e.pointerId); else holdSet(true, "ptr", e.pointerId); });
+$("actBtn").addEventListener("click", e => { if (F.phase === "idle" && e.detail) return; if (F.phase === "reeling" && F.mode === "hold") { if (!e.detail) holdPulse(); return; } act(); });   // Enter on the focused button (detail 0) = a short pulse of the hold
+$("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); if (F.phase === "idle") chargeStart("ptr", e.pointerId); else if (F.phase === "reeling" && F.mode === "hold") holdSet(true, "ptr", e.pointerId); else act(); });
+document.addEventListener("pointerup", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeEnd(); if (HOLD.on && HOLD.src === "ptr" && e.pointerId === HOLD.pid) holdRelease(); });      // anywhere on the page
+document.addEventListener("pointercancel", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); if (HOLD.on && HOLD.src === "ptr" && e.pointerId === HOLD.pid) holdRelease(); });
 // iOS: a long press fires contextmenu (callout / loupe) and may take the pointer away (lostpointercapture): both are a clean cancel, not a stuck charge.
 // lostpointercapture also follows every normal pointerup, but by then the release has already thrown and CH.on is false.
 ["actBtn", "scene"].forEach(id => {
   $(id).addEventListener("contextmenu", e => e.preventDefault());
-  $(id).addEventListener("lostpointercapture", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); });
+  $(id).addEventListener("lostpointercapture", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); if (HOLD.on && HOLD.src === "ptr" && e.pointerId === HOLD.pid) holdRelease(); });
 });
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") chargeReset();                                                    // Esc cancels the charge, nothing is thrown
+  if (e.key === "Escape") { chargeReset(); holdRelease(); }                                                    // Esc cancels the charge, nothing is thrown
   if (e.code !== "Space" || current !== "fishing" || document.querySelector(".banner.show") || e.target === $("homeTop")) return;   // Space on the focused HOME button presses HOME (part 13), it does not cast
   e.preventDefault();                                                                       // no page scroll, no second click on a focused button
   if (e.repeat) return;
-  if (F.phase === "idle") chargeStart("key"); else act();
+  if (F.phase === "idle") chargeStart("key"); else if (F.phase === "reeling" && F.mode === "hold") holdSet(true, "key"); else act();
 });
 document.addEventListener("keyup", e => {
   if (e.code !== "Space" || e.target === $("homeTop")) return;
   if (CH.on && CH.src === "key") chargeEnd();
+  if (HOLD.on && HOLD.src === "key") holdRelease();
   if (current === "fishing" && !document.querySelector(".banner.show")) e.preventDefault();
 });
-window.addEventListener("blur", () => chargeReset());
-document.addEventListener("visibilitychange", () => { if (document.hidden) chargeReset(); });
+window.addEventListener("blur", () => { chargeReset(); holdRelease(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { chargeReset(); holdRelease(); } });
 function chargeStart(src, pid = -1) {
   if (CH.on || F.phase !== "idle" || current !== "fishing" || $("actBtn").disabled || document.querySelector(".banner.show")) return;
   Object.assign(CH, { on: true, src, pid, t0: performance.now(), shown: false });
@@ -756,21 +770,61 @@ function bite() {
 function hook() {
   clearTimeout(F.biteTimer); $("bang").style.display = "none";
   const d = DIFF[F.fish.rarity];
-  Object.assign(F, { phase: "reeling", pos: 0, dir: 1, hits: 0, misses: 0, lastT: 0,
+  if (S.fightStyle === "hold") return hookHold();
+  $("meter").classList.remove("hold");
+  Object.assign(F, { phase: "reeling", mode: "tap", pos: 0, dir: 1, hits: 0, misses: 0, lastT: 0,
     speed: d.speed * (S.mastery.frost ? .8 : 1) * rod().speed, zoneW: d.zone * rod().zone });   // rod + Steady Hands
   newZone(); showMeter(true);
   const a = $("actBtn"); a.textContent = "REEL"; a.className = "btn green";
   $("fMsg").textContent = "Press REEL inside the green zone!"; updateDots(); sfx.hit(); musicDuck(true);   // the music dips while reeling so the effects stay clear
 }
-function newZone() { F.zoneX = .1 + Math.random() * (.8 - F.zoneW); $("zone").style.left = F.zoneX * 100 + "%"; $("zone").style.width = F.zoneW * 100 + "%"; }
+function newZone() { $("zone").style.transform = ""; F.zoneX = .1 + Math.random() * (.8 - F.zoneW); $("zone").style.left = F.zoneX * 100 + "%"; $("zone").style.width = F.zoneW * 100 + "%"; }
 // HIT dots, and one heart per miss you can still afford (a miss with no hearts left = the fish escapes)
 function updateDots() {
-  $("dots").textContent = "HIT " + "●".repeat(F.hits) + "○".repeat(3 - F.hits);
+  if (F.mode !== "hold") $("dots").textContent = "HIT " + "●".repeat(F.hits) + "○".repeat(3 - F.hits);   // Hold Fight shows the catch bar there instead
   const max = allowedMiss(), left = Math.max(0, max - F.misses), H = $("hearts");
   H.innerHTML = `<span class="l">${left ? "MISSES LEFT" : "NO MISSES LEFT!"}</span>` + (max > 6
     ? `<span class="ico ${left ? "i-heart" : "i-heart0"}"></span>x${left}`
     : Array.from({ length: max }, (_, i) => `<span class="ico ${i < left ? "i-heart" : "i-heart0"}"></span>`).join(""));
   H.classList.toggle("last", !left); H.setAttribute("aria-label", `${misses(left)} left`);
+}
+/* Hold Fight (Playtest 2, part 3; the rules and physics are the pure stepFight() in js/fight.js): while reeling, HOLD the REEL button, Space or the scene to slide the green zone right, let go to drop it back;
+   keep the fish icon inside the zone to fill the catch bar. This is only the input + drawing; hearts = allowedMiss(), the same caught() / escape() end the fight as in the classic tap minigame. The hold is released by
+   pointerup / pointercancel / lostpointercapture / blur / visibilitychange / Esc / the end of the fight. S.fightStyle "tap" keeps the classic marker minigame (reel() below) exactly as it was. */
+let FIGHT_RNG = Math.random;                                  // tests can swap in a seeded generator
+const HOLD = { on: false, src: "", pid: -1 };
+let HOLD_CW = 300, HOLD_PF = null, HOLD_PQ = -1;
+function holdSet(on, src, pid) { if (on) { if (F.phase !== "reeling" || F.mode !== "hold") return; HOLD.on = true; HOLD.src = src || ""; HOLD.pid = pid === undefined ? -1 : pid; } else { HOLD.on = false; HOLD.src = ""; HOLD.pid = -1; } }
+function holdRelease() { holdSet(false); }
+function holdPulse() { holdSet(true, "pulse"); later(() => { if (HOLD.src === "pulse") holdRelease(); }, 170); }
+function hookHold() {
+  const hp = holdParams(F.fish.rarity), r = rod(), calm = !!(REDUCED && REDUCED.matches);
+  const cfg = { personality: FIGHT_PERS[F.fish.rarity] || "steady", speed: hp.speed * (S.mastery.frost ? .8 : 1) * r.speed, zoneW: hp.zone * r.zone, hearts: allowedMiss() };   // Steady Hands, Lucky Rod, Precision Rod, Master's Charm
+  Object.assign(F, { phase: "reeling", mode: "hold", fight: fightInit(cfg, FIGHT_RNG), pos: .6, zoneX: .3, dir: 1, hits: 0, misses: 0, lastT: 0, seenSlips: 0, wasIn: false, speed: cfg.speed, zoneW: cfg.zoneW });
+  holdRelease(); HOLD_PQ = -1;
+  const m = $("meter"), z = $("zone"); m.classList.add("hold"); z.style.left = "0"; z.style.width = cfg.zoneW * 100 + "%"; z.style.transform = "translateX(0)";
+  drawFish($("fishIcon"), F.fish);                                                    // the small sprite of the real fish
+  $("dots").innerHTML = '<span class="pl">CATCH</span><span class="pbar" id="pbar" role="progressbar" aria-label="Catch progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="22"><i id="pfill"></i></span>';
+  HOLD_PF = $("pfill"); showMeter(true); HOLD_CW = m.clientWidth || 300;
+  const a = $("actBtn"); a.textContent = "REEL"; a.className = "btn green";
+  $("fMsg").textContent = "Hold REEL: keep the fish in the green!"; updateDots(); sfx.hit(); musicDuck(true);
+}
+window.addEventListener("resize", () => { if (F.mode === "hold") HOLD_CW = $("meter").clientWidth || HOLD_CW; });
+// one frame of the Hold Fight: step the pure simulation, then draw it and react to its events (slip, catch, escape)
+function holdFrame(dt) {
+  const st = F.fight, calm = !!(REDUCED && REDUCED.matches);
+  stepFight(st, dt, HOLD.on, FIGHT_RNG); F.misses = st.misses; F.zoneX = st.zx; F.pos = st.fx;
+  $("zone").style.transform = `translateX(${(st.zx * HOLD_CW).toFixed(1)}px)`;
+  $("fishIcon").style.transform = `translateX(${(st.fx * HOLD_CW - 18).toFixed(1)}px)`;
+  HOLD_PF.style.transform = `scaleX(${st.progress.toFixed(3)})`;
+  const q = Math.round(st.progress * 20); if (q !== HOLD_PQ) { HOLD_PQ = q; const b = $("pbar"); b.setAttribute("aria-valuenow", String(q * 5)); b.classList.toggle("low", st.progress < .2); }
+  if (st.inside && !F.wasIn && !calm) fisherTug(true);                                // the fish is back in the zone: the rod pulls
+  F.wasIn = st.inside;
+  if (st.slips > F.seenSlips) {                                                       // the catch bar ran empty: a slip = one heart lost (the existing miss sound, splash and double pulse)
+    F.seenSlips = st.slips; sfx.miss(); if (!calm) vibrate([30, 30, 30]); fisherTug(false); updateDots();
+  }
+  if (st.result === "caught") { F.hits = 3; caught(true); }
+  else if (st.result === "escaped") escape(st.reason === "time" ? "Time's up! The fish got away." : "The fish slipped off the line!");
 }
 function reel() {
   const inside = F.pos >= F.zoneX && F.pos <= F.zoneX + F.zoneW;
@@ -783,13 +837,13 @@ function reel() {
   F.pos = 0; F.dir = 1; newZone();                    // marker resets and keeps moving after every hit or miss
 }
 function escape(text) {
-  shadowLeave(); musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
+  holdRelease(); shadowLeave(); musicDuck(false); sfx.fail(); vibrate(300); showMeter(false); $("bang").style.display = "none";
   clearTimers(); F = { phase: "idle" }; fisherEvent("escaped"); renderFishingHud(); $("fMsg").textContent = text; toast(text);
 }
 // reeled = caught on the fishing screen: the fisherman lifts the rod for a moment before the Result screen
 function caught(reeled) {
   musicDuck(false);
-  const f = F.fish; shadowCatch(reeled && current === "fishing"); clearTimers(); F = { phase: "idle" }; showMeter(false);
+  holdRelease(); const f = F.fish; shadowCatch(reeled && current === "fishing"); clearTimers(); F = { phase: "idle" }; showMeter(false);
   const skew = Math.pow(Math.random(), 1.6);
   const weight = +(f.min + (f.max - f.min) * skew).toFixed(2);
   const mid = (f.min + f.max) / 2;

@@ -2,7 +2,7 @@
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
 const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none", floatsOwned: ["classic"], floatEq: "classic",
-  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0 });
+  bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0, fightStyle: DEFAULT_FIGHT });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
   let raw;
@@ -36,6 +36,7 @@ function cleanSave(raw) {
     holdCasts: num(raw.holdCasts, 0),               // hold-to-charge casts so far (the "hold CAST" hint stops after 3); old saves: 0
     sound: raw.sound !== false,                       // older saves have no sound setting: default on
     music: raw.music !== false,                       // ... and no music setting: default on
+    fightStyle: FIGHT_STYLES.includes(raw.fightStyle) ? raw.fightStyle : DEFAULT_FIGHT,   // "hold" (Hold Fight) or "tap" (classic marker); anything else = the default
     pending: validCatch(raw.pending) ? raw.pending : null,   // a catch still waiting for KEEP / RELEASE
   };
   s.bag = s.bag.slice(0, s.bagMax);
@@ -46,14 +47,14 @@ function validCatch(p) { return !!p && typeof p === "object" && !!fishById(p.fis
 let S = load();
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {} }
 // A game exists if the save holds anything besides the sound / music settings (toggling them on the
-// Title screen before starting a game stores only { sound, music }).
+// Title screen before starting a game stores only { sound, music } (plus fightStyle when it was changed in How to Play)).
 function hasSave() {
-  try { const raw = JSON.parse(localStorage.getItem(SAVE_KEY)); return !!raw && typeof raw === "object" && Object.keys(raw).some(k => k !== "sound" && k !== "music"); }
+  try { const raw = JSON.parse(localStorage.getItem(SAVE_KEY)); return !!raw && typeof raw === "object" && Object.keys(raw).some(k => k !== "sound" && k !== "music" && k !== "fightStyle"); }
   catch (e) { return false; }
 }
 function saveSound() {                               // Sound and Music settings (also used for both toggles)
   if (hasSave()) return save();
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({ sound: S.sound, music: S.music })); } catch (e) {}
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S.fightStyle === DEFAULT_FIGHT ? { sound: S.sound, music: S.music } : { sound: S.sound, music: S.music, fightStyle: S.fightStyle })); } catch (e) {}
 }
 
 // Another tab of the game saved: reload, so this tab doesn't later overwrite that progress with its old copy.
@@ -593,7 +594,7 @@ function rodFx(id) {
   const r = RODS[id], p = [`${misses(r.miss)} allowed`];
   if (r.zone !== 1) p.push(`green zone ${Math.round((r.zone - 1) * 100)}% wider`);
   if (r.luck) p.push("better rarity odds (like Shrimp bait)");
-  if (r.speed !== 1) p.push(`marker ${Math.round((r.speed - 1) * 100)}% faster`);
+  if (r.speed !== 1) p.push(`minigame ${Math.round((r.speed - 1) * 100)}% faster`);
   if (p.length === 1) p.push("normal zone and speed");
   return p.join(", ") + ".";
 }

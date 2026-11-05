@@ -739,3 +739,13 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   #bagList .grow { font-size: 12px; }
   #bag > .panel { padding: 16px 8px; }
 }
+
+/* Hold Fight (Playtest 2, part 3): the fish icon on the meter, and the catch-progress bar where the HIT dots are in tap mode */
+.fishicon { display: none; position: absolute; top: 50%; left: 0; width: 36px; height: 24px; margin-top: -12px; z-index: 3; image-rendering: pixelated; pointer-events: none; will-change: transform; filter: drop-shadow(0 0 3px rgba(255,255,255,.7)); }
+.meter.hold .fishicon { display: block; }
+.meter.hold .marker { display: none; }
+.pl { font-size: 14px; margin-right: 8px; letter-spacing: 1px; vertical-align: middle; }
+.pbar { display: inline-block; vertical-align: middle; position: relative; width: 140px; height: 16px; border: 3px solid var(--wood-dark); background: #1a0d04; overflow: hidden; }
+.pbar i { position: absolute; inset: 0; background: linear-gradient(#ffe27a, #f2a900); transform-origin: left center; transform: scaleX(0); }
+.pbar.low i { background: linear-gradient(#ff8a80, #e53935); }
+@media (max-width: 700px) { .pl { display: none; } .pbar { width: 100px; height: 14px; } }

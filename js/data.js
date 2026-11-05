@@ -2,7 +2,7 @@
 /* ===================== DATA ===================== */
 const ISLANDS = {
   harbor: { name: "Harbor", bg: "bg-harbor", reward: "Golden Hook", icon: "hook", effect: "Fish sell for 20% more coins" },
-  frost:  { name: "Frost",  bg: "bg-frost",  reward: "Steady Hands", icon: "hands", effect: "Minigame marker moves 20% slower" },
+  frost:  { name: "Frost",  bg: "bg-frost",  reward: "Steady Hands", icon: "hands", effect: "The minigame is 20% slower" },
   desert: { name: "Desert", bg: "bg-desert", reward: "Lucky Lure", icon: "lure", effect: "Higher chance of Epic and Legendary fish" },
   forest: { name: "Forest", bg: "bg-forest", reward: "Master's Charm", icon: "charm", effect: "One additional miss is allowed" },
   secret: { name: "Little Lake", bg: "bg-secret", reward: "", effect: "" },
