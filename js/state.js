@@ -155,6 +155,8 @@ const sfx = {
   catch: () => [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => { tone(f, i === 3 ? .42 : .16, "triangle", .27, i * .11); tone(f * 2, i === 3 ? .3 : .12, "sine", .1, i * .11); }),   // 4-note fanfare
   coin: () => { tone(1318.5, .09, "square", .17); tone(1760, .2, "square", .17, .075); },            // two quick high notes
   tick: () => tone(760, .05, "triangle", .2, 0, { to: 380 }),                                        // equip / lock / Title toggles: their own confirmation tick
+  reelTick: tension => tone(640 + 700 * tension, .03, "square", .045, 0, { to: 420 + 500 * tension }),   // the reel ratchet while fighting: quiet, faster and higher with tension (Fight feel, Playtest 2 part 2)
+  bigSplash: () => { noise(.45, .5, "lowpass", 1500, 160); tone(150, .28, "sine", .24, 0, { to: 65 }); },   // a Legendary / Mythical leap: a deeper, bigger splash
   click: () => tone(1900, .035, "sine", .05, 0, { to: 1500, attack: .002 }),                         // ordinary menu buttons: a very short, soft, high tick (quieter than every other effect)
 };
 sfx.cast = sfx.whoosh;                               // the cast sound is the whoosh

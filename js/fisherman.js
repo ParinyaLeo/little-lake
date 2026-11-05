@@ -322,6 +322,7 @@ function poseParams(name, lt, t, still) {
     if (!still && d >= 0 && d < 280 && FISH_EVT.tugHit) { const s = sin(d / 280 * Math.PI); P.f = 9; P.a = 55 + 18 * s; P.bend = 14 + 8 * s; }
     else if (!still && d >= 0 && d < 350) { const w = 1 - d / 350; P.f = 10; P.a = 40 + sin(d / 25) * 5 * w; P.bend = 1 + sin(d / 30) * 3 * w; }
     else { P.f = still || Math.floor(t / 140) % 2 === 0 ? 7 : 8; P.a = 55 + (still ? 0 : sin(t / 90) * 2); P.bend = 16 + (still ? 0 : sin(t / 60) * 2); }
+    if (FIGHT.on) P.bend *= .8 + .5 * FIGHT.tension;   // the rod bends more as the line tension rises (visual only; FIGHT is set by fishing.js)
   } else if (name === "caught") {
     P.f = still || Math.floor(lt / 175) % 2 === 0 ? 11 : 12; P.a = 82; P.bend = still ? 0 : -1 + sin(lt / 60) * 2;
   } else if (name === "escaped") {

@@ -320,7 +320,7 @@ const floatIcon = id => `<span class="ico fl${FLOAT_ICON_MAPS[id] ? " big" : ""}
    The state lives in SH (not in F) so the shadow can still fade after F is reset (escape / catch). It only runs for a real cast (F.biteAt is set by cast()), so a hand-made F draws no shadow.
    Positions are canvas pixels (the canvas is always 900 px wide). The shadow starts on the deep side (right, a little up), so it never crosses the dock on the left; the end of the
    reel pulls it (and the float it drags) toward SH.dk, a point of open water in front of the dock. No allocations per frame: SH and SHO are reused, sprites are cached per fish id. */
-const SH = { on: false, mode: "", cast: -1, pm: "", fish: null, size: 2, x: 0, y: 0, face: 1, alpha: 0, bx: 0, by: 0, ox: 0, oy: 0, dip: 0, nib: 0, dx: 0, prog: 0, lastT: 0, lx: 0, lastMiss: 0, kickAt: -1e9, t0: 0, fx: 0, fy: 0, fa: 1, k: 1, W: 900, H: 400, dk: { x: 0, y: 0 } };
+const SH = { on: false, mode: "", cast: -1, pm: "", fish: null, size: 2, x: 0, y: 0, face: 1, alpha: 0, bx: 0, by: 0, ox: 0, oy: 0, dip: 0, nib: 0, dx: 0, dy: 0, prog: 0, lastT: 0, lx: 0, lastMiss: 0, kickAt: -1e9, t0: 0, fx: 0, fy: 0, fa: 1, k: 1, W: 900, H: 400, dk: { x: 0, y: 0 } };
 const SHO = { x: 0, y: 0, m: "approach", nib: 0 }, SH_KY = .42, SH_CACHE = {};
 const shadowClear = () => { SH.on = false; SH.mode = ""; SH.cast = -1; SH.pm = ""; SH.ox = SH.oy = SH.dip = 0; };
 function shadowSprite(f) { let c = SH_CACHE[f.id]; if (!c) { c = document.createElement("canvas"); silhouette(c, f); SH_CACHE[f.id] = c; } return c; }   // one dark colour, 24 x 16
@@ -341,14 +341,82 @@ function shadowCatch(reeled) {                                                  
   if (reeled && SH.on && SH.fish && F.biteAt) { SH.mode = "catch"; SH.t0 = performance.now(); SH.fx = SH.x; SH.fy = SH.y; SH.fa = SH.alpha; SH.ox = SH.oy = SH.dip = 0; } else shadowClear();
 }
 // advances the shadow for this frame (sets SH.x / y / alpha / mode, and SH.ox / oy / dip = how the bobber follows it); true when it should be drawn
+/* Fight feel (Playtest 2, part 2): VISUAL, SOUND and VIBRATION only. While reeling, `FIGHT` holds a tension value 0..1 (a base by rarity + a short spike after every hit or miss that decays;
+   `danger` = one miss or fewer left). Nothing in the rules ever reads it: marker, zone, speed, hits, misses and the escape rule are untouched, and this code never calls Math.random (the reel's own
+   newZone() random calls stay exactly as they were). It drives: the rod bend (fisherman.js scales its bend), the line colour (white > warm red), the reel tick sound (tickMs shortens with tension),
+   a jerk + small splash particles on every hit / miss, and the fish personality (the shadow's movement): Common "steady", Rare "dash", Epic "zigzag", Legendary / Mythical "leap" (on every hit the real
+   fish sprite jumps out of the water for 0.4 s). With prefers-reduced-motion there is no shake, dash, zigzag, leap or particles; the line colour and the sounds stay. */
+const FIGHT = { on: false, tension: 0, personality: "steady", danger: false, tickMs: 520, red: 0, line: "", spike: 0, spikeAt: -1e9, lastHits: 0, lastMiss: 0, evAt: -1e9, evHit: true, tickAt: 0,
+  dashAt: -1e9, nextDash: 0, dashDir: 1, leapAt: -1e9, leapP: -1, lx: 0, ly: 0, dx: 0, dy: 0, jx: 0, dt: 0, lastT: 0, ripAt: -1e9 };
+const FIGHT_BASE = { Common: .35, Rare: .5, Epic: .65, Legendary: .8, Mythical: .8 }, FIGHT_PERS = { Common: "steady", Rare: "dash", Epic: "zigzag", Legendary: "leap", Mythical: "leap" };
+const LINE_CSS = Array.from({ length: 21 }, (_, i) => `rgba(255,${Math.round(255 - 150 * i / 20)},${Math.round(255 - 190 * i / 20)},.85)`);   // white > warm red in 20 steps (strings made once)
+FIGHT.line = LINE_CSS[0];
+const PART_N = 24, PART = { x: new Float32Array(PART_N), y: new Float32Array(PART_N), vx: new Float32Array(PART_N), vy: new Float32Array(PART_N), life: new Float32Array(PART_N), i: 0 };   // fixed pool: no allocation per frame
+function partSpawn(x, y, n, k) { for (let j = 0; j < n; j++) { const i = PART.i; PART.i = (i + 1) % PART_N; const a = (j / n) * 3.1416 + (j % 2) * .2; PART.x[i] = x; PART.y[i] = y; PART.vx[i] = Math.cos(a) * (60 + (j % 3) * 25) * k * (j % 2 ? 1 : -1); PART.vy[i] = -Math.sin(a) * (110 + (j % 4) * 30) * k; PART.life[i] = 1; } }
+const partCount = () => { let n = 0; for (let i = 0; i < PART_N; i++) if (PART.life[i] > 0) n++; return n; };
+const FISH_SPR = {};
+function fishSprite(f) { let c = FISH_SPR[f.id]; if (!c) { c = document.createElement("canvas"); drawFish(c, f); FISH_SPR[f.id] = c; } return c; }   // the real, coloured fish (for the leap)
+const triWave = x => Math.abs(((x % 2) + 2) % 2 - 1) * 2 - 1;
+function fightStart(t) { Object.assign(FIGHT, { spike: 0, spikeAt: -1e9, lastHits: 0, lastMiss: F.misses, evAt: -1e9, tickAt: t + 250, nextDash: t + 1200, dashAt: -1e9, dashDir: 1, leapAt: -1e9, leapP: -1, red: 0, lastT: t }); PART.life.fill(0); }
+const fightSpike = t => FIGHT.spike * Math.exp(-(t - FIGHT.spikeAt) / 450);   // the decaying spike after a hit / miss
+// one frame of the fight (called from shadowStep while reeling); sets FIGHT.dx / dy (personality movement), FIGHT.jx (jerk)
+function fightStep(t, k, still, sx, sy) {
+  const g = FIGHT, f = F.fish, dt = Math.min(.05, Math.max(0, (t - g.lastT) / 1000)); g.lastT = t; g.dt = dt; g.on = true;
+  g.personality = FIGHT_PERS[f.rarity] || "steady";
+  if (F.hits > g.lastHits) {                                                                  // a hit: a short spike, a jerk, splash particles; Legendary / Mythical leap
+    g.lastHits = F.hits; g.spike = Math.min(.5, fightSpike(t) + .2); g.spikeAt = t; g.evAt = t; g.evHit = true;
+    if (!still) { partSpawn(sx, sy, 8, k); if (g.personality === "leap") { g.leapAt = t; sfx.bigSplash(); } }
+  }
+  if (F.misses > g.lastMiss) { g.lastMiss = F.misses; g.spike = Math.min(.5, fightSpike(t) + .35); g.spikeAt = t; g.evAt = t; g.evHit = false; if (!still) partSpawn(sx, sy, 5, k); }
+  g.tension = Math.min(1, (FIGHT_BASE[f.rarity] || .35) + fightSpike(t));
+  g.danger = allowedMiss() - F.misses <= 1;                                                  // one miss (or none) left
+  g.tickMs = Math.round(520 - 370 * g.tension);
+  const redGoal = g.danger ? 1 : Math.max(0, Math.min(1, (g.tension - .75) / .2));
+  g.red += (redGoal - g.red) * (still ? 1 : Math.min(1, dt * 6)); g.line = LINE_CSS[Math.round(g.red * 20)];
+  if (t >= g.tickAt) { sfx.reelTick(g.tension); g.tickAt = Math.max(t, g.tickAt) + g.tickMs; }   // the reel ratchet speeds up with tension (silent with Sound off)
+  g.dx = g.dy = g.jx = 0; g.leapP = -1;
+  if (still) return;
+  if (g.personality === "steady") { g.dx = Math.sin(t / 450) * 13 * k; g.dy = Math.sin(t / 700) * 2 * k; }
+  else if (g.personality === "zigzag") { g.dx = triWave(t / 450) * 22 * k; g.dy = triWave(t / 220) * 6 * k; }
+  else if (g.personality === "dash") {
+    if (t >= g.nextDash) { g.dashAt = t; g.ripAt = t; g.dashDir = -g.dashDir; const h = Math.sin(t * 12.9898) * 43758.5453; g.nextDash = t + 1000 + 1000 * (h - Math.floor(h)); }   // a dash every 1-2 s (no Math.random)
+    const p = (t - g.dashAt) / 260; g.dx = (p >= 0 && p < 1 ? g.dashDir * 34 * k * Math.sin(p * Math.PI) : 0) + Math.sin(t / 90) * 2 * k;
+  } else { g.dx = Math.sin(t / 90) * 3 * k; g.dy = Math.sin(t / 130) * 2 * k; }
+  const d = t - g.evAt; if (d >= 0 && d < 400) g.jx = (g.evHit ? -1 : 1) * Math.sin(d / 28) * 8 * k * Math.exp(-d / 150);   // the float and the fish jerk
+  const lp = (t - g.leapAt) / 400; if (lp >= 0 && lp < 1) g.leapP = lp;
+}
+// splash particles + the leaping fish + the dash ripple (drawn with the shadow, under the line and float)
+function fightDraw(t, still, W, H) {
+  const g = FIGHT, s = SH, k = s.k;
+  if (!still) {
+    if (g.on && g.personality === "dash" && t - g.ripAt < 500) { const p = (t - g.ripAt) / 500, r = (8 + p * 42) * k; ctx.lineWidth = 2; ctx.strokeStyle = `rgba(255,255,255,${(.6 * (1 - p)).toFixed(2)})`; ctx.beginPath(); ctx.ellipse(s.x, s.y + 2, r, r / 3.2, 0, 0, 7); ctx.stroke(); }
+    for (let i = 0; i < PART_N; i++) {
+      if (PART.life[i] <= 0) continue;
+      PART.vy[i] += 380 * k * g.dt; PART.x[i] += PART.vx[i] * g.dt; PART.y[i] += PART.vy[i] * g.dt; PART.life[i] -= g.dt * 2.2;
+      if (PART.life[i] > 0) { ctx.fillStyle = `rgba(215,242,255,${PART.life[i].toFixed(2)})`; ctx.fillRect(Math.round(PART.x[i]), Math.round(PART.y[i]), 3, 3); }
+    }
+    if (g.leapP >= 0) {                                                                       // the real fish out of the water in an arc, big splash where it left, a second one where it lands
+      const p = g.leapP, lh = Math.max(0, Math.min(Math.min(60 * k, H * .12), s.y - H * .5)), ly = s.y - Math.sin(p * Math.PI) * lh, spr = fishSprite(s.fish), u = s.size * k * 1.25, w = 24 * u, h = 16 * u;
+      g.lx = s.x / W; g.ly = ly / H;
+      ctx.save(); ctx.translate(Math.round(s.x), Math.round(ly)); ctx.scale(s.face, 1); ctx.rotate((p - .5) * 1.2); ctx.drawImage(spr, -w / 2, -h / 2, w, h); ctx.restore();
+      const since = t - g.leapAt; if (since < 450) splash(s.x, s.y, since / 450, W * 1.6); else if (since > 380) splash(s.x, s.y, Math.min(1, (since - 380) / 450), W * 1.2);
+    }
+  }
+}
+// for the tests only: the fight values of this frame (null unless reeling a real cast)
+function fightState() {
+  if (!(FIGHT.on && F.phase === "reeling")) return null;
+  const g = FIGHT; return { tension: g.tension, personality: g.personality, danger: g.danger, tickMs: g.tickMs, red: g.red, line: g.line, leaping: g.leapP >= 0, leapP: g.leapP, lx: g.lx, ly: g.ly, particles: partCount(), W: SH.W, H: SH.H };
+}
 function shadowStep(t, W, H, still) {
-  const s = SH, k = W / 900; s.W = W; s.H = H; s.k = k; s.ox = s.oy = s.dip = s.nib = s.dx = 0;
+  const s = SH, k = W / 900; s.W = W; s.H = H; s.k = k; s.ox = s.oy = s.dip = s.nib = s.dx = s.dy = 0; FIGHT.on = false;
   s.dk.x = W * .36; s.dk.y = H * .68;
   if (F.biteAt && F.fish && (F.phase === "waiting" || F.phase === "bite" || F.phase === "reeling")) {
     if (s.cast !== F.castAt) { s.cast = F.castAt; s.fish = F.fish; s.size = shadowSize(F.fish); s.pm = ""; s.on = true; s.face = 1; s.prog = 0; s.lastMiss = 0; s.kickAt = -1e9; }
+    if (s.fish !== F.fish) { s.fish = F.fish; s.size = shadowSize(F.fish); }
     const L = F.land || BOB, dt = Math.min(.05, Math.max(0, (t - s.lastT) / 1000)); s.lastT = t;
     s.bx = W * L.x; s.by = H * L.y;
-    if (s.pm !== F.phase) { s.pm = F.phase; s.t0 = t; if (F.phase === "reeling") { s.prog = 0; s.lastMiss = F.misses; s.kickAt = -1e9; } }
+    if (s.pm !== F.phase) { s.pm = F.phase; s.t0 = t; if (F.phase === "reeling") { s.prog = 0; s.lastMiss = F.misses; s.kickAt = -1e9; fightStart(t); } }
     let px = 0, py = 8 * k, a = 1, dx = 0;
     if (F.phase === "waiting") {
       const since = t - F.castAt - 500, span = Math.max(1, F.biteAt - F.castAt - 500), u = Math.min(1, Math.max(0, since / span));
@@ -363,11 +431,12 @@ function shadowStep(t, W, H, still) {
       const goal = Math.max(0, F.hits / 3 - .06 * F.misses);                                // each hit pulls it a third of the way to the dock, each miss gives a little back
       s.prog += (goal - s.prog) * (still ? 1 : Math.min(1, dt * 8));
       const kick = still ? 0 : 20 * k * Math.exp(-(t - s.kickAt) / 180);
-      s.ox = (s.dk.x - s.bx) * s.prog + kick; s.oy = (s.dk.y - s.by) * s.prog;             // the float is dragged along
-      if (!still) { const rr = 1 + .15 * ["Common", "Rare", "Epic", "Legendary", "Mythical"].indexOf(F.fish.rarity); dx = (Math.sin(t / 55) * 9 + Math.sin(t / 21) * 3) * k * rr; py += Math.sin(t / 80) * 3 * k; }
+      fightStep(t, k, still, s.x, s.y);                                                    // tension, personality movement, jerk (never touches the rules)
+      s.ox = (s.dk.x - s.bx) * s.prog + kick + FIGHT.jx; s.oy = (s.dk.y - s.by) * s.prog;   // the float is dragged along
+      dx = FIGHT.dx; py += FIGHT.dy;
       px = 0;
     }
-    s.dx = dx; s.x = s.bx + s.ox + px + dx; s.y = Math.min(H * .9, Math.max(H * .5, s.by + s.oy + py));
+    s.dx = dx; s.dy = F.phase === "reeling" ? FIGHT.dy : 0; s.x = s.bx + s.ox + px + dx; s.y = Math.min(H * .9, Math.max(H * .5, s.by + s.oy + py));
     if (F.phase === "reeling" && !still) s.face = Math.sin(t / 110) > 0 ? 1 : -1;            // thrashing: it keeps turning
     else if (Math.abs(s.x - s.lx) > .05) s.face = s.x < s.lx ? -1 : 1;                       // the sprite faces right: turn to where it swims
     s.lx = s.x;
@@ -395,15 +464,16 @@ function shadowDraw(t, still) {
   }
   ctx.save(); ctx.translate(Math.round(s.x), Math.round(s.y)); ctx.scale(s.face, 1);
   ctx.globalAlpha = .18 * s.alpha; ctx.drawImage(sp, 0, 0, 24, 16, -w * .56, -h * .56, w * 1.12, h * 1.12);   // soft edge: a slightly bigger, fainter copy under the shadow
-  ctx.globalAlpha = .6 * s.alpha;
+  ctx.globalAlpha = .6 * s.alpha * (FIGHT.on && FIGHT.leapP >= 0 ? .3 : 1);
   for (let r = 0; r < rows; r++) { const off = still ? 0 : Math.round(Math.sin(t / 260 + r * .9) * 1.5 * s.k); ctx.drawImage(sp, 0, r * ss, 24, ss, -w / 2 + off, -h / 2 + r * sh, w, sh + .5); }   // wavy slices = seen through water
   ctx.restore();
+  if (FIGHT.on) fightDraw(t, still, s.W, s.H);
 }
 // for the tests only (not used by the UI): where the shadow is, in canvas fractions, and its distances in canvas px
 function fishShadowState() {
   if (!SH.on || !SH.fish) return null;
   const bobX = SH.bx + SH.ox, bobY = SH.by + SH.oy;
-  return { fishId: SH.fish.id, x: SH.x / SH.W, y: SH.y / SH.H, phase: SH.mode, alpha: SH.alpha, face: SH.face, size: SH.size, dBob: Math.hypot(SH.x - bobX, SH.y - (bobY + 8 * SH.k)), dDock: Math.hypot(SH.x - SH.dk.x, SH.y - SH.dk.y), dDockC: Math.hypot(SH.x - SH.dx - SH.dk.x, SH.y - SH.dk.y),   // C = without the thrash wiggle
+  return { fishId: SH.fish.id, x: SH.x / SH.W, y: SH.y / SH.H, phase: SH.mode, alpha: SH.alpha, face: SH.face, size: SH.size, dBob: Math.hypot(SH.x - bobX, SH.y - (bobY + 8 * SH.k)), dDock: Math.hypot(SH.x - SH.dk.x, SH.y - SH.dk.y), dDockC: Math.hypot(SH.x - SH.dx - SH.dk.x, SH.y - SH.dy - SH.dk.y),   // C = without the thrash wiggle
    
     bob: { x: bobX / SH.W, y: bobY / SH.H }, W: SH.W, H: SH.H, prog: SH.prog };
 }
@@ -450,10 +520,10 @@ function drawScene(t) {
     else if (F.phase === "bite") by += 8 + Math.sin(t / 40) * 5;
     else if (F.phase === "reeling") { bx += SH.ox; by += Math.sin(t / 60) * 6 + SH.oy; }      // SH.ox / oy: the fish drags the float toward the dock
     const since = t - F.castAt - 500;                                                         // ms since the bobber landed
-    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 2;
+    ctx.strokeStyle = F.phase === "reeling" && FIGHT.on ? FIGHT.line : "rgba(255,255,255,.85)"; ctx.lineWidth = 2;   // white > warm red with tension / danger
     const tx = W * ROD_TIP.x, ty = H * ROD_TIP.y;                                          // a drawn rod moves, so the line sags between tip and bobber
     const ey = by - FLOAT_TOP;                                                                // the line ties on at the top of the float
-    const qx = sc.fisher ? (tx + bx) / 2 : W * .45, qy = sc.fisher ? (ty + ey) / 2 + (F.phase === "reeling" ? (SH.on && !still ? Math.sin(t / 45) * 3 : 0) : H * .06) : H * .45;   // taut line that wobbles while a fish fights
+    const qx = sc.fisher ? (tx + bx) / 2 : W * .45, qy = sc.fisher ? (ty + ey) / 2 + (F.phase === "reeling" ? (SH.on && !still ? Math.sin(t / 45) * (2 + 4 * FIGHT.tension) : 0) : H * .06) : H * .45;   // taut line that wobbles while a fish fights
     ctx.beginPath(); ctx.moveTo(tx, ty); ctx.quadraticCurveTo(qx, qy, bx, ey); ctx.stroke();
     if (F.phase === "waiting" && since > 0) {                                                // soft rings while waiting
       ctx.lineWidth = 2;
@@ -704,7 +774,8 @@ function updateDots() {
 }
 function reel() {
   const inside = F.pos >= F.zoneX && F.pos <= F.zoneX + F.zoneW;
-  if (inside) { F.hits++; sfx.hit(); vibrate(40); } else { F.misses++; sfx.miss(); vibrate([30, 30, 30]); }
+  const calm = !!(REDUCED && REDUCED.matches);                                      // no vibration with prefers-reduced-motion
+  if (inside) { F.hits++; sfx.hit(); if (!calm) vibrate(40); } else { F.misses++; sfx.miss(); if (!calm) vibrate([30, 30, 30]); }   // short pulse on a hit, a double pulse on a miss
   fisherTug(inside);                                  // fisherman: strong tug on a hit, slack wobble on a miss
   updateDots();
   if (F.hits >= 3) return caught(true);

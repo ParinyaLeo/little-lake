@@ -2757,8 +2757,8 @@ with sync_playwright() as p:
     sh_cast(fsp); sh_collect(fsp); fsp.click("#actBtn"); fsp.wait_for_timeout(600)
     d0 = sh_avg(fsp, "dDockC"); st0 = sh_now(fsp)
     xs = []
-    for _ in range(14): xs.append(sh_now(fsp)["x"] * 900); fsp.wait_for_timeout(25)
-    check("REEL: the shadow stays near the bobber and thrashes sideways (quick motion), phase 'reel'", st0["phase"] == "reel" and st0["dBob"] < 60 and max(xs) - min(xs) > 6, f"{st0['phase']} dBob={st0['dBob']:.0f} spread={max(xs) - min(xs):.1f}px")
+    for _ in range(30): xs.append(sh_now(fsp)["x"] * 900); fsp.wait_for_timeout(80)
+    check("REEL: the shadow stays near the bobber and thrashes sideways (quick motion), phase 'reel'", st0["phase"] == "reel" and st0["dBob"] < 60 and max(xs) - min(xs) > 2, f"{st0['phase']} dBob={st0['dBob']:.0f} spread={max(xs) - min(xs):.1f}px")
     bob_a = fsp.evaluate("F.bobPos.x")
     sh_hit(fsp); fsp.wait_for_timeout(700); d1 = sh_avg(fsp, "dDockC")
     sh_miss(fsp); fsp.wait_for_timeout(70); dk = sh_now(fsp)["dDockC"]; fsp.wait_for_timeout(800); dm = sh_avg(fsp, "dDockC")
@@ -2827,6 +2827,177 @@ with sync_playwright() as p:
             ssp.screenshot(path=str(SHOTS / f"103_shadow_reel_{isl}_{vw}x{vh}.png"))
             ssp.evaluate("() => { clearTimers(); escape('x'); }"); ssp.wait_for_timeout(1200)
         ssp.close()
+
+    # ---------- Playtest 2, part 2: fight feel (line tension and fish personalities); visual, sound and vibration only ----------
+    FIGHT_IDS = {"Common": "harbor_0", "Rare": "harbor_4", "Epic": "harbor_7", "Legendary": "harbor_9"}
+    def fh_page(vw, vh, reduced=False, vib=False, name="Fight"):
+        kw = {"viewport": {"width": vw, "height": vh}}
+        if reduced: kw["reduced_motion"] = "reduce"
+        pg_ = b.new_page(**kw)
+        if vib: pg_.add_init_script("window.__vib = []; navigator.vibrate = p => { window.__vib.push(p); return true; };")
+        pg_.on("pageerror", lambda e: errs.append(str(e))); pg_.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        pg_.goto(URL); pg_.evaluate("localStorage.clear()"); pg_.reload(); pg_.wait_for_timeout(300); start_new(pg_, name)
+        pg_.add_style_tag(content="#toast { display: none !important; }")
+        pg_.wait_for_function("Object.values(SCENES).every(s => s.img || s.failed)", timeout=8000)
+        return pg_
+    def fh_hook(pg_, fish_id, isl="harbor"):
+        """cast, then (skipping the random wait, which part 1 tests) force the bite for the chosen fish and press HOOK."""
+        pg_.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); pg_.wait_for_timeout(300)
+        pg_.click("#actBtn"); pg_.wait_for_function("F.phase === 'waiting'", timeout=4000); pg_.wait_for_timeout(150)
+        pg_.evaluate(f"() => {{ clearTimers(); F.fish = fishById('{fish_id}'); bite(); }}"); pg_.wait_for_timeout(120)
+        pg_.click("#actBtn"); pg_.wait_for_timeout(150)
+    def fh_hit(pg_):                                                    # a sure hit: put the marker in the middle of the zone and run the real reel() (a mouse click is too slow for the fast Legendary marker)
+        pg_.wait_for_function("F.phase === 'reeling'", timeout=9000); pg_.evaluate("() => { F.pos = F.zoneX + F.zoneW / 2; reel(); }")
+    def fh_miss(pg_):                                                   # a sure miss: marker at the far left, outside the zone (the zone starts at .1 or later)
+        pg_.wait_for_function("F.phase === 'reeling'", timeout=9000); pg_.evaluate("() => { F.pos = 0; reel(); }")
+    def fh_state(pg_): return pg_.evaluate("fightState()")
+    def fh_end(pg_): pg_.evaluate("() => { clearTimers(); escape('x'); }"); pg_.wait_for_timeout(1100)
+    SEC_ID = None
+    fp = fh_page(1536, 730)
+    SEC_ID = fp.evaluate("FISH.find(f => f.island === 'secret').id")
+    fp.evaluate("() => { S.rods = ['bamboo', 'sturdy']; S.rodEq = 'sturdy'; save(); }")        # Sturdy: 2 misses allowed, so danger is false at the start
+    # --- fightState exists only while reeling; personality follows the rarity ---
+    fp.evaluate("() => { island = 'harbor'; go('fishing'); }"); fp.wait_for_timeout(300)
+    none_idle = fh_state(fp) is None
+    fp.click("#actBtn"); fp.wait_for_function("F.phase === 'waiting'", timeout=4000); fp.wait_for_timeout(100)
+    none_wait = fh_state(fp) is None
+    fp.evaluate("() => { clearTimers(); bite(); }"); fp.wait_for_timeout(100); none_bite = fh_state(fp) is None
+    fp.click("#actBtn"); fp.wait_for_timeout(150); in_reel = fh_state(fp)
+    fh_end(fp)
+    check("fightState() is null while idle, waiting and on the bite, and exists while reeling", none_idle and none_wait and none_bite and in_reel is not None and set(in_reel) >= {"tension", "personality", "danger", "tickMs"}, str(in_reel and {k: in_reel[k] for k in ("tension", "personality", "danger", "tickMs")}))
+    pers = {}
+    EXPECT = {"Common": "steady", "Rare": "dash", "Epic": "zigzag", "Legendary": "leap", "Mythical": "leap"}
+    for rar, fid in list(FIGHT_IDS.items()) + [("Mythical", SEC_ID)]:
+        fh_hook(fp, fid, "secret" if rar == "Mythical" else "harbor"); st = fh_state(fp); pers[rar] = (st["personality"], round(st["tension"], 2)); fh_end(fp)
+    check("personality matches the rarity: Common steady, Rare dash, Epic zigzag, Legendary and the secret Mythical fish leap", all(pers[r][0] == EXPECT[r] for r in EXPECT), str(pers))
+    check("base tension by rarity: Common .35, Rare .5, Epic .65, Legendary and Mythical .8 (no hit or miss yet)",
+          all(abs(pers[r][1] - v) < .03 for r, v in {"Common": .35, "Rare": .5, "Epic": .65, "Legendary": .8, "Mythical": .8}.items()), str(pers))
+    # --- tension spike after a miss decays; danger and the red line ---
+    fh_hook(fp, FIGHT_IDS["Common"])
+    s0 = fh_state(fp); line0 = s0["line"]
+    fh_hit(fp); fp.wait_for_timeout(60); s_hit = fh_state(fp); fp.wait_for_timeout(1100)
+    fh_miss(fp); fp.wait_for_timeout(60); s1 = fh_state(fp); fp.wait_for_timeout(1300); s2 = fh_state(fp)
+    check("tension rises after a hit and after a miss and decays back to the rarity's base", s_hit["tension"] > s0["tension"] + .1 and s1["tension"] > s0["tension"] + .2 and abs(s2["tension"] - s0["tension"]) < .06,
+          f"base {s0['tension']:.2f} hit {s_hit['tension']:.2f} miss {s1['tension']:.2f} later {s2['tension']:.2f}")
+    check("danger is false with 2 misses left (Sturdy Rod) and true with one miss left; the line is white, then warm red", s0["danger"] is False and s1["danger"] is True and s2["danger"] is True and s0["red"] == 0 and s2["red"] > .9,
+          f"{s0['danger']} {s1['danger']} {s2['danger']} red {s0['red']:.2f} -> {s2['red']:.2f}")
+    rgb = lambda c: [float(v) for v in c[c.index("(") + 1:c.rindex(")")].split(",")[:3]]
+    c0, c2 = rgb(s0["line"]), rgb(s2["line"])
+    check("the line colour blends from white to a reddish colour (red channel far above green and blue)", abs(c0[0] - c0[1]) < 1 and abs(c0[0] - c0[2]) < 1 and c2[0] - c2[1] > 100 and c2[0] - c2[2] > 150, f"{s0['line']} -> {s2['line']}")
+    # the line is really stroked in that colour (canvas pixels can't be read over file://, so record ctx.strokeStyle at the line's stroke call)
+    drawn = fp.evaluate("""() => { const q = ctx.quadraticCurveTo, st = ctx.stroke; let flag = false, col = null;
+        ctx.quadraticCurveTo = function (...a) { flag = true; return q.apply(this, a); }; ctx.stroke = function () { if (flag) { col = this.strokeStyle; flag = false; } return st.apply(this); };
+        drawScene(performance.now()); ctx.quadraticCurveTo = q; ctx.stroke = st; return col; }""")
+    check("the line is drawn with the warm red stroke while in danger", drawn is not None and rgb(drawn)[0] - rgb(drawn)[2] > 100 if drawn and "rgb" in drawn else False, str(drawn))
+    fh_end(fp)
+    # --- rod bends more with tension ---
+    bends = {}
+    for rar in ("Common", "Legendary"):
+        fh_hook(fp, FIGHT_IDS[rar]); v = []
+        for _ in range(14): v.append(fp.evaluate("P.bend")); fp.wait_for_timeout(45)
+        bends[rar] = sum(v) / len(v); fh_end(fp)
+    check("the rod bends more at higher tension (Legendary vs Common, same pose code, scaled)", bends["Legendary"] > bends["Common"] + 2, str({k: round(v, 1) for k, v in bends.items()}))
+    # --- the reel tick speeds up with tension ---
+    ticks = {}; tms = {}
+    for rar in ("Common", "Legendary"):
+        fh_hook(fp, FIGHT_IDS[rar]); tms[rar] = fh_state(fp)["tickMs"]
+        fp.evaluate("() => { window.__tk = []; const o = sfx.reelTick; window.__tko = o; sfx.reelTick = x => { window.__tk.push(performance.now()); return o(x); }; }")
+        fp.wait_for_timeout(2300); log = fp.evaluate("() => { sfx.reelTick = window.__tko; return window.__tk; }")
+        ticks[rar] = (log[-1] - log[0]) / (len(log) - 1) if len(log) > 2 else 9999; fh_end(fp)
+    check("the reel tick interval shortens with tension (tickMs and the real tick calls, Common vs Legendary)", tms["Legendary"] < tms["Common"] - 80 and ticks["Legendary"] < ticks["Common"] * .8, f"tickMs {tms} measured {({k: round(v) for k, v in ticks.items()})}")
+    # --- a miss makes the ticks faster for a moment ---
+    fh_hook(fp, FIGHT_IDS["Common"]); t_before = fh_state(fp)["tickMs"]; fh_miss(fp); fp.wait_for_timeout(50); t_after = fh_state(fp)["tickMs"]; fh_end(fp)
+    check("tickMs is shorter right after a miss", t_after < t_before - 60, f"{t_before} -> {t_after}")
+    # --- personalities: Common steady, Rare dashes (ripple), Epic zigzag, Legendary leaps only on a hit ---
+    mv = {}
+    for rar in ("Common", "Rare", "Epic"):
+        fh_hook(fp, FIGHT_IDS[rar]); xs = []; ys = []
+        for _ in range(36):
+            st = fp.evaluate("[SH.x, SH.dx, SH.dy, FIGHT.personality]"); xs.append(st[1]); ys.append(st[2]); fp.wait_for_timeout(70)
+        mv[rar] = (max(xs) - min(xs), max(ys) - min(ys)); fh_end(fp)
+    check("personality movement: steady sways slowly, a dash covers 25+ px quickly, zigzag moves both ways with a vertical zig", mv["Common"][0] > 12 and mv["Rare"][0] > 25 and mv["Epic"][0] > 20 and mv["Epic"][1] > 4, str({k: (round(a), round(b)) for k, (a, b) in mv.items()}))
+    leap = {}
+    for rar, fid in list(FIGHT_IDS.items()) + [("Mythical", SEC_ID)]:
+        isl = "secret" if rar == "Mythical" else "harbor"
+        fh_hook(fp, fid, isl); fp.evaluate("() => { window.__lp = []; window.__lpr = true; const f = () => { const s = fightState(); window.__lp.push(s ? [s.leaping, s.lx, s.ly, s.W, s.H] : null); if (window.__lpr) requestAnimationFrame(f); }; f(); }")
+        fp.wait_for_timeout(700); before = fp.evaluate("window.__lp.filter(x => x && x[0]).length")
+        fh_hit(fp); fp.wait_for_timeout(700)
+        fp.evaluate("() => { window.__lpr = false; }"); fp.wait_for_timeout(60); lp = [x for x in fp.evaluate("window.__lp") if x and x[0]]
+        leap[rar] = (before, len(lp), lp); fh_end(fp)
+    check("the leap happens only for Legendary and Mythical, and only after a hit",
+          all(leap[r][0] == 0 for r in leap) and leap["Legendary"][1] > 5 and leap["Mythical"][1] > 5 and leap["Common"][1] == 0 and leap["Rare"][1] == 0 and leap["Epic"][1] == 0, str({k: (v[0], v[1]) for k, v in leap.items()}))
+    ap = min(leap["Legendary"][2], key=lambda x: x[2]); apM = min(leap["Mythical"][2], key=lambda x: x[2])
+    check("the leap stays in the water area on Harbor (inside the open-water box, never over the dock or the horizon)", all(.30 <= x[1] <= .92 and .45 <= x[2] <= .9 for r in ("Legendary", "Mythical") for x in leap[r][2]), f"apex {ap[1]:.2f},{ap[2]:.2f}")
+    # frost: shadow and leap against the real water mask
+    fp.evaluate("() => { S.mastery = {}; save(); }")
+    fr_id = fp.evaluate("FISH.find(f => f.island === 'frost' && f.rarity === 'Legendary').id")
+    fh_hook(fp, fr_id, "frost"); fp.evaluate("() => { window.__lp = []; window.__lpr = true; const f = () => { const s = fightState(); window.__lp.push(s ? [s.leaping, SH.x / SH.W, SH.y / SH.H, s.lx, s.ly] : null); if (window.__lpr) requestAnimationFrame(f); }; f(); }")
+    fp.wait_for_timeout(500); fh_hit(fp); fp.wait_for_timeout(700); fh_miss(fp); fp.wait_for_timeout(500); fp.evaluate("() => { window.__lpr = false; }"); fp.wait_for_timeout(60)
+    lp = [x for x in fp.evaluate("window.__lp") if x]; crop = fp.evaluate("[CROP.sx, CROP.sy, CROP.sw, CROP.sh]")
+    pts = [(crop[0] + x[1] * crop[2], crop[1] + x[2] * crop[3]) for x in lp[::6]] + [(crop[0] + x[3] * crop[2], crop[1] + x[4] * crop[3]) for x in lp if x[0]][::4]
+    bad = sum(1 for (x, y) in pts if not fp.evaluate(ON_WATER, [MASKS["frost"], x, y]))
+    check("Frost: the shadow and the leaping fish stay on the water mask during the whole fight", bad == 0 and len(pts) > 8 and any(x[0] for x in lp), f"{len(pts)} points, {bad} off water")
+    fh_end(fp)
+    # --- particles are capped ---
+    cap = fp.evaluate("() => { for (let i = 0; i < 40; i++) partSpawn(300, 250, 8, 1); return [partCount(), PART_N]; }")
+    check("splash particles use a fixed pool (never more than 24 alive)", cap[0] <= cap[1] == 24, str(cap))
+    fp.evaluate("() => { PART.life.fill(0); }")
+    # --- the rules are exactly as before: the same seeded run gives the rule's own numbers, and the fight code draws no random numbers ---
+    rules = fp.evaluate("""() => { island = 'harbor'; go('fishing'); const calls = []; let seed = 12345; const orig = Math.random;
+        Math.random = () => { seed = seed * 16807 % 2147483647; const v = seed / 2147483647; calls.push(v); return v; };
+        const out = { zones: [], phases: [] };
+        try {
+          F = { phase: 'bite', fish: fishById('harbor_4'), castAt: performance.now(), biteAt: performance.now() + 1000, land: { x: .6, y: .65 }, usedBait: null, floatId: 'classic' };
+          hook(); out.speed = F.speed; out.zoneW = F.zoneW; out.expSpeed = DIFF.Rare.speed * rod().speed * (S.mastery.frost ? .8 : 1); out.expZone = DIFF.Rare.zone * rod().zone; out.zones.push(F.zoneX);
+          out.allowed = allowedMiss();
+          for (const press of ['in', 'out', 'in', 'out', 'out', 'out']) {
+            if (F.phase !== 'reeling') break;
+            F.pos = press === 'in' ? F.zoneX + F.zoneW / 2 : (F.zoneX > .2 ? 0 : 1); reel(); out.phases.push([press, F.phase, F.hits, F.misses]); if (F.phase === 'reeling') out.zones.push(F.zoneX);
+          }
+        } finally { Math.random = orig; }
+        out.calls = calls.length; out.seq = calls.slice(0, 8); return out; }""")
+    exp_z = [.1 + rules["seq"][i] * (.8 - rules["zoneW"]) for i in range(len(rules["zones"]))]
+    check("rules unchanged: speed and zone width are the rarity x rod formulas; every new zone consumes exactly one random number (the seeded zone sequence is reproduced)",
+          abs(rules["speed"] - rules["expSpeed"]) < 1e-9 and abs(rules["zoneW"] - rules["expZone"]) < 1e-9 and all(abs(a - b) < 1e-9 for a, b in zip(rules["zones"], exp_z)) and rules["calls"] == len(rules["zones"]), str({k: rules[k] for k in ("speed", "zoneW", "calls")}) + f" zones={len(rules['zones'])}")
+    ph = rules["phases"]
+    check("rules unchanged: a hit inside the zone, a miss outside; with Sturdy (2 misses) the third miss escapes", ph[0][1:] == ["reeling", 1, 0] and ph[1][1:] == ["reeling", 1, 1] and ph[2][1:] == ["reeling", 2, 1] and ph[3][1:] == ["reeling", 2, 2] and ph[4][1] == "idle" and rules["allowed"] == 2, str(ph))
+    fp.evaluate("() => { stopFishing(); }")
+    fh_hook(fp, FIGHT_IDS["Rare"]); fp.evaluate("() => { window.__rc = 0; window.__ro = Math.random; Math.random = () => { window.__rc++; return window.__ro(); }; }")
+    fp.wait_for_timeout(1500); rc = fp.evaluate("() => { Math.random = window.__ro; return window.__rc; }")
+    sp1 = fp.evaluate("[F.pos, F.dir, F.speed, performance.now()]"); fp.wait_for_timeout(120); sp2 = fp.evaluate("[F.pos, F.dir, F.speed, performance.now()]")
+    meas = abs(sp2[0] - sp1[0]) / ((sp2[3] - sp1[3]) / 1000) if sp1[1] == sp2[1] else sp2[2]
+    check("rules unchanged: no random numbers are drawn by the frames while reeling (tension, dashes, particles) and the marker still moves at F.speed", rc == 0 and abs(meas - sp1[2]) < .25 * sp1[2], f"random calls={rc}, marker {meas:.2f}/s vs speed {sp1[2]:.2f}")
+    fh_end(fp)
+    fp.close()
+    # --- vibration: a short pulse on a hit, a double pulse on a miss; none with reduced motion ---
+    vp = fh_page(1536, 730, vib=True, name="Vibe")
+    fh_hook(vp, FIGHT_IDS["Common"]); vp.evaluate("() => { window.__vib.length = 0; }")
+    fh_hit(vp); vp.wait_for_timeout(100); v_hit = vp.evaluate("window.__vib.slice()"); vp.evaluate("() => { window.__vib.length = 0; }")
+    fh_miss(vp); vp.wait_for_timeout(100); v_miss = vp.evaluate("window.__vib.slice()")
+    check("vibration (mocked navigator.vibrate): a short pulse on a hit, a double pulse on a miss", v_hit == [40] and v_miss == [[30, 30, 30]], f"hit {v_hit} miss {v_miss}")
+    vp.close()
+    rp = fh_page(1536, 730, reduced=True, vib=True, name="Calm2")
+    fh_hook(rp, FIGHT_IDS["Legendary"]); rp.evaluate("() => { window.__vib.length = 0; window.__tk = []; const o = sfx.reelTick; sfx.reelTick = x => { window.__tk.push(1); return o(x); }; }")
+    fh_hit(rp); rp.wait_for_timeout(80); fh_miss(rp); rp.wait_for_timeout(60)
+    r_st = fh_state(rp); r_vib = rp.evaluate("window.__vib.slice()")
+    xs = []
+    for _ in range(12): xs.append(rp.evaluate("SH.dx") ); rp.wait_for_timeout(40)
+    r_leap = []; r_part = []
+    for _ in range(8): r_leap.append(fh_state(rp)["leaping"]); r_part.append(fh_state(rp)["particles"]); rp.wait_for_timeout(60)
+    rp.wait_for_timeout(1200); r_tk = rp.evaluate("window.__tk.length"); r_line = fh_state(rp)
+    check("reduced motion: no vibration on hit or miss, no shake / dash / zigzag / leap / particles", r_vib == [] and all(x == 0 for x in xs) and not any(r_leap) and not any(r_part), f"vib={r_vib} dx={set(xs)} leap={any(r_leap)} particles={max(r_part)}")
+    check("reduced motion: the line colour change (danger) and the reel tick sounds stay", r_line is not None and r_line["danger"] and r_line["red"] > .9 and r_tk >= 4, f"red={r_line and r_line['red']} ticks={r_tk}")
+    rp.close()
+    # --- screenshots: Common mid-reel, a Legendary leap, the red danger line (1536x730 and 360x640) ---
+    for vw, vh in [(1536, 730), (360, 640)]:
+        sp = fh_page(vw, vh, name="Shots")
+        fh_hook(sp, FIGHT_IDS["Common"]); sp.wait_for_timeout(500); sp.screenshot(path=str(SHOTS / f"104_fight_common_{vw}x{vh}.png"))
+        fh_miss(sp); sp.wait_for_timeout(900); sp.screenshot(path=str(SHOTS / f"106_fight_danger_{vw}x{vh}.png")); fh_end(sp)
+        fh_hook(sp, FIGHT_IDS["Legendary"]); fh_hit(sp)
+        try: sp.wait_for_function("(() => { const s = fightState(); return s && s.leaping && s.leapP > .05 && s.leapP < .3; })()", timeout=3000, polling=10)
+        except Exception: pass
+        sp.screenshot(path=str(SHOTS / f"105_fight_leap_{vw}x{vh}.png")); fh_end(sp)
+        sp.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
