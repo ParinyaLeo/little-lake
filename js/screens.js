@@ -198,11 +198,12 @@ $("sellAll").onclick = () => { const u = unlockedIdx(); if (!u.length) { if (S.b
 
 /* ===================== SHOP ===================== */
 // every item says exactly what it does, whether you own / use it, and why it can't be bought
-function shopItem({ buy, icon, name, tag, fx, odds, note, label, can }) {
-  return `<div class="item${tag === "EQUIPPED" ? " equipped" : ""}"><b>${icon.startsWith("fl:") ? floatIcon(icon.slice(3)) : icon.startsWith("tk:") ? `<img class="tkthumb" alt="" src="${tankThumb(...icon.slice(3).split(":"))}">` : `<span class="ico i-${icon}"></span>`}${name}</b>` +
+function shopItem({ buy, icon, name, tag, fx, odds, note, label, can, kind }) {
+  return `<div class="item${tag === "EQUIPPED" ? " equipped" : ""}">` + (kind ? `<span class="kind">${kind}</span>` : "") + `<b>${icon.startsWith("fl:") ? floatIcon(icon.slice(3)) : icon.startsWith("tk:") ? `<img class="tkthumb" alt="" src="${tankThumb(...icon.slice(3).split(":"))}">` : `<span class="ico i-${icon}"></span>`}${name}</b>` +
     (tag ? `<span class="tag">${tag}</span>` : "") + `<span class="fx">${fx}</span>` + (odds ? `<span class="odds">${odds}</span>` : "") +
     (note || "") + `<button class="btn green" data-nosound data-buy="${buy}"${can ? "" : " disabled"}>${label}</button></div>`;
 }
+const tankName = (kind, id) => kind === "theme" ? TANK_THEMES[id].name + " Theme" : TANK_DECOS[id].name;     // one wording for the Shop and the Aquarium lists
 const needMore = price => S.coins < price ? `<span class="need">Need ${fmt(price - S.coins)} more coins</span>` : "";
 function renderShop() {
   $("shopRods").innerHTML = ROD_IDS.map(id => {
@@ -223,13 +224,14 @@ function renderShop() {
     return shopItem({ buy: `float:${id}`, icon: `fl:${id}`, name: f.name, tag: eq ? "EQUIPPED" : own ? "OWNED" : "", fx: f.blurb + " Only a look.",
       note: own ? "" : needMore(f.price), can: !own && S.coins >= f.price, label: own ? (eq ? "EQUIPPED" : "OWNED") : f.price ? `${f.price} COINS` : "FREE" });
   }).join("");
-  $("shopTank").innerHTML = TANK_THEME_IDS.map(id => {            // Playtest 2, part 9: tank themes and decorations (a look only)
+  $("shopThemes").innerHTML = TANK_THEME_IDS.map(id => {         // Playtest 2, part 9b: Tank Themes and Tank Decorations are two separate sections (a look only)
     const t = TANK_THEMES[id], own = S.tankThemes.includes(id), use = S.tankTheme === id;
-    return shopItem({ buy: `theme:${id}`, icon: `tk:theme:${id}`, name: t.name, tag: use ? "EQUIPPED" : own ? "OWNED" : "", fx: "Theme: " + t.blurb + " Only a look.",
+    return shopItem({ buy: `theme:${id}`, icon: `tk:theme:${id}`, name: tankName("theme", id), tag: use ? "EQUIPPED" : own ? "OWNED" : "", fx: t.blurb + " Only a look.",
       note: own ? "" : needMore(t.price), can: !own && S.coins >= t.price, label: own ? (use ? "IN USE" : "OWNED") : t.price ? `${t.price} COINS` : "FREE" });
-  }).join("") + TANK_DECO_IDS.map(id => {
+  }).join("");
+  $("shopDecos").innerHTML = TANK_DECO_IDS.map(id => {
     const d = TANK_DECOS[id], own = S.tankDecos.includes(id), on = S.tankDecoOn.includes(id);
-    return shopItem({ buy: `deco:${id}`, icon: `tk:deco:${id}`, name: d.name, tag: on ? "EQUIPPED" : own ? "OWNED" : "", fx: "Decoration: " + d.blurb + " Only a look.",
+    return shopItem({ buy: `deco:${id}`, icon: `tk:deco:${id}`, name: tankName("deco", id), kind: "DECOR", tag: on ? "EQUIPPED" : own ? "OWNED" : "", fx: d.blurb + " Only a look.",
       note: own ? "" : needMore(d.price), can: !own && S.coins >= d.price, label: own ? (on ? "SHOWN" : "OWNED") : `${d.price} COINS` });
   }).join("");
   $("shopNoBait").textContent = `Without bait (${rod().short} rod): ${oddsText(rarityWeights("none"))}`;
@@ -490,13 +492,14 @@ function drawTank(c, w, h, t, themeId, decos, fish) {
   for (let i = 0; i < 12; i++) { const p = ((t / 1000) * (.07 + (i % 4) * .025) + i * .37) % 1; tkBub(c, w * ((i * .137 + .05) % 1) + Math.sin(t / 600 + i) * 2, sy * (1 - p), 1 + (i % 3)); }
   if (A.top) A.top(c, w, h, t, sy);
 }
-// small pictures for the Shop and the Aquarium lists: a theme (no fish, no decorations) or one decoration on the pond floor, as PNG data URLs (made once)
-const TK_THUMBS = {};
+// small pictures for the Shop and the Aquarium lists: a theme (no fish, no decorations) or one decoration alone on a plain panel, as PNG data URLs (made once)
+const TK_DECO_U = { castle: 3.8, bigcoral: 4.6, chest: 6, anchor: 5.2, bubbler: 5.5 };   // drawing unit per decoration so each one fills its thumbnail
+const TK_THUMBS = {}, TK_PANEL = "#245a8c";      // a decoration thumbnail is the decoration alone on this plain dark-blue panel (no tank background)
 function tankThumb(kind, id) {
   const key = kind + ":" + id; if (TK_THUMBS[key]) return TK_THUMBS[key];
   const cv = document.createElement("canvas"); cv.width = 72; cv.height = 48; const c = cv.getContext("2d");
   if (kind === "theme") drawTank(c, 72, 48, 1500, id, [], []);
-  else { drawTank(c, 72, 48, 1500, "pond", [], []); c.fillStyle = "rgba(0,0,0,.12)"; c.fillRect(0, 0, 72, 48); drawDeco(c, id, 36, Math.round(48 * TANK_FLOOR) + 1, 48 / 14 * 1.05, 1500); }
+  else { c.fillStyle = TK_PANEL; c.fillRect(0, 0, 72, 48); c.imageSmoothingEnabled = false; drawDeco(c, id, 36, 45, TK_DECO_U[id] || 4.6, 1500); }
   return TK_THUMBS[key] = cv.toDataURL();
 }
 function tankFrame(t, dt) {
@@ -539,7 +542,7 @@ let aqTab = "fish";                                  // FISH | THEME | DECOR (no
 function aqPick(id, kind) { return kind === "theme" ? TANK_THEMES[id] : TANK_DECOS[id]; }
 function aqThumbRow(kind, id, label, fn, on, note) {   // an owned theme / decoration: a small picture, its name and one button
   const it = aqPick(id, kind), row = document.createElement("div"); row.className = "row" + (on ? " on" : "");
-  row.insertAdjacentHTML("beforeend", `<img class="tkthumb" alt="" src="${tankThumb(kind, id)}"><div class="grow"><b>${it.name}</b><br><span class="small">${note}</span></div>`);
+  row.insertAdjacentHTML("beforeend", `<img class="tkthumb" alt="" src="${tankThumb(kind, id)}"><div class="grow"><b>${tankName(kind, id)}</b>${kind === "deco" ? ' <span class="kind in">DECOR</span>' : ""}<br><span class="small">${note}</span></div>`);
   const btn = document.createElement("button"); btn.className = "btn no-rivets"; btn.type = "button"; btn.textContent = label; btn.onclick = fn; btn.setAttribute("aria-pressed", on ? "true" : "false"); row.append(btn); return row;
 }
 function tankUse(id) { if (!S.tankThemes.includes(id)) return; S.tankTheme = id; save(); render(); }
