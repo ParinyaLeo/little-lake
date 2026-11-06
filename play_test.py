@@ -1789,7 +1789,7 @@ with sync_playwright() as p:
         check(f"{tag}: user-select is none on the CAST button, the scene, the canvas, the chips and the labels (no iOS selection handles / loupe)",
               all(r[1] == "none" for r in us), str(us))
         ta = {r[0]: r[4] for r in us}
-        check(f"{tag}: touch-action is manipulation on the CAST button and the scene", ta["actBtn"] == "manipulation" and ta["scene"] == "manipulation", str(ta))
+        check(f"{tag}: touch-action is none on the CAST / REEL button and the scene (part 12)", ta["actBtn"] == "none" and ta["scene"] == "none", str(ta))
         cm = xp.evaluate("""() => ['actBtn', 'scene'].map(id => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.getElementById(id).dispatchEvent(e); return e.defaultPrevented; })""")
         check(f"{tag}: a contextmenu event (long press) on the CAST button and on the scene is default-prevented", cm == [True, True], str(cm))
         # pointercancel / lostpointercapture during a charge: meter hidden, nothing thrown, nothing stuck
@@ -3662,6 +3662,72 @@ with sync_playwright() as p:
         m = fm(); v = fl.evaluate(VIS)
         check(f"{vw}x{vh}: the last button (DECOR) can be tapped at once; only that section shows and the bar stays in place", [x for x in SECS if v[x]] == ["decor"] and m["vis"] and m["inside"] and m["sw"] <= vw and not m["barScroll"] and (narrow or m["sh"] <= m["ih"]), str(m))
         fl.close()
+
+
+    # ---------- Playtest 2, part 12: no iOS magnifier / selection / callout when holding CAST / REEL / the scene (layered prevention) ----------
+    def tp_page(style="hold"):
+        ctx = b.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+        pg_ = ctx.new_page(); pg_.on("pageerror", lambda e: errs.append(str(e))); pg_.on("console", lambda m: m.type == "error" and errs.append(m.text))
+        pg_.goto(URL); pg_.evaluate("localStorage.clear()"); pg_.reload(); pg_.wait_for_timeout(300); start_new(pg_, "Toucher")
+        pg_.evaluate(f"() => {{ S.fightStyle = '{style}'; save(); island = 'harbor'; S.pending = null; go('fishing'); }}"); pg_.wait_for_timeout(500)
+        pg_.add_style_tag(content="#toast { display: none !important; }")
+        pg_.evaluate("""() => { window.__n = { cast: 0, hook: 0, act: 0, ts: [] }; const c = window.cast, h = window.hook; window.cast = function () { __n.cast++; return c.apply(this, arguments); }; window.hook = function () { __n.hook++; return h.apply(this, arguments); };
+            for (const id of ['actBtn', 'scene']) document.getElementById(id).addEventListener('touchstart', e => __n.ts.push([id, e.defaultPrevented]), { passive: false }); }""")
+        return ctx, pg_, ctx.new_cdp_session(pg_)
+    CENTER = "(() => { const r = document.querySelector('%s').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()"
+    def touch(cdp, pg_, sel, ms=60):
+        r = pg_.evaluate(CENTER % sel)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": r[0], "y": r[1], "id": 1}]}); pg_.wait_for_timeout(ms)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []}); pg_.wait_for_timeout(120)
+    def touch_hold(cdp, pg_, sel, ms, probe):
+        r = pg_.evaluate(CENTER % sel)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": r[0], "y": r[1], "id": 1}]}); pg_.wait_for_timeout(ms)
+        mid = pg_.evaluate(probe)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []}); pg_.wait_for_timeout(150)
+        return mid
+    SELJS = "() => ({ sel: window.getSelection().toString(), ranges: window.getSelection().rangeCount, ch: CH.on, hold: HOLD.on })"
+    ctx, tq, cdp = tp_page()
+    css = tq.evaluate("""() => ['html', 'body', '#actBtn', '#scene', '.btn', '#fMsg'].map(q => { const c = getComputedStyle(document.querySelector(q)); return [q, c.userSelect, c.webkitUserSelect, c.touchAction]; })""")
+    check("iOS loupe, CSS: user-select is none on html, body, the buttons, the scene and the label text; touch-action is none on the REEL button and the scene", all(r[1] == "none" for r in css) and css[2][3] == "none" and css[3][3] == "none", str(css))
+    lists = tq.evaluate("""() => { go('shop'); const a = getComputedStyle(document.getElementById('shopScroll')).touchAction; go('bag'); const b = getComputedStyle(document.getElementById('bagList')).touchAction; go('fishing'); return [a, b, getComputedStyle(document.body).touchAction]; }""")
+    check("shop and bag lists keep normal touch scrolling (touch-action is not none there)", all(x != "none" for x in lists), str(lists))
+    tq.wait_for_timeout(300)
+    touch(cdp, tq, "#actBtn", 60); tq.wait_for_timeout(300)
+    n1 = tq.evaluate("({ cast: __n.cast, ph: F.phase, ts: __n.ts })")
+    check("a quick touch tap on CAST casts exactly once (no double action) and touchstart was default-prevented on the button", n1["cast"] == 1 and n1["ph"] != "idle" and n1["ts"] and all(x[1] for x in n1["ts"] if x[0] == "actBtn"), str(n1))
+    tq.evaluate("() => { clearTimers(); F.fish = fishById('harbor_0'); bite(); }"); tq.wait_for_timeout(150)
+    touch(cdp, tq, "#actBtn", 60); tq.wait_for_timeout(250)
+    n2 = tq.evaluate("({ hook: __n.hook, ph: F.phase, mode: F.mode })")
+    check("a touch tap on HOOK! hooks exactly once and starts the Hold Fight", n2["hook"] == 1 and n2["ph"] == "reeling" and n2["mode"] == "hold", str(n2))
+    m1 = touch_hold(cdp, tq, "#actBtn", 1500, SELJS)
+    h1 = tq.evaluate("HOLD.on")
+    m2 = touch_hold(cdp, tq, "#actBtn", 500, SELJS)
+    check("Hold Fight by touch: pressing holds, releasing lets go, and it works again (hold, release, hold); a 1.5 s press on REEL creates no selection", m1["hold"] and not h1 and m2["hold"] and not tq.evaluate("HOLD.on") and m1["sel"] == "" and m1["ranges"] == 0, f"{m1} {h1} {m2}")
+    m3 = touch_hold(cdp, tq, "#scene", 1200, SELJS)
+    check("a 1.2 s press on the scene during the Hold Fight holds, lets go on release and creates no selection", m3["hold"] and m3["sel"] == "" and m3["ranges"] == 0 and not tq.evaluate("HOLD.on"), str(m3))
+    for sel in ("#actBtn", "#scene"):
+        tq.evaluate("() => { stopFishing(); S.pending = null; go('home'); go('fishing'); __n.cast = 0; }"); tq.wait_for_timeout(400)
+        mm = touch_hold(cdp, tq, sel, 1500, SELJS); tq.wait_for_timeout(200)
+        n3 = tq.evaluate("({ cast: __n.cast, ph: F.phase })")
+        check(f"a 1.5 s press on {sel} charges the power cast, throws exactly once on release and creates no selection", mm["ch"] and mm["sel"] == "" and mm["ranges"] == 0 and n3["cast"] == 1 and n3["ph"] != "idle", f"{mm} {n3}")
+    tq.evaluate("() => { stopFishing(); go('home'); go('fishing'); const r = document.createRange(); r.selectNodeContents(document.getElementById('fMsg')); const g = getSelection(); g.removeAllRanges(); g.addRange(r); }"); tq.wait_for_timeout(200)
+    check("a selection range created on the Fishing screen is collapsed at once (selectionchange)", tq.evaluate("[getSelection().rangeCount, getSelection().toString()]") == [0, ""])
+    sd = tq.evaluate("() => { const a = new Event('selectstart', { bubbles: true, cancelable: true }), d = new Event('dragstart', { bubbles: true, cancelable: true }); document.getElementById('fMsg').dispatchEvent(a); document.getElementById('scene').dispatchEvent(d); return [a.defaultPrevented, d.defaultPrevented]; }")
+    check("selectstart and dragstart are default-prevented on the Fishing screen", sd == [True, True], str(sd))
+    ctx.close()
+    kp = aq_page(1280, 800, "Keys"); kp.evaluate("() => { island = 'harbor'; go('fishing'); }"); kp.wait_for_timeout(500)
+    kp.focus("#actBtn"); kp.keyboard.press("Enter"); kp.wait_for_timeout(300); e1 = kp.evaluate("F.phase")
+    kp.evaluate("() => { stopFishing(); go('home'); go('fishing'); }"); kp.wait_for_timeout(400); kp.keyboard.down("Space"); kp.wait_for_timeout(60); kp.keyboard.up("Space"); kp.wait_for_timeout(300); e2 = kp.evaluate("F.phase")
+    kp.evaluate("() => { stopFishing(); go('home'); go('fishing'); }"); kp.wait_for_timeout(400); kp.click("#actBtn"); kp.wait_for_timeout(300); e3 = kp.evaluate("F.phase")
+    check("Enter on the focused CAST button, the Space key and a mouse click still cast", all(x != "idle" for x in (e1, e2, e3)), f"{e1} {e2} {e3}")
+    kp.close()
+    try:
+        wk = p.webkit.launch(); wc = wk.new_context(**p.devices["iPhone 13"]); wp_ = wc.new_page(); wp_.goto(URL); wp_.evaluate("localStorage.clear()"); wp_.reload(); wp_.wait_for_timeout(500)
+        wp_.evaluate("() => { go('fishing'); }"); wp_.wait_for_timeout(400)
+        wr = wp_.evaluate("() => ['html', 'body', '#actBtn', '#scene'].map(q => { const c = getComputedStyle(document.querySelector(q)); return [q, c.webkitUserSelect || c.userSelect, c.touchAction]; })")
+        check("WebKit (iPhone 13 profile): user-select none everywhere on the controls and touch-action none on REEL and the scene", all(r[1] == "none" for r in wr) and wr[2][2] == "none" and wr[3][2] == "none", str(wr)); wk.close()
+    except Exception as ex:
+        print("NOTE: WebKit not available, skipped the iPhone styles check:", str(ex)[:80])
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

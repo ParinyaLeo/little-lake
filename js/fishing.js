@@ -690,8 +690,25 @@ function act() {
 }
 // CAST: a press on the button / scene / Space starts a charge when idle (HOOK and REEL act at once, as before); the release throws.
 // A real pointer click while idle is already handled by pointerdown/up; detail 0 (Enter on the focused button, el.click()) still casts at once.
-$("actBtn").addEventListener("pointerdown", e => { if (e.button) return; if (F.phase === "idle") chargeStart("ptr", e.pointerId); else holdSet(true, "ptr", e.pointerId); });
-$("actBtn").addEventListener("click", e => { if (F.phase === "idle" && e.detail) return; if (F.phase === "reeling" && F.mode === "hold") { if (!e.detail) holdPulse(); return; } act(); });   // Enter on the focused button (detail 0) = a short pulse of the hold
+// Playtest 2, part 12 (iOS loupe): pointerdown is default-prevented like the scene's, and touchstart / touchmove are cancelled (non-passive) on both controls while the Fishing screen is open, which also stops
+// the long-press selection / magnifier. A cancelled touchstart means iOS sends NO click for that touch, so a touch on HOOK / the tap-minigame REEL acts on pointerup (TAP), exactly where the click used to be, and a
+// click that still arrives right after it is ignored (never two act() calls). CAST and the Hold Fight already run from pointerdown / pointerup, so they need nothing extra.
+const TAP = { pid: -1, at: -1e9 };
+$("actBtn").addEventListener("pointerdown", e => {
+  if (e.button) return; e.preventDefault(); clearSelection();
+  if (F.phase === "idle") chargeStart("ptr", e.pointerId);
+  else if (F.phase === "reeling" && F.mode === "hold") holdSet(true, "ptr", e.pointerId);
+  else if (e.pointerType === "touch" && !$("actBtn").disabled) TAP.pid = e.pointerId;
+});
+document.addEventListener("pointerup", e => { if (e.pointerId === TAP.pid) { TAP.pid = -1; TAP.at = performance.now(); act(); } });
+document.addEventListener("pointercancel", e => { if (e.pointerId === TAP.pid) TAP.pid = -1; });
+function clearSelection() { try { const g = window.getSelection && window.getSelection(); if (g && g.rangeCount) g.removeAllRanges(); } catch (err) {} }
+["actBtn", "scene"].forEach(id => ["touchstart", "touchmove"].forEach(t => $(id).addEventListener(t, e => { if (current === "fishing" && e.cancelable) e.preventDefault(); }, { passive: false })));
+$("fishing").addEventListener("selectstart", e => e.preventDefault());
+$("fishing").addEventListener("dragstart", e => e.preventDefault());
+document.addEventListener("selectionchange", () => { if (current === "fishing") { const g = window.getSelection(); if (g && (g.rangeCount || g.toString())) g.removeAllRanges(); } });
+$("scene").addEventListener("pointerdown", () => clearSelection());
+$("actBtn").addEventListener("click", e => { if (performance.now() - TAP.at < 700) return; if (F.phase === "idle" && e.detail) return; if (F.phase === "reeling" && F.mode === "hold") { if (!e.detail) holdPulse(); return; } act(); });   // Enter on the focused button (detail 0) = a short pulse of the hold
 $("scene").addEventListener("pointerdown", e => { if (e.button) return; e.preventDefault(); if (F.phase === "idle") chargeStart("ptr", e.pointerId); else if (F.phase === "reeling" && F.mode === "hold") holdSet(true, "ptr", e.pointerId); else act(); });
 document.addEventListener("pointerup", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeEnd(); if (HOLD.on && HOLD.src === "ptr" && e.pointerId === HOLD.pid) holdRelease(); });      // anywhere on the page
 document.addEventListener("pointercancel", e => { if (CH.on && CH.src === "ptr" && e.pointerId === CH.pid) chargeReset(); if (HOLD.on && HOLD.src === "ptr" && e.pointerId === HOLD.pid) holdRelease(); });
