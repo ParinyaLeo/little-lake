@@ -520,3 +520,28 @@ The playtest note pointed to five things to check. Three were real bugs; two are
 - **Fix (CSS only, behaviour unchanged):** below 700px `.shop-filter` is a grid of 3 columns x 2 rows (ALL RODS BAIT / FLOATS THEMES DECOR), equal-width buttons (`minmax(0, 1fr)`), 6px gap, 40px minimum height, 14px text, `overflow: visible`, bar margin 8px and section headings 10px above (the first heading stays at 0). Wide windows keep the single row. The bar never scrolls sideways at any width. At 360x640 the first full Bamboo Rod card still fits under the bar without scrolling. Cache version `v=58`.
 - **Tests:** at 1536x730 one row; at 360x640 and 390x844 six buttons in 2 rows, every bounding box inside the screen, no bar or page horizontal scroll, no clipped text, 40px+ high; a full card visible under the bar; DECOR (the last button) works at once; all the filter behaviour tests unchanged; the old "bar scrolls sideways" check was replaced; screenshots `117_shop_filter_all_1536x730.png` and `117_shop_filter_all_360x640.png` (the THEMES screenshots were dropped).
 
+### Playtest 2, part 11: bigger zone on phones (44 px minimum) and a zone bonus for better rods
+- **Problem (friend playtest):** (a) on a phone the Hold Fight track is about 300 px wide, so the green zone (.22 down to .14 of the track) was only about 30-65 px and hard to follow; on a PC (about 900 px) it felt right. (b) Only the Precision Rod widened the zone, so the other rods did not feel better in the fight.
+- **Fix (`js/fight.js`, `hookHold()` in `js/fishing.js`; the pure `stepFight` is unchanged and still takes the final share):** `ROD_ZONE = { bamboo: 1, sturdy: 1.1, precision: 1.35, lucky: 1.25 }` (one table, Hold Fight only; the classic tap minigame keeps `RODS[id].zone`), `MIN_ZONE_PX = 44`, `MAX_ZONE = .5` and `holdZone(rarity, rodId, trackPx)` = `min(.5, max(base x ROD_ZONE[rod], 44 / trackPx))`. At fight start `hookHold()` passes the track's `clientWidth` (the zone's percentage width is relative to it; the meter has a 4px border). On a PC track (about 930 px) 44 px is about .047, so nothing changes; on a 360px phone (track 292 px) the Legendary zone goes from .14 (41 px) to 44 px. `rodFx()` (Shop, Tackle Box, popups) says "green zone 10% / 25% wider" for Sturdy / Lucky in Hold Fight and keeps the old text in tap mode. Hearts, Lucky's speed bonus and odds, Master's Charm and Steady Hands are untouched. Cache version `v=59`.
+- **Win-rate table** (good bot = reacts every 120 ms; 500 seeded fights per case; PC-sized shares; % won, Common / Rare / Epic / Legendary / Mythical):
+
+  | Rod | Common | Rare | Epic | Legendary | Mythical |
+  |---|---|---|---|---|---|
+  | Bamboo | 100 | 88.8 | 57.8 | 27.6 | 11.8 |
+  | Sturdy | 100 | 99.8 | 73.6 | 6.0 | 14.0 |
+  | Precision | 100 | 100 | 97.2 | 58.2 | 10.2 |
+  | Lucky | 100 | 100 | 90.4 | 39.6 | 23.4 |
+
+  Bamboo is exactly as before and inside every band (Common >= 95, Rare >= 80, Epic >= 55, Legendary 25-45, Mythical below Legendary). Lucky is 32 points better than Bamboo on Epic and 12 on Legendary (the target was 10+); Precision is the easiest on Epic and Legendary; Sturdy is +11 on Rare and +16 on Epic.
+- **Known artifact of the 120 ms bot (not a game bug):** the plain "good bot" re-decides every 120 ms with a bang-bang rule, which resonates with some zone widths: Legendary wins swing between 2% and 28% for widths .13-.1428 although the zone only changes by a few percent (Bamboo's .14 happens to sit on a good spot). That is why Sturdy (x1.1 = .154) shows 6% on Legendary and 14% on Mythical in the table above. A human-like bot (random 80-240 ms reactions, same seeds) shows the intended order on every rarity:
+
+  | Rod (human-like bot) | Common | Rare | Epic | Legendary | Mythical |
+  |---|---|---|---|---|---|
+  | Bamboo | 100 | 73.0 | 38.4 | 1.4 | 0.0 |
+  | Sturdy | 100 | 94.2 | 54.0 | 2.2 | 0.8 |
+  | Lucky | 100 | 100 | 74.0 | 19.2 | 4.0 |
+  | Precision | 100 | 100 | 88.2 | 32.6 | 9.6 |
+
+  The tests check both tables (the 120 ms bot for the Bamboo bands and the Sturdy / Lucky / Precision expectations; the human-like bot for the order Bamboo < Sturdy < Lucky < Precision). Scanning Sturdy's multiplier with the 120 ms bot (1.02-1.3) never gave a smooth Legendary curve, so the number was chosen from the human-like bot.
+- **Tests:** each rod's share = base x its multiplier and the share never exceeds .5 (also with a tiny track); at 1536x730 the Legendary zone equals the old value (within 1 px); at 360x640 and 390x844 it is at least 44 px (and never below the old value); on screen Bamboo <= Sturdy <= Lucky <= Precision (strictly on a PC track); tap mode keeps DIFF x `RODS[id].zone`; bot tables as above; screenshots `118_holdfight_zone_1536x730.png` and `118_holdfight_zone_360x640.png`.
+

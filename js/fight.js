@@ -21,6 +21,16 @@ function holdParams(rarity) {
   const d = DIFF[rarity] || DIFF.Common;
   return { speed: .35 + (d.speed - .55) / (1.35 - .55) * .55, zone: .14 + (d.zone - .11) / (.26 - .11) * .08 };
 }
+// Playtest 2, part 11: the green zone also depends on the rod (Hold Fight only; the classic tap minigame keeps RODS[id].zone) and never gets narrower than MIN_ZONE_PX on a narrow track.
+// ROD_ZONE multiplies the zone share (Bamboo 1, Precision 1.35 as before; Sturdy and Lucky now widen it a little). Tune the numbers here.
+const ROD_ZONE = { bamboo: 1, sturdy: 1.1, precision: 1.35, lucky: 1.25 };
+const MIN_ZONE_PX = 44;                              // the zone is at least this many pixels wide (a phone track is ~300 px, a PC track ~900 px: only phones are affected)
+const MAX_ZONE = .5;                                 // the zone never covers more than half of the track
+// final zone share of the track for a rarity and a rod; trackPx = the track's width in pixels (0 or missing = unknown: no minimum, the PC-sized shares the bot harness uses)
+function holdZone(rarity, rodId, trackPx) {
+  const z = holdParams(rarity).zone * (ROD_ZONE[rodId] || 1);
+  return Math.min(MAX_ZONE, trackPx > 0 ? Math.max(z, MIN_ZONE_PX / trackPx) : z);
+}
 // the catch bar drains this fast (per second) while the fish is outside the zone, by rarity (after the first contact); the secret-island Lake Guardian uses Mythical
 const DRAIN = { Common: .10, Rare: .15, Epic: .185, Legendary: .30, Mythical: .40 };   // tuned with the bot harness (see docs/bug_log.md, Playtest 2 parts 4+5)
 // progress after the Nth lost heart (the bar reached 0): 30%, 24%, 18%, 12%, then 10% for the 5th and later

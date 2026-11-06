@@ -598,7 +598,8 @@ const oddsText = w => TIERS.map((t, i) => `${t} ${pct(w[i])}`).join(" · ");
 // one-line effect of a rod, e.g. "1 miss allowed, green zone 35% wider."
 function rodFx(id) {
   const r = RODS[id], p = [`${misses(r.miss)} allowed`];
-  if (r.zone !== 1) p.push(`green zone ${Math.round((r.zone - 1) * 100)}% wider`);
+  const z = S.fightStyle === "tap" ? r.zone : (ROD_ZONE[id] || 1);      // Hold Fight (the default) uses ROD_ZONE, the classic tap minigame RODS[id].zone
+  if (z !== 1) p.push(`green zone ${Math.round((z - 1) * 100)}% wider`);
   if (r.luck) p.push("better rarity odds (like Shrimp bait)");
   if (r.speed !== 1) p.push(`minigame ${Math.round((r.speed - 1) * 100)}% faster`);
   if (p.length === 1) p.push("normal zone and speed");

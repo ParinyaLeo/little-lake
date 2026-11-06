@@ -814,7 +814,7 @@ function holdEnd() { holdSet(false); $("meter").classList.remove("hold"); }   //
 function holdPulse() { holdSet(true, "pulse"); later(() => { if (HOLD.src === "pulse") holdRelease(); }, 170); }
 function hookHold() {
   const hp = holdParams(F.fish.rarity), r = rod(), calm = motionReduced();
-  const cfg = { rarity: F.fish.rarity, personality: FIGHT_PERS[F.fish.rarity] || "steady", speed: hp.speed * (S.mastery.frost ? .8 : 1) * r.speed, zoneW: hp.zone * r.zone, hearts: allowedMiss() };   // Steady Hands, Lucky Rod, Precision Rod, Master's Charm
+  const cfg = { rarity: F.fish.rarity, personality: FIGHT_PERS[F.fish.rarity] || "steady", speed: hp.speed * (S.mastery.frost ? .8 : 1) * r.speed, zoneW: holdZone(F.fish.rarity, S.rodEq, $("meter").clientWidth), hearts: allowedMiss() };   // rod zone bonus + 44 px minimum (part 11);   // Steady Hands, Lucky Rod, Precision Rod, Master's Charm
   Object.assign(F, { phase: "reeling", mode: "hold", fight: fightInit(cfg, FIGHT_RNG), pos: .6, zoneX: .3, dir: 1, hits: 0, misses: 0, lastT: 0, seenSlips: 0, wasIn: false, speed: cfg.speed, zoneW: cfg.zoneW });
   holdRelease(); HOLD_PQ = -1;
   const m = $("meter"), z = $("zone"); m.classList.add("hold"); z.style.left = "0"; z.style.width = cfg.zoneW * 100 + "%"; z.style.transform = "translateX(0)";

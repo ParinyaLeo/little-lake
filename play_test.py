@@ -3038,7 +3038,7 @@ with sync_playwright() as p:
     # --- gear: hearts = allowedMiss(); Precision zone x1.35; Steady Hands fish x0.8; Lucky Rod fish x1.1; rarer = faster and narrower ---
     gear = {}
     for rid in ("bamboo", "sturdy", "precision", "lucky"):
-        gear[rid] = hp.evaluate(f"""() => {{ S.rods = ['bamboo','sturdy','precision','lucky']; S.rodEq = '{rid}'; S.mastery = {{}}; const hold = r => {{ const q = holdParams(r), rod = RODS['{rid}']; return {{ speed: q.speed * rod.speed, zone: q.zone * rod.zone }}; }};
+        gear[rid] = hp.evaluate(f"""() => {{ S.rods = ['bamboo','sturdy','precision','lucky']; S.rodEq = '{rid}'; S.mastery = {{}}; const hold = r => {{ const q = holdParams(r), rod = RODS['{rid}']; return {{ speed: q.speed * rod.speed, zone: q.zone * ROD_ZONE['{rid}'] }}; }};
             island = 'harbor'; go('fishing'); F = {{ phase: 'bite', fish: fishById('harbor_0'), castAt: performance.now(), biteAt: performance.now() + 500, land: {{ x: .6, y: .65 }}, usedBait: null, floatId: 'classic' }}; hook();
             const c = F.fight.cfg, base = {{ speed: c.speed, zone: c.zoneW, hearts: c.hearts, allowed: allowedMiss(), mode: F.mode }}; stopFishing(); S.mastery = {{ forest: true, frost: true }}; F = {{ phase: 'bite', fish: fishById('harbor_0'), castAt: performance.now(), biteAt: performance.now() + 500, land: {{ x: .6, y: .65 }}, usedBait: null, floatId: 'classic' }}; hook();
             const c2 = F.fight.cfg, gear = {{ speed: c2.speed, zone: c2.zoneW, hearts: c2.hearts, allowed: allowedMiss() }}; stopFishing(); S.mastery = {{}}; return {{ base, gear }}; }}""")
@@ -3051,7 +3051,7 @@ with sync_playwright() as p:
     check("rarer fish are faster and the zone is narrower: Common .35 / .22 ... Legendary .90 / .14", all(prm[i][1] < prm[i + 1][1] and prm[i][2] > prm[i + 1][2] for i in range(4)) and abs(prm[0][1] - .35) < .01 and abs(prm[0][2] - .22) < .01 and abs(prm[3][1] - .9) < .01 and abs(prm[3][2] - .14) < .01, str([(r, round(s, 2), round(z, 3)) for r, s, z in prm]))
     # --- balance bots (seeded, no real time): good = reacts every 120 ms, bad = every 400 ms, idle = never holds ---
     BOT = """([rarity, bot, n, rodId, frost, forest]) => { const rod = RODS[rodId], hp = holdParams(rarity); let w = 0, tw = 0, tl = 0, sl = 0;
-        for (let i = 0; i < n; i++) { const rng = seededRng(9000 + i), st = fightInit({ personality: FIGHT_PERS[rarity], speed: hp.speed * (frost ? .8 : 1) * rod.speed, zoneW: hp.zone * rod.zone, hearts: rod.miss + (forest ? 1 : 0), rarity }, rng);
+        for (let i = 0; i < n; i++) { const rng = seededRng(9000 + i), st = fightInit({ personality: FIGHT_PERS[rarity], speed: hp.speed * (frost ? .8 : 1) * rod.speed, zoneW: holdZone(rarity, rodId, 0), hearts: rod.miss + (forest ? 1 : 0), rarity }, rng);
           let holding = false, next = 0; while (!st.result) { if (bot !== 'idle' && st.t >= next) { next = st.t + (bot === 'good' ? .12 : .4); holding = st.fx > st.zx + st.cfg.zoneW / 2; } stepFight(st, 1 / 60, bot === 'idle' ? false : holding, rng); }
           if (st.result === 'caught') { w++; tw += st.t; } else tl += st.t; sl += st.slips; }
         return { win: w / n * 100, tWin: w ? tw / w : 0, tLoss: n - w ? tl / (n - w) : 0, slips: sl / n }; }"""
@@ -3067,7 +3067,48 @@ with sync_playwright() as p:
     check("balance, bad bot (400 ms) on Bamboo: Rare, Epic, Legendary and Mythical stay low (below 30%); Common stays forgiving", all(W(r, "bad") < 30 for r in ("Rare", "Epic", "Legendary", "Mythical")) and W("Common", "bad") > W("Rare", "bad"), f"{W('Common', 'bad'):.1f}% / {W('Legendary', 'bad'):.1f}%")
     check("balance, idle bot never wins (any rarity)", all(W(r, "idle") == 0 for r in ("Common", "Rare", "Epic", "Legendary", "Mythical")), summary)
     check("balance: Lucky Rod (5 hearts) beats Bamboo by 10+ points on Epic and is not worse on Legendary; Precision is clearly easier on Epic and Legendary", luckE["lucky"]["win"] >= luckE["bamboo"]["win"] + 10 and luck["lucky"]["win"] >= luck["bamboo"]["win"] - 1 and luckE["precision"]["win"] > luckE["bamboo"]["win"] + 20 and luck["precision"]["win"] > luck["bamboo"]["win"] + 15, str({"E": {k: round(v["win"], 1) for k, v in luckE.items()}, "L": {k: round(v["win"], 1) for k, v in luck.items()}}))
+    RODS4 = ("bamboo", "sturdy", "precision", "lucky"); RARS = ("Common", "Rare", "Epic", "Legendary", "Mythical")
+    tbl = {(r, q): hp.evaluate(BOT, [q, "good", N, r, False, False])["win"] for r in RODS4 for q in RARS}
+    print("WINTABLE (good bot, 500 seeded fights, PC-sized zones) " + " | ".join(f"{r}: " + "/".join(f"{tbl[(r, q)]:.1f}" for q in RARS) for r in RODS4))
+    JIT = """([rarity, rodId, n]) => { const rod = RODS[rodId]; let w = 0;
+        for (let i = 0; i < n; i++) { const rng = seededRng(9000 + i), r2 = seededRng(777 + i), st = fightInit({ personality: FIGHT_PERS[rarity], speed: holdParams(rarity).speed * rod.speed, zoneW: holdZone(rarity, rodId, 0), hearts: rod.miss, rarity }, rng);
+          let holding = false, next = 0; while (!st.result) { if (st.t >= next) { next = st.t + .08 + r2() * .16; holding = st.fx > st.zx + st.cfg.zoneW / 2; } stepFight(st, 1 / 60, holding, rng); } if (st.result === 'caught') w++; }
+        return w / n * 100; }"""
+    jt = {(r, q): hp.evaluate(JIT, [q, r, N]) for r in RODS4 for q in RARS}
+    print("JITTERTABLE (human-like bot, reaction 80-240 ms) " + " | ".join(f"{r}: " + "/".join(f"{jt[(r, q)]:.1f}" for q in RARS) for r in RODS4))
+    check("part 11 balance, good bot: Sturdy a few points better than Bamboo on Rare and Epic; Lucky 10+ points better on Epic and Legendary; Precision the easiest on Epic and Legendary",
+          tbl[("sturdy", "Rare")] >= tbl[("bamboo", "Rare")] + 3 and tbl[("sturdy", "Epic")] >= tbl[("bamboo", "Epic")] + 3 and tbl[("lucky", "Epic")] >= tbl[("bamboo", "Epic")] + 10 and tbl[("lucky", "Legendary")] >= tbl[("bamboo", "Legendary")] + 10
+          and all(tbl[("precision", q)] >= tbl[(r, q)] for q in ("Epic", "Legendary") for r in RODS4), str({r: [round(tbl[(r, q)]) for q in RARS] for r in RODS4}))
+    check("part 11 balance, human-like bot (random 80-240 ms reactions): rods are ordered Bamboo < Sturdy < Lucky < Precision on Rare, Epic, Legendary (the plain 120 ms bot resonates with some zone widths, see bug log)",
+          all(jt[("bamboo", q)] < jt[("sturdy", q)] < jt[("lucky", q)] < jt[("precision", q)] for q in ("Epic", "Legendary")) and jt[("bamboo", "Rare")] < jt[("sturdy", "Rare")] <= jt[("lucky", "Rare")] <= jt[("precision", "Rare")], str({r: [round(jt[(r, q)]) for q in RARS] for r in RODS4}))
+    # zone share = base x rod multiplier, minimum 44 px, never above .5
+    zs = hp.evaluate("""() => { const o = {}; for (const r of ['bamboo', 'sturdy', 'precision', 'lucky']) o[r] = ['Common', 'Rare', 'Epic', 'Legendary', 'Mythical'].map(q => holdZone(q, r, 0) / (holdParams(q).zone * ROD_ZONE[r]));
+        return { ratios: o, table: ROD_ZONE, min: MIN_ZONE_PX, cap: [holdZone('Common', 'precision', 20), holdZone('Common', 'bamboo', 1), holdZone('Common', 'bamboo', 900), holdParams('Common').zone], small: holdZone('Legendary', 'bamboo', 300) * 300 }; }""")
+    check("rod zone multipliers in one table (Bamboo 1, Sturdy 1.1, Precision 1.35, Lucky 1.25); each share = base x its multiplier; MIN_ZONE_PX = 44; the share never exceeds .5",
+          zs["table"] == {"bamboo": 1, "sturdy": 1.1, "precision": 1.35, "lucky": 1.25} and all(abs(v - 1) < 1e-9 for r in zs["ratios"].values() for v in r) and zs["min"] == 44 and zs["cap"][0] == .5 and zs["cap"][1] == .5 and abs(zs["cap"][2] - zs["cap"][3]) < 1e-9 and zs["small"] >= 43.99, str(zs))
     check("balance: a typical fight (good bot, wins) lasts 5 to 25 seconds on every rarity", all(5 <= bots[(r, "good")]["tWin"] <= 25 for r in ("Common", "Rare", "Epic", "Legendary")), str({r: round(bots[(r, 'good')]['tWin'], 1) for r in ("Common", "Rare", "Epic", "Legendary")}))
+    # --- part 11: the zone on screen: at least 44 px on a phone track, the old value on a PC track, rod bonus visible, tap mode untouched ---
+    for vw, vh in [(1536, 730), (360, 640), (390, 844)]:
+        zp = hf_page(vw, vh, name="ZoneW")
+        zp.evaluate("() => { S.rods = ['bamboo','sturdy','precision','lucky']; S.rodEq = 'bamboo'; S.mastery = {}; save(); }")
+        fh_hook(zp, FIGHT_IDS["Legendary"]); zp.wait_for_timeout(150)
+        zm = zp.evaluate("""() => { const el = document.getElementById('meter'), m = el.getBoundingClientRect(), z = document.getElementById('zone').getBoundingClientRect(), c = F.fight.cfg;
+            return { track: el.clientWidth, zone: z.width, share: c.zoneW, old: holdParams(F.fish.rarity).zone * el.clientWidth, mode: F.mode, within: z.left >= m.left - 1 && z.right <= m.right + 1 }; }""")
+        if vw >= 900: check(f"{vw}x{vh}: on a PC-sized track the Legendary zone equals the old value (within 1 px: {zm['old']:.1f} px)", abs(zm["zone"] - zm["old"]) <= 1 and zm["mode"] == "hold", str(zm))
+        else: check(f"{vw}x{vh}: on a phone-sized track ({zm['track']:.0f} px) the Legendary zone is at least 44 px wide and the share is below .5", zm["zone"] >= 43.5 and zm["share"] <= .5 and zm["zone"] >= zm["old"] - 1 and zm["within"], str(zm))
+        if vw != 390: zp.screenshot(path=str(SHOTS / f"118_holdfight_zone_{vw}x{vh}.png"))
+        zw = {}
+        for rid in ("bamboo", "sturdy", "precision", "lucky"):
+            zp.evaluate(f"() => {{ stopFishing(); S.rodEq = '{rid}'; }}"); fh_hook(zp, FIGHT_IDS["Common"])
+            zw[rid] = zp.evaluate("document.getElementById('zone').getBoundingClientRect().width")
+        order = zw["bamboo"] <= zw["sturdy"] <= zw["lucky"] <= zw["precision"]
+        check(f"{vw}x{vh}: on screen a better rod widens the zone: Bamboo <= Sturdy <= Lucky <= Precision" + (" (strictly on a PC track)" if vw >= 900 else " (the 44 px minimum can make the small ones equal)"),
+              order and (vw < 900 and zw["precision"] > zw["bamboo"] or vw >= 900 and zw["bamboo"] < zw["sturdy"] < zw["lucky"] < zw["precision"]), str({k: round(v, 1) for k, v in zw.items()}))
+        if vw == 360:
+            zp.evaluate("() => { stopFishing(); S.fightStyle = 'tap'; S.rodEq = 'sturdy'; }"); fh_hook(zp, FIGHT_IDS["Common"])
+            tz = zp.evaluate("() => ({ mode: F.mode, zoneW: F.zoneW, expect: DIFF.Common.zone * RODS.sturdy.zone })")
+            check("tap mode (classic fight) is unchanged: its zone is DIFF x RODS[id].zone, no pixel minimum and no ROD_ZONE", tz["mode"] != "hold" and abs(tz["zoneW"] - tz["expect"]) < 1e-9, str(tz))
+        zp.close()
     # --- the fight on screen: Hold Fight layout, inputs (button, Space, scene), releases ---
     fh_hook(hp, FIGHT_IDS["Common"])
     lay = hp.evaluate("""() => ({ mode: F.mode, hold: document.getElementById('meter').classList.contains('hold'), icon: getComputedStyle(document.getElementById('fishIcon')).display, marker: getComputedStyle(document.getElementById('marker')).display,
