@@ -302,6 +302,11 @@ body.fit #bagList:not(.has-more)::after { display: none; }   /* bottom fade only
 .shop-filter::-webkit-scrollbar { display: none; }
 .shop-filter .tab { flex: 1 0 auto; min-height: 40px; white-space: nowrap; }
 #shopFilter .tab { --rivets: none; }
+@media (max-width: 700px) {   /* phones: all six categories at once, 3 x 2, no sideways scrolling (part 10b) */
+  .shop-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; overflow: visible; margin-bottom: 8px; }
+  .shop-filter .tab { flex: none; min-width: 0; padding: 6px 2px; font-size: 14px; }
+  .shop-sec .shop-h { margin-top: 10px; }
+}
 .shop-h small { font: 13px "Courier New", monospace; color: var(--cream); margin-left: 8px; }
 p.small { font-size: 14px; margin: 0 0 12px; }
 /* tackle box */

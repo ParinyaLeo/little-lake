@@ -3604,19 +3604,22 @@ with sync_playwright() as p:
     kb1 = fp.evaluate("shopFilter"); fp.focus("#shopFilter [data-filter=themes]"); fp.keyboard.press("Space"); fp.wait_for_timeout(80)
     check("the filter buttons are focusable and Enter / Space activate them", kb1 == "bait" and fp.evaluate("shopFilter") == "themes")
     fp.close()
-    for vw, vh in [(1536, 730), (360, 640)]:
+    for vw, vh in [(1536, 730), (360, 640), (390, 844)]:
         fl = aq_page(vw, vh, "FilterLook")
         fl.evaluate("() => { S.coins = 100; save(); go('shop'); }"); fl.wait_for_timeout(300)
-        def fm(): return fl.evaluate("""() => { const bar = document.getElementById('shopFilter'), bs = [...bar.querySelectorAll('.tab')], r = bar.getBoundingClientRect(), ys = new Set(bs.map(b => Math.round(b.getBoundingClientRect().top)));
-            return { sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight, top: r.top, bottom: r.bottom, rows: ys.size, minH: Math.min(...bs.map(b => b.getBoundingClientRect().height)), barScroll: bar.scrollWidth > bar.clientWidth + 1, barOver: getComputedStyle(bar).overflowX, vis: r.top >= 0 && r.bottom <= innerHeight }; }""")
-        m = fm()
-        check(f"{vw}x{vh}: the filter bar is visible without scrolling, in ONE row, buttons at least 40px high, no horizontal page overflow" + (", fits in the bar width" if vw >= 900 else ", the bar scrolls sideways"),
-              m["vis"] and m["rows"] == 1 and m["minH"] >= 40 and m["sw"] <= vw and (m["barScroll"] if vw < 900 else not m["barScroll"]) and (vw < 900 or m["sh"] <= m["ih"]), str(m))
-        fl.screenshot(path=str(SHOTS / f"117_shop_filter_all_{vw}x{vh}.png"))
-        fl.click("#shopFilter [data-filter=themes]"); fl.wait_for_timeout(200)
-        m = fm()
-        check(f"{vw}x{vh}: with THEMES chosen the bar is still visible, one row, no overflow" + (" and the page still fits" if vw >= 900 else ""), m["vis"] and m["rows"] == 1 and m["sw"] <= vw and (vw < 900 or m["sh"] <= m["ih"]), str(m))
-        fl.screenshot(path=str(SHOTS / f"117b_shop_filter_themes_{vw}x{vh}.png"))
+        def fm(): return fl.evaluate("""() => { const bar = document.getElementById('shopFilter'), bs = [...bar.querySelectorAll('.tab')], r = bar.getBoundingClientRect(), bb = bs.map(b => b.getBoundingClientRect()), ys = new Set(bb.map(x => Math.round(x.top)));
+            const card = [...document.querySelectorAll('#shop .item')].find(i => i.offsetParent), cr = card && card.getBoundingClientRect();
+            return { sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight, top: r.top, bottom: r.bottom, rows: ys.size, n: bs.length, minH: Math.min(...bb.map(x => x.height)),
+              barScroll: bar.scrollWidth > bar.clientWidth + 1, inside: bb.every(x => x.left >= 0 && x.right <= innerWidth), clipped: bs.filter(b => b.scrollWidth > b.clientWidth + 1).length, vis: r.top >= 0 && r.bottom <= innerHeight,
+              cardFull: !!cr && cr.top >= r.bottom && cr.bottom <= innerHeight }; }""")
+        m = fm(); narrow = vw < 700
+        check(f"{vw}x{vh}: the filter bar is visible without scrolling, six buttons " + ("in a 3 x 2 grid fully inside the screen" if narrow else "in ONE row") + ", 40px+ high, text not clipped, no horizontal scroll of the bar or the page",
+              m["vis"] and m["n"] == 6 and m["rows"] == (2 if narrow else 1) and m["minH"] >= 39.9 and m["sw"] <= vw and not m["barScroll"] and m["inside"] and m["clipped"] == 0 and (narrow or m["sh"] <= m["ih"]), str(m))
+        if narrow: check(f"{vw}x{vh}: a full shop card is visible under the bar without scrolling", m["cardFull"], str(m))
+        fl.screenshot(path=str(SHOTS / f"117_shop_filter_all_{vw}x{vh}.png")) if vw != 390 else None
+        fl.click("#shopFilter [data-filter=decor]"); fl.wait_for_timeout(200)
+        m = fm(); v = fl.evaluate(VIS)
+        check(f"{vw}x{vh}: the last button (DECOR) can be tapped at once; only that section shows and the bar stays in place", [x for x in SECS if v[x]] == ["decor"] and m["vis"] and m["inside"] and m["sw"] <= vw and not m["barScroll"] and (narrow or m["sh"] <= m["ih"]), str(m))
         fl.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
