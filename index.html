@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=56">
+<link rel="stylesheet" href="css/style.css?v=57">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -193,21 +193,39 @@
   <section class="screen" id="shop">
     <div class="panel wood">
       <h2>Shop</h2>
+      <div class="tabs shop-filter" id="shopFilter" role="group" aria-label="Shop categories"><button class="tab on" type="button" data-filter="all" aria-pressed="true">ALL</button><button class="tab" type="button" data-filter="rods" aria-pressed="false">RODS</button><button class="tab" type="button" data-filter="bait" aria-pressed="false">BAIT</button><button class="tab" type="button" data-filter="floats" aria-pressed="false">FLOATS</button><button class="tab" type="button" data-filter="themes" aria-pressed="false">THEMES</button><button class="tab" type="button" data-filter="decor" aria-pressed="false">DECOR</button></div>
       <div class="scroll-list" id="shopScroll">
-      <h3 class="shop-h">Rods <small>buy once, then equip one in the Tackle Box</small></h3>
-      <div class="shop" id="shopRods"></div>
-      <h3 class="shop-h">Bait <small>one is used per cast from the bait you choose</small></h3>
-      <p class="small" id="shopNoBait"></p>
-      <div class="shop" id="shopBaits"></div>
-      <h3 class="shop-h">Floats <small>only a look: choose your bobber (no effect on fishing)</small></h3>
-      <div class="shop" id="shopFloats"></div>
-      <h3 class="shop-h">Tank Themes <small>change the water and the background of your aquarium (only a look: no effect on fishing or selling)</small></h3>
-      <div class="shop" id="shopThemes"></div>
-      <h3 class="shop-h">Tank Decorations <small>stand on the tank floor, up to 4 shown at once</small></h3>
-      <div class="shop" id="shopDecos"></div>
-      <h3 class="shop-h">Bag</h3>
-      <div class="shop">
-        <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span class="fx" id="sBagFx"></span><span>In your bag: <span id="sBag"></span></span><button class="btn green" data-nosound id="buyBag">150 COINS</button></div>
+      <div class="shop-sec" data-sec="rods">
+  <h3 class="shop-h">Rods <small>buy once, then equip one in the Tackle Box</small></h3>
+        <div class="shop" id="shopRods"></div>
+      
+      </div>
+      <div class="shop-sec" data-sec="bait">
+  <h3 class="shop-h">Bait <small>one is used per cast from the bait you choose</small></h3>
+        <p class="small" id="shopNoBait"></p>
+        <div class="shop" id="shopBaits"></div>
+      
+      </div>
+      <div class="shop-sec" data-sec="floats">
+  <h3 class="shop-h">Floats <small>only a look: choose your bobber (no effect on fishing)</small></h3>
+        <div class="shop" id="shopFloats"></div>
+      
+      </div>
+      <div class="shop-sec" data-sec="themes">
+  <h3 class="shop-h">Tank Themes <small>change the water and the background of your aquarium (only a look: no effect on fishing or selling)</small></h3>
+        <div class="shop" id="shopThemes"></div>
+      
+      </div>
+      <div class="shop-sec" data-sec="decor">
+  <h3 class="shop-h">Tank Decorations <small>stand on the tank floor, up to 4 shown at once</small></h3>
+        <div class="shop" id="shopDecos"></div>
+      
+      </div>
+      <div class="shop-sec" data-sec="bag">
+  <h3 class="shop-h">Bag</h3>
+        <div class="shop">
+          <div class="item"><b><span class="ico i-bag"></span>Bigger bag +5</b><span class="fx" id="sBagFx"></span><span>In your bag: <span id="sBag"></span></span><button class="btn green" data-nosound id="buyBag">150 COINS</button></div>
+        </div>
       </div>
       </div>
     </div>
@@ -290,11 +308,11 @@
 </div>
 
 
-<script src="js/data.js?v=56"></script>
-<script src="js/fight.js?v=56"></script>
-<script src="js/state.js?v=56"></script>
-<script src="js/fisherman.js?v=56"></script>
-<script src="js/fishing.js?v=56"></script>
-<script src="js/screens.js?v=56"></script>
+<script src="js/data.js?v=57"></script>
+<script src="js/fight.js?v=57"></script>
+<script src="js/state.js?v=57"></script>
+<script src="js/fisherman.js?v=57"></script>
+<script src="js/fishing.js?v=57"></script>
+<script src="js/screens.js?v=57"></script>
 </body>
 </html>

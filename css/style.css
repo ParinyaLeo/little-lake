@@ -296,7 +296,12 @@ body.fit #bagList:not(.has-more)::after { display: none; }   /* bottom fade only
 .item .need { font-size: 13px; color: #ffb4a2; font-weight: bold; }
 .item .btn { margin-top: auto; }
 .shop-h { font: 700 20px var(--pixel); color: var(--gold); margin: 16px 0 8px; }
-.shop-h:first-of-type { margin-top: 0; }
+.shop-sec:first-child .shop-h { margin-top: 0; }
+.shop-sec.sec-off { display: none; }
+.shop-filter { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.shop-filter::-webkit-scrollbar { display: none; }
+.shop-filter .tab { flex: 1 0 auto; min-height: 40px; white-space: nowrap; }
+#shopFilter .tab { --rivets: none; }
 .shop-h small { font: 13px "Courier New", monospace; color: var(--cream); margin-left: 8px; }
 p.small { font-size: 14px; margin: 0 0 12px; }
 /* tackle box */

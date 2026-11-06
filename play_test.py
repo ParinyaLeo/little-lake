@@ -3559,6 +3559,66 @@ with sync_playwright() as p:
         if vw != 1280: tl.screenshot(path=str(SHOTS / f"116_aquarium_deepsea_{vw}x{vh}.png"))
         tl.close()
 
+
+    # ---------- Playtest 2, part 10: the Shop category filter bar (ALL | RODS | BAIT | FLOATS | THEMES | DECOR) ----------
+    SECS = ["rods", "bait", "floats", "themes", "decor", "bag"]
+    VIS = """() => Object.fromEntries([...document.querySelectorAll('#shop .shop-sec')].map(e => [e.dataset.sec, getComputedStyle(e).display !== 'none']))"""
+    fp = aq_page(1536, 730, "Filter")
+    fp.evaluate("() => { S.coins = 5000; S.bagMax = 20; save(); go('shop'); }"); fp.wait_for_timeout(300)
+    labels = fp.evaluate("[...document.querySelectorAll('#shopFilter .tab')].map(b => b.textContent)")
+    v0 = fp.evaluate(VIS)
+    check("the Shop has the filter bar ALL | RODS | BAIT | FLOATS | THEMES | DECOR; ALL is the default and shows every section", labels == ["ALL", "RODS", "BAIT", "FLOATS", "THEMES", "DECOR"] and all(v0.values()) and len(v0) == 6 and fp.evaluate("document.querySelector('#shopFilter .tab.on').textContent") == "ALL", str(v0))
+    ok = True; det = []
+    for k, f in enumerate(["rods", "bait", "floats", "themes", "decor"]):
+        fp.evaluate("() => { document.getElementById('shopScroll').scrollTop = 400; }")
+        fp.click(f"#shopFilter [data-filter={f}]"); fp.wait_for_timeout(80)
+        v = fp.evaluate(VIS); st = fp.evaluate("() => [document.getElementById('shopScroll').scrollTop, document.querySelector('#shopFilter .tab.on').dataset.filter, document.querySelector('#shopFilter .tab.on').getAttribute('aria-pressed')]")
+        good = [x for x in SECS if v[x]] == [f] and st[0] == 0 and st[1] == f and st[2] == "true"
+        ok &= good; det.append((f, good))
+    check("each filter shows only its own section, hides the others, scrolls the list back to the top and marks the active button", ok, str(det))
+    fp.click("#shopFilter [data-filter=all]"); fp.wait_for_timeout(80)
+    check("ALL restores every section", all(fp.evaluate(VIS).values()))
+    nit = fp.evaluate("() => { const e = document.querySelector('#shopRods .item'); e.dataset.mark = 'x'; applyShopFilter(true); return 1; }")
+    fp.click("#shopFilter [data-filter=rods]"); fp.click("#shopFilter [data-filter=all]")
+    check("filtering does not rebuild the items (a marker on a card survives)", fp.evaluate("document.querySelector('#shopRods .item').dataset.mark") == "x")
+    # buying under a filter
+    for f, sel, cond in [("rods", "#shopRods [data-buy='rod:sturdy']", "S.rods.includes('sturdy')"), ("floats", "#shopFloats [data-buy='float:candy']", "S.floatsOwned.includes('candy') && S.floatEq === 'candy'"),
+                         ("themes", "#shopThemes [data-buy='theme:reef']", "S.tankThemes.includes('reef') && S.tankTheme === 'reef'"), ("decor", "#shopDecos [data-buy='deco:chest']", "S.tankDecos.includes('chest') && S.tankDecoOn.includes('chest')")]:
+        fp.click(f"#shopFilter [data-filter={f}]"); c0 = fp.evaluate("S.coins"); fp.locator(sel).click(); fp.wait_for_timeout(120)
+        lab = fp.evaluate(f"document.querySelector(\"{sel}\").textContent")
+        check(f"buying under the {f.upper()} filter still works (coins drop, state saved, button updates to '{lab}') and the filter stays", fp.evaluate(cond) and fp.evaluate("S.coins") < c0 and lab in ("OWNED", "EQUIPPED", "IN USE", "SHOWN") and fp.evaluate("shopFilter") == f and [x for x in SECS if fp.evaluate(VIS)[x]] == [{"themes": "themes", "decor": "decor"}.get(f, f)], f"{lab} {fp.evaluate('shopFilter')}")
+    # survives re-render and reopening, reload resets
+    fp.click("#shopFilter [data-filter=floats]"); fp.evaluate("() => { render(); }"); fp.wait_for_timeout(100)
+    k1 = [x for x in SECS if fp.evaluate(VIS)[x]]
+    fp.evaluate("() => { go('home'); go('shop'); }"); fp.wait_for_timeout(200)
+    k2 = [x for x in SECS if fp.evaluate(VIS)[x]]
+    check("the filter survives a re-render and leaving and reopening the Shop", k1 == ["floats"] and k2 == ["floats"] and fp.evaluate("document.querySelector('#shopFilter .tab.on').dataset.filter") == "floats", str((k1, k2)))
+    check("the filter is not stored in the save", "shopFilter" not in fp.evaluate("localStorage.getItem('littleLakeSave')"))
+    fp.reload(); fp.wait_for_timeout(300); fp.click("#contBtn"); fp.wait_for_timeout(200); fp.evaluate("() => go('shop')"); fp.wait_for_timeout(200)
+    check("after a reload the Shop is back on ALL", all(fp.evaluate(VIS).values()) and fp.evaluate("shopFilter") == "all")
+    fp.evaluate("() => { shopFilter = 'bait'; }"); fp.evaluate("() => go('titleScreen')"); fp.click("#newBtn"); fp.click("#confirmYes"); fp.fill("#nameInput", "Again"); fp.click("#nameStart"); fp.wait_for_timeout(200)
+    check("NEW GAME resets the filter to ALL", fp.evaluate("shopFilter") == "all")
+    # keyboard
+    fp.evaluate("() => go('shop')"); fp.wait_for_timeout(200)
+    fp.focus("#shopFilter [data-filter=bait]"); fp.keyboard.press("Enter"); fp.wait_for_timeout(80)
+    kb1 = fp.evaluate("shopFilter"); fp.focus("#shopFilter [data-filter=themes]"); fp.keyboard.press("Space"); fp.wait_for_timeout(80)
+    check("the filter buttons are focusable and Enter / Space activate them", kb1 == "bait" and fp.evaluate("shopFilter") == "themes")
+    fp.close()
+    for vw, vh in [(1536, 730), (360, 640)]:
+        fl = aq_page(vw, vh, "FilterLook")
+        fl.evaluate("() => { S.coins = 100; save(); go('shop'); }"); fl.wait_for_timeout(300)
+        def fm(): return fl.evaluate("""() => { const bar = document.getElementById('shopFilter'), bs = [...bar.querySelectorAll('.tab')], r = bar.getBoundingClientRect(), ys = new Set(bs.map(b => Math.round(b.getBoundingClientRect().top)));
+            return { sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight, top: r.top, bottom: r.bottom, rows: ys.size, minH: Math.min(...bs.map(b => b.getBoundingClientRect().height)), barScroll: bar.scrollWidth > bar.clientWidth + 1, barOver: getComputedStyle(bar).overflowX, vis: r.top >= 0 && r.bottom <= innerHeight }; }""")
+        m = fm()
+        check(f"{vw}x{vh}: the filter bar is visible without scrolling, in ONE row, buttons at least 40px high, no horizontal page overflow" + (", fits in the bar width" if vw >= 900 else ", the bar scrolls sideways"),
+              m["vis"] and m["rows"] == 1 and m["minH"] >= 40 and m["sw"] <= vw and (m["barScroll"] if vw < 900 else not m["barScroll"]) and (vw < 900 or m["sh"] <= m["ih"]), str(m))
+        fl.screenshot(path=str(SHOTS / f"117_shop_filter_all_{vw}x{vh}.png"))
+        fl.click("#shopFilter [data-filter=themes]"); fl.wait_for_timeout(200)
+        m = fm()
+        check(f"{vw}x{vh}: with THEMES chosen the bar is still visible, one row, no overflow" + (" and the page still fits" if vw >= 900 else ""), m["vis"] and m["rows"] == 1 and m["sw"] <= vw and (vw < 900 or m["sh"] <= m["ih"]), str(m))
+        fl.screenshot(path=str(SHOTS / f"117b_shop_filter_themes_{vw}x{vh}.png"))
+        fl.close()
+
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()
 

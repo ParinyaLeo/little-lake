@@ -96,7 +96,7 @@ function closeModal(id) {
 function openNameBox() { $("nameInput").value = ""; $("nameErr").textContent = ""; openModal("nameBox", "nameInput"); }
 function startNewGame(name) {
   const sound = S.sound, music = S.music, fightStyle = S.fightStyle;            // keep the player's sound, music and fight style choices
-  S = DEFAULT(); S.name = name; S.sound = sound; S.music = music; S.fightStyle = fightStyle; save();
+  shopFilter = "all"; S = DEFAULT(); S.name = name; S.sound = sound; S.music = music; S.fightStyle = fightStyle; save();
   island = "harbor"; collTab = "harbor";
   go("home"); toast(`Welcome to Little Lake, ${name}!`);
 }
@@ -205,6 +205,13 @@ function shopItem({ buy, icon, name, tag, fx, odds, note, label, can, kind }) {
 }
 const tankName = (kind, id) => kind === "theme" ? TANK_THEMES[id].name + " Theme" : TANK_DECOS[id].name;     // one wording for the Shop and the Aquarium lists
 const needMore = price => S.coins < price ? `<span class="need">Need ${fmt(price - S.coins)} more coins</span>` : "";
+let shopFilter = "all";                                   // ALL | RODS | BAIT | FLOATS | THEMES | DECOR: a plain variable (not saved), so a reload or NEW GAME goes back to ALL
+function applyShopFilter(toTop) {                         // only hides / shows the sections with a class; nothing is rebuilt
+  document.querySelectorAll("#shop .shop-sec").forEach(e => e.classList.toggle("sec-off", shopFilter !== "all" && e.dataset.sec !== shopFilter));
+  document.querySelectorAll("#shopFilter .tab").forEach(b => { const on = b.dataset.filter === shopFilter; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false"); });
+  if (toTop) $("shopScroll").scrollTop = 0;
+}
+document.querySelectorAll("#shopFilter .tab").forEach(b => b.onclick = () => { shopFilter = b.dataset.filter; applyShopFilter(true); });
 function renderShop() {
   $("shopRods").innerHTML = ROD_IDS.map(id => {
     const r = RODS[id], own = S.rods.includes(id), eq = S.rodEq === id;
@@ -234,6 +241,7 @@ function renderShop() {
     return shopItem({ buy: `deco:${id}`, icon: `tk:deco:${id}`, name: tankName("deco", id), kind: "DECOR", tag: on ? "EQUIPPED" : own ? "OWNED" : "", fx: d.blurb + " Only a look.",
       note: own ? "" : needMore(d.price), can: !own && S.coins >= d.price, label: own ? (on ? "SHOWN" : "OWNED") : `${d.price} COINS` });
   }).join("");
+  applyShopFilter(false);
   $("shopNoBait").textContent = `Without bait (${rod().short} rod): ${oddsText(rarityWeights("none"))}`;
   $("sBagFx").textContent = `Bag: ${S.bagMax + 5} slots (now ${S.bagMax})`;
   $("sBag").textContent = `${S.bag.length} / ${S.bagMax}`;
