@@ -53,7 +53,8 @@ let sceneBg = null;   // cached painted background: { key, canvas, info }
 const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1, outfit: "harbor" };   // reused every frame (no allocations)
 const CROP = { sx: 0, sy: 0, sw: 1, sh: 1 };              // part of the picture shown on the canvas (image pixels)
 
-function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = SCENES[island].rod || DEFAULT_ROD; }
+const sceneOf = () => island === "boat" ? BOAT_SCENE : SCENES[island];   // BOAT_SCENE (js/boat.js) is not in SCENES: the picture tests loop over SCENES
+function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = sceneOf().rod || DEFAULT_ROD; }
 window.addEventListener("resize", () => current === "fishing" && fitCanvas());
 let F = { phase: "idle" }, raf = null, timers = [];
 function later(fn, ms) { const t = setTimeout(fn, ms); timers.push(t); return t; }
@@ -248,10 +249,10 @@ function fxStars(c, W, H, t, info) {
   c.fillStyle = glow; c.fillRect(gx - rad, gy - rad, rad * 2, rad * 2);
 }
 function sceneBackground(W, H) {
-  const key = `${island}|${W}|${H}`;
+  const key = `${island}|${W}|${H}`, sc = sceneOf();
   if (!sceneBg || sceneBg.key !== key) {
     const c = document.createElement("canvas"); c.width = Math.ceil(W / PX); c.height = Math.ceil(H / PX);
-    const info = SCENES[island].paint(c.getContext("2d"), c.width, c.height, ROD_TIP);
+    const info = sc.paint(c.getContext("2d"), c.width, c.height, ROD_TIP);
     sceneBg = { key, canvas: c, info };
   }
   return sceneBg;
@@ -424,7 +425,7 @@ function fightState() {
 }
 function shadowStep(t, W, H, still) {
   const s = SH, k = W / 900; s.W = W; s.H = H; s.k = k; s.ox = s.oy = s.dip = s.nib = s.dx = s.dy = 0; FIGHT.on = false;
-  s.dk.x = W * .36; s.dk.y = H * .68;
+  s.dk.x = island === "boat" ? W * Math.min(.95, BOAT.x + .04) : W * .36; s.dk.y = H * .68;   // the point the reel pulls the fish to: in front of the dock (the boat: just ahead of the bow)
   if (F.biteAt && F.fish && (F.phase === "waiting" || F.phase === "bite" || F.phase === "reeling")) {
     if (s.cast !== F.castAt) { s.cast = F.castAt; s.fish = F.fish; s.size = shadowSize(F.fish); s.pm = ""; s.on = true; s.face = 1; s.prog = 0; s.lastMiss = 0; s.kickAt = -1e9; }
     if (s.fish !== F.fish) { s.fish = F.fish; s.size = shadowSize(F.fish); }
@@ -455,6 +456,7 @@ function shadowStep(t, W, H, still) {
     else if (Math.abs(s.x - s.lx) > .05) s.face = s.x < s.lx ? -1 : 1;                       // the sprite faces right: turn to where it swims
     s.lx = s.x;
     s.alpha = a;
+    if (island === "boat") { s.x = Math.min(W * .97, Math.max(W * .03, s.x)); }             // Boat Trip: the bobber can land near the right edge, keep the shadow inside the scene
     return a > .01;
   }
   if (s.on && (s.mode === "leave" || s.mode === "catch")) {
@@ -493,9 +495,10 @@ function fishShadowState() {
 }
 
 function drawScene(t) {
-  const W = cv.width, H = cv.height, sc = SCENES[island], still = motionReduced(), ft = still ? 0 : t;
+  const W = cv.width, H = cv.height, sc = sceneOf(), still = motionReduced(), ft = still ? 0 : t;
   ctx.imageSmoothingEnabled = false;
-  if (sc.img || !sc.paint) {
+  if (sc.boat) drawBoatScene(W, H, t, ft, still);                                         // Playtest 3: the Boat Trip scene (js/boat.js), drawn with canvas code only
+  else if (sc.img || !sc.paint) {
     ctx.fillStyle = "#7fd0f5"; ctx.fillRect(0, 0, W, H);
     const img = sc.img;
     if (img) {
@@ -560,6 +563,7 @@ function drawScene(t) {
 }
 function loop(t) {
   if (CH.on) chargeTick(t);
+  boatStep(t);
   drawScene(t);
   if (F.phase === "reeling") {
     const dt = Math.min(.05, (t - (F.lastT || t)) / 1000); F.lastT = t;
@@ -573,13 +577,13 @@ function loop(t) {
   raf = requestAnimationFrame(loop);
 }
 function startLoop() { if (!raf) raf = requestAnimationFrame(loop); }
-function stopFishing() { holdEnd(); shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
+function stopFishing() { boatInputReset(); holdEnd(); shadowClear(); musicDuck(false); chargeReset(true); clearTimers(); F = { phase: "idle" }; showMeter(false); $("bang").style.display = "none"; if (raf) cancelAnimationFrame(raf); raf = null; }
 // the reel meter and the island progress share one fixed-size space: the meter while reeling, the progress otherwise
 // (both use visibility, never display, so nothing below them moves)
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
 // "<Island>: X / 10 found" with a bar, and the island's Mastery reward (or "Mastered!"); Little Lake has its own text
 function renderIsleProgress() {
-  const I = ISLANDS[island], secret = island === "secret", total = secret ? 1 : 10, n = discCount(island), done = secret ? n >= 1 : !!S.mastery[island];
+  const fi = fishIsland(island), I = ISLANDS[fi], secret = fi === "secret", total = secret ? 1 : 10, n = discCount(fi), done = secret ? n >= 1 : !!S.mastery[fi];   // the Boat Trip shows the Harbor progress
   const line2 = secret ? (n ? `<span class="ico i-star"></span><b>Lake Legend!</b> You caught the Lake Guardian.` : `Mythical fish: the <b>Lake Guardian</b> lives here. Good luck!`)
     : done ? `<span class="ico i-${I.icon}"></span><b class="done">★ Mastered!</b> ${I.reward} is active: ${I.effect.toLowerCase()}.`
     : `<span class="ico i-lock"></span>Mastery reward: <b>${I.reward}</b> – ${I.effect.toLowerCase()}.`;
@@ -611,11 +615,11 @@ function renderFishingHud() {
   if (F.phase === "idle") {
     a.disabled = bagFull(); a.textContent = bagFull() ? "BAG FULL" : "CAST"; a.className = "btn green";
     $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag."
-      : (S.holdCasts || 0) < 3 ? "Tip: hold CAST to throw farther" : `${ISLANDS[island].name}: Ready? Cast your line!`;   // the tip: until 3 hold casts
+      : (S.holdCasts || 0) < 3 ? "Tip: hold CAST to throw farther" : `${spotName(island)}: Ready? Cast your line!`;   // the tip: until 3 hold casts
     $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
   renderIsleProgress(); if (F.phase !== "reeling") showMeter(CH.on && CH.shown);
-  preloadScenes(); fitCanvas(); startLoop();
+  boatSync(); preloadScenes(); fitCanvas(); startLoop();
 }
 
 // HUD chips open the "Choose Rod" / "Choose Bait" popup: every item with its effect and odds, pick one = 2 taps.
@@ -672,12 +676,13 @@ $("pickBox").addEventListener("click", e => { if (e.target === e.currentTarget) 
 $("bonuses").onclick = e => { const b = e.target.closest(".bonus"); if (b) toast(b.dataset.tip); };
 
 function pickFish(baitId) {
-  if (island === "secret") return FISH.find(f => f.island === "secret");
+  const fi = fishIsland(island);                                                           // the Boat Trip fishes the Harbor table
+  if (fi === "secret") return FISH.find(f => f.island === "secret");
   const w = rarityWeights(baitId || "none");
   const tiers = ["Common", "Rare", "Epic", "Legendary"];
   let r = Math.random() * w.reduce((a, b) => a + b), tier = tiers[0];
   for (let i = 0; i < 4; i++) { if (r < w[i]) { tier = tiers[i]; break; } r -= w[i]; }
-  const pool = FISH.filter(f => f.island === island && f.rarity === tier);
+  const pool = FISH.filter(f => f.island === fi && f.rarity === tier);
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -767,6 +772,7 @@ function chargeEnd() {
 }
 // where a cast with this power lands: a point on the near > far line, with a uniform random offset of +-`jitter` of the throw range (5%) and +-1% of the height
 function landing(power, jitter = POWER.jitterQuick) {
+  if (island === "boat") return boatLanding(power, jitter);                                 // Boat Trip: the same near > far line, measured from the boat
   const p = Math.min(1, Math.max(0, power + (Math.random() * 2 - 1) * jitter));
   return { x: POWER.near.x + (POWER.far.x - POWER.near.x) * p, y: POWER.near.y + (POWER.far.y - POWER.near.y) * p + (Math.random() - .5) * .02, p };
 }

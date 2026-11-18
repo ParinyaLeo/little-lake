@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=60">
+<link rel="stylesheet" href="css/style.css?v=61">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -103,7 +103,12 @@
 
   <!-- FISHING -->
   <section class="screen" id="fishing">
-    <div class="scene" id="scene"><canvas id="sceneCanvas" width="900" height="375"></canvas><div class="bang" id="bang">!</div></div>
+    <div class="scene" id="scene"><canvas id="sceneCanvas" width="900" height="375"></canvas><div class="bang" id="bang">!</div>
+      <!-- Boat Trip only (boatSync() shows it): hold to move the boat; 44px+ targets; the buttons never start a cast -->
+      <div class="boat-pad" id="boatPad" style="display:none">
+        <button type="button" class="boat-btn" id="boatL" data-nosound aria-label="Move boat left" title="Move the boat left (A or Left arrow)"><span aria-hidden="true">&#9664;</span></button>
+        <button type="button" class="boat-btn" id="boatR" data-nosound aria-label="Move boat right" title="Move the boat right (D or Right arrow)"><span aria-hidden="true">&#9654;</span></button>
+      </div></div>
     <div class="panel wood">
       <div class="hud">
         <div class="msg" id="fMsg">Ready? Cast your line!</div>
@@ -308,11 +313,12 @@
 </div>
 
 
-<script src="js/data.js?v=60"></script>
-<script src="js/fight.js?v=60"></script>
-<script src="js/state.js?v=60"></script>
-<script src="js/fisherman.js?v=60"></script>
-<script src="js/fishing.js?v=60"></script>
-<script src="js/screens.js?v=60"></script>
+<script src="js/data.js?v=61"></script>
+<script src="js/fight.js?v=61"></script>
+<script src="js/state.js?v=61"></script>
+<script src="js/fisherman.js?v=61"></script>
+<script src="js/fishing.js?v=61"></script>
+<script src="js/boat.js?v=61"></script>
+<script src="js/screens.js?v=61"></script>
 </body>
 </html>

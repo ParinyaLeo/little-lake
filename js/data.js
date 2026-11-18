@@ -8,6 +8,11 @@ const ISLANDS = {
   secret: { name: "Little Lake", bg: "bg-secret", reward: "", effect: "" },
 };
 const ISLAND_IDS = ["harbor", "frost", "desert", "forest"];
+// Fishing SPOTS that are not islands (Playtest 3: Boat Trip). A spot is picked on the Town Map like an island (`island = "boat"`), but it has no fish, mastery or reward of its own:
+// it fishes the table of `fishIsland` (Harbor), so its catches count as Harbor fish. Keep it OUT of ISLANDS / ISLAND_IDS / RAW (the Collection, Mastery and the tests loop over those).
+const SPOTS = { boat: { name: "Boat Trip", fishIsland: "harbor" } };
+const spotName = id => SPOTS[id] ? SPOTS[id].name : ISLANDS[id].name;
+const fishIsland = id => SPOTS[id] ? SPOTS[id].fishIsland : id;
 // [name, rarity, price, minKg, maxKg, len, h, body, belly, fin, stripe, plan]   (plan = optional drawing plan, see FISH_PLANS in state.js; most fish have none)
 const RAW = {
   harbor: [["Sardine","Common",20,.1,.3,16,4,"#9fb3c8","#e3edf5","#7d93a8",null],["Moon Jellyfish","Common",25,0.2,1.5,17,5,"#bfc9e8","#eef0ff","#9aa5d6","#e58fb3","jellyfish"],

@@ -200,7 +200,7 @@ for (const id in THEMES) {                           // parse the melody once: s
   T.m = toks.map((k, i) => { if (k === ".") return null; let n = 1; while (toks[i + n] === "." && n < 4) n++; return { midi: T.note(parseInt(k, 10) - 1) + (T.melOct || 0), len: n }; });
 }
 const MUSIC_BARS = 8, MUSIC_LOOK = .35;
-function musicTheme() { return typeof current !== "undefined" && current === "fishing" && THEMES[island] ? island : "home"; }
+function musicTheme() { return typeof current !== "undefined" && current === "fishing" && THEMES[fishIsland(island)] ? fishIsland(island) : "home"; }
 const mhz = m => 440 * Math.pow(2, (m - 69) / 12);
 function musicStep(inst, step, t) {                  // schedule everything that sounds on one eighth-note slot
   const T = THEMES[inst.id], bus = inst.gain, sd = 30 / T.bpm, slot = step % 8, bar = Math.floor(step / 8) % MUSIC_BARS, deg = T.chords[bar] - 1, n = T.m[step % T.m.length];
