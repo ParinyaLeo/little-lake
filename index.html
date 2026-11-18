@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Little Lake</title>
-<link rel="stylesheet" href="css/style.css?v=61">
+<link rel="stylesheet" href="css/style.css?v=62">
 </head>
 <body class="on-title">
 <!-- full-screen backdrop behind every screen: harbor (no fisherman) on menus, the current island while fishing.
@@ -104,7 +104,7 @@
   <!-- FISHING -->
   <section class="screen" id="fishing">
     <div class="scene" id="scene"><canvas id="sceneCanvas" width="900" height="375"></canvas><div class="bang" id="bang">!</div>
-      <!-- Boat Trip only (boatSync() shows it): hold to move the boat; 44px+ targets; the buttons never start a cast -->
+      <!-- Boat mode only (boatSync() shows it while BOAT_MODE is true): hold to move the boat; 44px+ targets; the buttons never start a cast -->
       <div class="boat-pad" id="boatPad" style="display:none">
         <button type="button" class="boat-btn" id="boatL" data-nosound aria-label="Move boat left" title="Move the boat left (A or Left arrow)"><span aria-hidden="true">&#9664;</span></button>
         <button type="button" class="boat-btn" id="boatR" data-nosound aria-label="Move boat right" title="Move the boat right (D or Right arrow)"><span aria-hidden="true">&#9654;</span></button>
@@ -313,12 +313,12 @@
 </div>
 
 
-<script src="js/data.js?v=61"></script>
-<script src="js/fight.js?v=61"></script>
-<script src="js/state.js?v=61"></script>
-<script src="js/fisherman.js?v=61"></script>
-<script src="js/fishing.js?v=61"></script>
-<script src="js/boat.js?v=61"></script>
-<script src="js/screens.js?v=61"></script>
+<script src="js/data.js?v=62"></script>
+<script src="js/fight.js?v=62"></script>
+<script src="js/state.js?v=62"></script>
+<script src="js/fisherman.js?v=62"></script>
+<script src="js/fishing.js?v=62"></script>
+<script src="js/boat.js?v=62"></script>
+<script src="js/screens.js?v=62"></script>
 </body>
 </html>

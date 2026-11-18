@@ -16,18 +16,19 @@ let ROD_TIP = { x: .36, y: .25 }; const BOB = { x: .58, y: .66 };
    (patch / rodClear, in photo pixels) and an animated one is drawn at x, y (top-left of his 28x36 art grid)
    with scale photo pixels per art pixel. Then the line starts at his drawn rod tip instead of rod. */
 const PX = 3;
+const BOAT_PNG = { w: 1920, h: 800, y: 600, x: 700, x0: 660, x1: 1500, water: { x0: 460, y0: 360, x1: 1700, y1: 800 } };   // the four painted islands share one layout (dock on the left, open water right of x 460); see tools/water_masks
 const SCENES = {
-  harbor: { image: "assets/harbor.jpg", rod: { x: .34, y: .31 },
+  harbor: { image: "assets/harbor.jpg", rod: { x: .34, y: .31 }, boat: { w: 1373, h: 455, y: 292, x: 520, x0: 470, x1: 960, water: { x0: 350, y0: 175, x1: 1130, y1: 450 } },   // boat (js/boat.js): picture size, waterline y, start / min / max centre x, open water (all in picture pixels)
     fisher: { x: 194, y: 182, scale: 3.6, outfit: "harbor",
       rodClear: [386, 132, 262, 268, 24, 26, 120],   // old rod + line: from (x0,y0) to (x1,y1), band left/right width, copied from dx
       patch: [[192, 174, 98, 84, 100, 0], [227, 258, 63, 26, 115, 0],                                  // water behind him
         [200, 254, 6, 24, -10, 0], [206, 254, 6, 24, -16, 0], [212, 254, 6, 24, -22, 0], [218, 254, 6, 24, -28, 0], [224, 254, 4, 24, -34, 0],   // chest lid
         [228, 284, 61, 30, -112, -15]] } },                                                            // dock under his legs
   // painted by tools/make_backgrounds.py (1920x800, 4 image pixels per art pixel); the fisherman sits on the crate on the dock
-  frost:  { image: "assets/frost.png",  anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "frost" }, picFx: fxSnow, paint: paintFrost,  fx: fxSnow },
-  desert: { image: "assets/desert.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "desert" }, paint: paintDesert, fx: fxHeat },
-  forest: { image: "assets/forest.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "forest" }, paint: paintForest, fx: fxWaterfall },
-  secret: { image: "assets/secret.png", anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "secret" }, paint: paintSecret, fx: fxStars },
+  frost:  { image: "assets/frost.png", boat: BOAT_PNG,  anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "frost" }, picFx: fxSnow, paint: paintFrost,  fx: fxSnow },
+  desert: { image: "assets/desert.png", boat: BOAT_PNG, anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "desert" }, paint: paintDesert, fx: fxHeat },
+  forest: { image: "assets/forest.png", boat: BOAT_PNG, anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "forest" }, paint: paintForest, fx: fxWaterfall },
+  secret: { image: "assets/secret.png", boat: BOAT_PNG, anchor: [0, .8], fisher: { x: 232, y: 400, scale: 6, outfit: "secret" }, paint: paintSecret, fx: fxStars },
 };
 const DEFAULT_ROD = { x: .36, y: .25 }, NO_ANCHOR = [0, 0];
 // start loading every picture (once); sc.img is only set when the picture is ready, sc.failed if it can't load
@@ -53,8 +54,7 @@ let sceneBg = null;   // cached painted background: { key, canvas, info }
 const TIP = { x: 0, y: 0 }, FCFG = { x: 0, y: 0, p: 1, outfit: "harbor" };   // reused every frame (no allocations)
 const CROP = { sx: 0, sy: 0, sw: 1, sh: 1 };              // part of the picture shown on the canvas (image pixels)
 
-const sceneOf = () => island === "boat" ? BOAT_SCENE : SCENES[island];   // BOAT_SCENE (js/boat.js) is not in SCENES: the picture tests loop over SCENES
-function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = sceneOf().rod || DEFAULT_ROD; }
+function fitCanvas() { const r = cv.getBoundingClientRect(); if (r.width) { cv.width = 900; cv.height = Math.round(900 * r.height / r.width); } ROD_TIP = SCENES[island].rod || DEFAULT_ROD; }
 window.addEventListener("resize", () => current === "fishing" && fitCanvas());
 let F = { phase: "idle" }, raf = null, timers = [];
 function later(fn, ms) { const t = setTimeout(fn, ms); timers.push(t); return t; }
@@ -120,6 +120,7 @@ function dockAndAngler(g, w, h, rod, o) {
   rect(g, 0, deck, dx, 4, "#8a5a2b"); rect(g, 0, deck + 3, dx, 1, "#5a3a1a");
   for (let x = 7; x < dx; x += 8) rect(g, x, deck, 1, 3, "#6b4420");
   rect(g, 0, deck - 1, dx, 1, o.deckTop || "#a8743f");
+  if (BOAT_MODE) return;                                                                   // the fisherman sits in the boat instead (js/boat.js): the dock stays, the painted angler goes
   const s = h / 125, ox = Math.round(w * .15), R = (x, y, ww, hh, col) => rect(g, ox + x * s, deck + y * s, ww * s, hh * s, col);
   R(0, -5, 9, 5, "#8a5428"); R(0, -5, 9, 1, "#a8743f");                                   // tackle box
   R(4, -9, 9, 3, o.pants); R(11, -7, 3, 7, o.pants); R(11, -1, 4, 1, "#3a2a1a");          // legs + boots
@@ -249,10 +250,10 @@ function fxStars(c, W, H, t, info) {
   c.fillStyle = glow; c.fillRect(gx - rad, gy - rad, rad * 2, rad * 2);
 }
 function sceneBackground(W, H) {
-  const key = `${island}|${W}|${H}`, sc = sceneOf();
+  const key = `${island}|${W}|${H}|${BOAT_MODE}`;   // the boat mode paints the dock without the angler
   if (!sceneBg || sceneBg.key !== key) {
     const c = document.createElement("canvas"); c.width = Math.ceil(W / PX); c.height = Math.ceil(H / PX);
-    const info = sc.paint(c.getContext("2d"), c.width, c.height, ROD_TIP);
+    const info = SCENES[island].paint(c.getContext("2d"), c.width, c.height, ROD_TIP);
     sceneBg = { key, canvas: c, info };
   }
   return sceneBg;
@@ -425,7 +426,8 @@ function fightState() {
 }
 function shadowStep(t, W, H, still) {
   const s = SH, k = W / 900; s.W = W; s.H = H; s.k = k; s.ox = s.oy = s.dip = s.nib = s.dx = s.dy = 0; FIGHT.on = false;
-  s.dk.x = island === "boat" ? W * Math.min(.95, BOAT.x + .04) : W * .36; s.dk.y = H * .68;   // the point the reel pulls the fish to: in front of the dock (the boat: just ahead of the bow)
+  s.dk.x = W * .36; s.dk.y = H * .68;
+  if (BOAT_MODE) boatDock(s.dk, W, H);                                                     // the boat: the point just ahead of the bow
   if (F.biteAt && F.fish && (F.phase === "waiting" || F.phase === "bite" || F.phase === "reeling")) {
     if (s.cast !== F.castAt) { s.cast = F.castAt; s.fish = F.fish; s.size = shadowSize(F.fish); s.pm = ""; s.on = true; s.face = 1; s.prog = 0; s.lastMiss = 0; s.kickAt = -1e9; }
     if (s.fish !== F.fish) { s.fish = F.fish; s.size = shadowSize(F.fish); }
@@ -456,7 +458,7 @@ function shadowStep(t, W, H, still) {
     else if (Math.abs(s.x - s.lx) > .05) s.face = s.x < s.lx ? -1 : 1;                       // the sprite faces right: turn to where it swims
     s.lx = s.x;
     s.alpha = a;
-    if (island === "boat") { s.x = Math.min(W * .97, Math.max(W * .03, s.x)); }             // Boat Trip: the bobber can land near the right edge, keep the shadow inside the scene
+    if (BOAT_MODE) s.x = Math.min(W * .97, Math.max(W * .03, s.x));                           // boat mode: keep the shadow inside the scene
     return a > .01;
   }
   if (s.on && (s.mode === "leave" || s.mode === "catch")) {
@@ -495,10 +497,9 @@ function fishShadowState() {
 }
 
 function drawScene(t) {
-  const W = cv.width, H = cv.height, sc = sceneOf(), still = motionReduced(), ft = still ? 0 : t;
+  const W = cv.width, H = cv.height, sc = SCENES[island], still = motionReduced(), ft = still ? 0 : t;
   ctx.imageSmoothingEnabled = false;
-  if (sc.boat) drawBoatScene(W, H, t, ft, still);                                         // Playtest 3: the Boat Trip scene (js/boat.js), drawn with canvas code only
-  else if (sc.img || !sc.paint) {
+  if (sc.img || !sc.paint) {
     ctx.fillStyle = "#7fd0f5"; ctx.fillRect(0, 0, W, H);
     const img = sc.img;
     if (img) {
@@ -511,9 +512,12 @@ function drawScene(t) {
       ctx.drawImage(sc.plate || img, sx, sy, sw, sh, 0, 0, W, H);
       ROD_TIP = TIP;
       if (fc) {
+        if (BOAT_MODE) boatDraw(sc, W, H, t, still);                                // Playtest 3: the fisherman sits in a boat on the water (js/boat.js)
+        else {
         FCFG.x = (fc.x - sx) * k; FCFG.y = (fc.y - sy) * k; FCFG.p = fc.scale * k; FCFG.outfit = fc.outfit;
         drawFisherman(ctx, FCFG, fisherPoseFor(F.phase, t), t, still);
         TIP.x = FISHER.tipX / W; TIP.y = FISHER.tipY / H;                           // the line starts at the drawn rod tip
+        }
       } else { TIP.x = (sc.rod.x * nw - sx) / sw; TIP.y = (sc.rod.y * nh - sy) / sh; }
     }
     if (sc.picFx) sc.picFx(ctx, W, H, ft);
@@ -523,6 +527,7 @@ function drawScene(t) {
     ctx.drawImage(bg.canvas, 0, 0, bg.canvas.width * PX, bg.canvas.height * PX);
     fxWater(ctx, W, H, ft, bg.info);
     if (sc.fx) sc.fx(ctx, W, H, ft, bg.info, bg.canvas);
+    if (BOAT_MODE && sc.fisher) { CROP.sx = 0; CROP.sy = 0; CROP.sw = sc.boat.w; CROP.sh = sc.boat.h; boatDraw(sc, W, H, t, still); }   // painted scene (picture not ready): the same boat, the painting stretched over the canvas
   }
   if (shadowStep(t, W, H, still)) shadowDraw(t, still);                                       // the fish under the water: below the line and the float
   // line + bobber
@@ -583,7 +588,7 @@ function stopFishing() { boatInputReset(); holdEnd(); shadowClear(); musicDuck(f
 function showMeter(on) { $("meter").style.visibility = on ? "visible" : "hidden"; $("isleProg").style.visibility = on ? "hidden" : "visible"; }
 // "<Island>: X / 10 found" with a bar, and the island's Mastery reward (or "Mastered!"); Little Lake has its own text
 function renderIsleProgress() {
-  const fi = fishIsland(island), I = ISLANDS[fi], secret = fi === "secret", total = secret ? 1 : 10, n = discCount(fi), done = secret ? n >= 1 : !!S.mastery[fi];   // the Boat Trip shows the Harbor progress
+  const I = ISLANDS[island], secret = island === "secret", total = secret ? 1 : 10, n = discCount(island), done = secret ? n >= 1 : !!S.mastery[island];
   const line2 = secret ? (n ? `<span class="ico i-star"></span><b>Lake Legend!</b> You caught the Lake Guardian.` : `Mythical fish: the <b>Lake Guardian</b> lives here. Good luck!`)
     : done ? `<span class="ico i-${I.icon}"></span><b class="done">★ Mastered!</b> ${I.reward} is active: ${I.effect.toLowerCase()}.`
     : `<span class="ico i-lock"></span>Mastery reward: <b>${I.reward}</b> – ${I.effect.toLowerCase()}.`;
@@ -615,7 +620,7 @@ function renderFishingHud() {
   if (F.phase === "idle") {
     a.disabled = bagFull(); a.textContent = bagFull() ? "BAG FULL" : "CAST"; a.className = "btn green";
     $("fMsg").textContent = bagFull() ? "Bag full! Sell fish or buy a bigger bag."
-      : (S.holdCasts || 0) < 3 ? "Tip: hold CAST to throw farther" : `${spotName(island)}: Ready? Cast your line!`;   // the tip: until 3 hold casts
+      : (S.holdCasts || 0) < 3 ? "Tip: hold CAST to throw farther" : `${ISLANDS[island].name}: Ready? Cast your line!`;   // the tip: until 3 hold casts
     $("dots").textContent = ""; $("hearts").innerHTML = "";
   }
   renderIsleProgress(); if (F.phase !== "reeling") showMeter(CH.on && CH.shown);
@@ -676,13 +681,12 @@ $("pickBox").addEventListener("click", e => { if (e.target === e.currentTarget) 
 $("bonuses").onclick = e => { const b = e.target.closest(".bonus"); if (b) toast(b.dataset.tip); };
 
 function pickFish(baitId) {
-  const fi = fishIsland(island);                                                           // the Boat Trip fishes the Harbor table
-  if (fi === "secret") return FISH.find(f => f.island === "secret");
+  if (island === "secret") return FISH.find(f => f.island === "secret");
   const w = rarityWeights(baitId || "none");
   const tiers = ["Common", "Rare", "Epic", "Legendary"];
   let r = Math.random() * w.reduce((a, b) => a + b), tier = tiers[0];
   for (let i = 0; i < 4; i++) { if (r < w[i]) { tier = tiers[i]; break; } r -= w[i]; }
-  const pool = FISH.filter(f => f.island === fi && f.rarity === tier);
+  const pool = FISH.filter(f => f.island === island && f.rarity === tier);
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
@@ -772,7 +776,7 @@ function chargeEnd() {
 }
 // where a cast with this power lands: a point on the near > far line, with a uniform random offset of +-`jitter` of the throw range (5%) and +-1% of the height
 function landing(power, jitter = POWER.jitterQuick) {
-  if (island === "boat") return boatLanding(power, jitter);                                 // Boat Trip: the same near > far line, measured from the boat
+  if (BOAT_MODE && CROP.sw > 1) return boatLanding(power, jitter);                           // boat mode: the same near > far line, measured from the boat
   const p = Math.min(1, Math.max(0, power + (Math.random() * 2 - 1) * jitter));
   return { x: POWER.near.x + (POWER.far.x - POWER.near.x) * p, y: POWER.near.y + (POWER.far.y - POWER.near.y) * p + (Math.random() - .5) * .02, p };
 }

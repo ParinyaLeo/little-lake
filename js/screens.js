@@ -47,7 +47,7 @@ $("navBack").onclick = goBack;
    Layers crossfade with opacity; each picture is applied only after it loaded, so a missing file leaves the gradient. */
 const BACKDROPS = { harbor: "assets/harbor_clean.jpg", frost: "assets/frost.png", desert: "assets/desert.png", forest: "assets/forest.png", secret: "assets/secret.png" };
 function setBackdrop() {
-  const fi = fishIsland(island), k = current === "fishing" && BACKDROPS[fi] ? fi : "harbor";   // the Boat Trip uses the Harbor picture
+  const k = current === "fishing" && BACKDROPS[island] ? island : "harbor";
   document.querySelectorAll("#backdrop .bd").forEach(el => el.classList.toggle("on", el.dataset.isle === k));
 }
 function preloadBackdrops() {
@@ -152,12 +152,6 @@ function renderMap() {
     b.onclick = () => { island = id; go("fishing"); };
     box.append(b);
   });
-  const bt = document.createElement("button");                                          // Playtest 3: the Boat Trip card (always open, Harbor fish)
-  bt.className = "boat-strip bg-boat"; bt.id = "boatCard";
-  bt.innerHTML = `<span class="ico i-rod"></span><span class="isl-name">Boat Trip</span><small>Move the boat with A / D · Harbor fish</small><span class="isl-count">${discCount("harbor")} / 10 Harbor</span>`;
-  bt.setAttribute("aria-label", "Boat Trip: fish from a boat you can move left and right. Harbor fish. Go fishing here.");
-  bt.onclick = () => { island = "boat"; go("fishing"); };
-  box.append(bt);
   const locked = !secretOpen(), n = discCount("secret"), s = document.createElement("button");
   s.className = "island secret-strip bg-secret" + (locked ? " locked" : "") + (n ? " mastered" : "");
   s.innerHTML = locked

@@ -26,7 +26,7 @@ ROD_IDS_PY = ["bamboo", "sturdy", "precision", "lucky"]
 def start_new(pg, name="Tester"):
     """Title screen -> NEW GAME -> enter name -> Home."""
     pg.click("#newBtn"); pg.fill("#nameInput", name); pg.click("#nameStart"); pg.wait_for_timeout(200)
-    pg.evaluate("() => { S.fightStyle = 'tap'; save(); }")          # Playtest 2, part 3: the default fight is Hold Fight; all the older tests are about the classic tap minigame
+    pg.evaluate("() => { S.fightStyle = 'tap'; BOAT_MODE = false; save(); }")          # Playtest 2, part 3: the default fight is Hold Fight; all the older tests are about the classic tap minigame
 
 def no_side_scroll(pg, width=360):
     return pg.evaluate("document.documentElement.scrollWidth") <= width
@@ -35,6 +35,18 @@ SAVED = "JSON.parse(localStorage.getItem('littleLakeSave'))"
 
 with sync_playwright() as p:
     b = p.chromium.launch()
+    # Playtest 3: the boat is ON by default. Every test written before it proves the OLD behaviour (pier / shore, old landing), so each page starts with BOAT_MODE = false;
+    # the boat tests at the end switch it on (boat_page()). load fires after all scripts ran.
+    def _boat_off(pg_):
+        def h(*_a):
+            try: pg_.evaluate("() => { BOAT_MODE = false; }")
+            except Exception: pass
+        pg_.on("load", h); return pg_
+    _np = b.new_page; b.new_page = lambda *a, **k: _boat_off(_np(*a, **k))
+    _nc = b.new_context
+    def _new_ctx(*a, **k):
+        c_ = _nc(*a, **k); _cnp = c_.new_page; c_.new_page = lambda *a2, **k2: _boat_off(_cnp(*a2, **k2)); return c_
+    b.new_context = _new_ctx
     pg = b.new_page(viewport={"width": 1280, "height": 800})
     errs = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
@@ -3729,154 +3741,191 @@ with sync_playwright() as p:
     except Exception as ex:
         print("NOTE: WebKit not available, skipped the iPhone styles check:", str(ex)[:80])
 
-    # ---------- Playtest 3: Boat Trip spot (js/boat.js) ----------
-    def boat_page(vw, vh, name="Boater"):
+    # ---------- Playtest 3: fishing from a boat on every island (BOAT_MODE switch, js/boat.js) ----------
+    # Everything above ran with BOAT_MODE = false (see BOAT_OFF at the top): the old pier / shore look, which proves the old behaviour is untouched. From here on BOAT_MODE = true.
+    ISLES = ["harbor", "frost", "desert", "forest", "secret"]
+    HARBOR_WATER = {"x0": 350, "y0": 175, "x1": 1130, "y1": 450}            # no mask file for the photo: the rectangle the game uses
+    def boat_page(vw, vh, name="Boater", mode=True):
         bp_ = b.new_page(viewport={"width": vw, "height": vh})
         bp_.on("pageerror", lambda e: errs.append(str(e))); bp_.on("console", lambda m: m.type == "error" and errs.append(m.text))
         bp_.goto(URL); bp_.evaluate("localStorage.clear()"); bp_.reload(); bp_.wait_for_timeout(250); start_new(bp_, name)
+        bp_.wait_for_function("Object.values(SCENES).every(s => s.img || s.failed)", timeout=8000)
+        bp_.evaluate(f"() => {{ BOAT_MODE = {'true' if mode else 'false'}; S.bagMax = 40; save(); }}")
         return bp_
-    def boat_open(bp_):
-        bp_.evaluate("() => { go('home'); go('map'); }"); bp_.wait_for_timeout(250); bp_.click("#boatCard"); bp_.wait_for_timeout(500)
+    def boat_open(bp_, isl):
+        bp_.evaluate(f"() => {{ stopFishing(); S.pending = null; island = '{isl}'; go('fishing'); }}"); bp_.wait_for_timeout(450)
+    def on_water(bp_, isl, ix, iy):
+        """is the picture pixel (ix, iy) open water? the four PNG islands: the real water masks; the Harbor photo: the rectangle the game uses"""
+        if isl == "harbor":
+            w = HARBOR_WATER; return w["x0"] <= ix <= w["x1"] and w["y0"] <= iy <= w["y1"]
+        return bp_.evaluate(ON_WATER, [MASKS[isl], ix, iy])
+
+    # the Town Map is exactly the old one: the four island cards + the secret strip, nothing else
     for vw, vh in [(1536, 730), (360, 640)]:
-        bp = boat_page(vw, vh)
-        bp.evaluate("() => { window.__toasts = []; const o = toast; toast = (m, ...r) => { window.__toasts.push(String(m)); return o(m, ...r); }; }")
-        bp.evaluate("() => go('map')"); bp.wait_for_timeout(250)
-        card = bp.evaluate("""() => { const c = document.getElementById('boatCard'); const r = c.getBoundingClientRect(); return { ok: !!c && c.offsetParent !== null, text: c.innerText.replace(/\\s+/g, ' '),
-            inView: r.left >= 0 && r.right <= innerWidth, cards: document.querySelectorAll('#islands .island:not(.secret-strip)').length, sw: document.documentElement.scrollWidth, page: document.documentElement.scrollHeight, vh: innerHeight }; }""")
+        bp = boat_page(vw, vh, "MapOld")
+        bp.evaluate("() => { go('home'); go('map'); }"); bp.wait_for_timeout(300)
+        mp_ = bp.evaluate("""() => ({ cards: [...document.querySelectorAll('#islands > *')].map(c => c.className.replace(/ (mastered|locked)/g, '')), boat: !!document.getElementById('boatCard') || /boat/i.test(document.getElementById('map').innerText),
+            page: document.documentElement.scrollHeight, vh: innerHeight, sw: document.documentElement.scrollWidth, vw: innerWidth })""")
         bp.screenshot(path=str(SHOTS / f"110_boat_map_{vw}x{vh}.png"))
-        check(f"{vw}x{vh}: Boat Trip card exists on the Town Map (always open), the 4 island cards and the secret strip are still there, no side scroll, the page still fits",
-              card["ok"] and "Boat Trip" in card["text"] and card["inView"] and card["cards"] == 4 and card["sw"] <= vw and card["page"] <= card["vh"] + 1, str(card))
-        bp.click("#boatCard"); bp.wait_for_timeout(600)
-        st = bp.evaluate("({ island, cur: current, scene: sceneOf() === BOAT_SCENE, pad: getComputedStyle(document.getElementById('boatPad')).display, fish: fishIsland(island), msg: document.getElementById('fMsg').textContent, prog: document.getElementById('isleProg').innerText.replace(/\\s+/g, ' '), theme: musicTheme(), bd: document.querySelector('#backdrop .bd.on').dataset.isle })")
-        check(f"{vw}x{vh}: the card opens the Boat Trip spot (boat scene, Harbor fish, Harbor progress line, Harbor music and backdrop)",
-              st["island"] == "boat" and st["cur"] == "fishing" and st["scene"] and st["pad"] != "none" and st["fish"] == "harbor" and "Harbor: 0 / 10 found" in st["prog"] and st["theme"] == "harbor" and st["bd"] == "harbor", str(st))
-        tt = bp.evaluate("window.__toasts")
-        boat_open(bp)
-        tt2 = bp.evaluate("window.__toasts")
-        check(f"{vw}x{vh}: the hint 'A / D or the arrow buttons: move the boat' shows the first time the spot opens, and not the second time",
-              tt == ["A / D or the arrow buttons: move the boat"] and tt2 == tt, f"{tt} {tt2}")
-        bp.screenshot(path=str(SHOTS / f"111_boat_scene_{vw}x{vh}.png"))
-        pads = bp.evaluate("""() => ['boatL', 'boatR'].map(id => { const r = document.getElementById(id).getBoundingClientRect(), s = document.getElementById('scene').getBoundingClientRect(), c = getComputedStyle(document.getElementById(id));
-            return { w: Math.round(r.width), h: Math.round(r.height), inScene: r.left >= s.left && r.right <= s.right && r.top >= s.top && r.bottom <= s.bottom, us: c.userSelect, ta: c.touchAction }; })""")
-        check(f"{vw}x{vh}: two on-screen arrow buttons in the scene, at least 44 x 44 px, no text selection, touch-action none",
-              all(x["w"] >= 44 and x["h"] >= 44 and x["inScene"] and x["us"] == "none" and x["ta"] == "none" for x in pads), str(pads))
-        prev = bp.evaluate("""() => { const o = {}; ['contextmenu', 'selectstart', 'dragstart'].forEach(t => { const e = new Event(t, { bubbles: true, cancelable: true }); document.getElementById('boatR').dispatchEvent(e); o[t] = e.defaultPrevented; });
-            const ts = new Event('touchstart', { bubbles: true, cancelable: true }); document.getElementById('boatR').dispatchEvent(ts); o.touchstart = ts.defaultPrevented; return o; }""")
-        check(f"{vw}x{vh}: the buttons use the REEL button's long-press prevention (contextmenu, selectstart, dragstart, touchstart are default-prevented)", all(prev.values()), str(prev))
-        # touch buttons: held to move, released to stop, never start a cast charge
-        bp.evaluate("() => { BOAT.x = .5; }"); bp.wait_for_timeout(100)
-        box = bp.locator("#boatR").bounding_box(); bp.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); bp.mouse.down(); bp.wait_for_timeout(600)
-        x1 = bp.evaluate("[BOAT.x, CH.on, F.phase]"); bp.mouse.up(); bp.wait_for_timeout(100); x2 = bp.evaluate("BOAT.x"); bp.wait_for_timeout(400); x3 = bp.evaluate("BOAT.x")
-        check(f"{vw}x{vh}: holding the right button moves the boat right, releasing stops it, and the press does not start a cast",
-              x1[0] > .5 + .06 and not x1[1] and x1[2] == "idle" and abs(x3 - x2) < 1e-6, f"{x1} {x2} {x3}")
-        box = bp.locator("#boatL").bounding_box(); bp.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); bp.mouse.down(); bp.wait_for_timeout(600)
-        x4 = bp.evaluate("BOAT.x"); bp.mouse.up(); bp.wait_for_timeout(200); x5 = bp.evaluate("BOAT.x"); bp.wait_for_timeout(300)
-        check(f"{vw}x{vh}: holding the left button moves the boat left and releasing stops it", x4 < x3 - .06 and abs(bp.evaluate("BOAT.x") - x5) < 1e-6, f"{x3} {x4} {x5}")
+        check(f"{vw}x{vh}: with the boat on, the Town Map is exactly the old one (four island cards + the secret strip, no Boat Trip card, no page scroll)",
+              mp_["cards"] == ["island bg-harbor", "island bg-frost", "island bg-desert", "island bg-forest", "island secret-strip bg-secret"] and not mp_["boat"] and mp_["page"] <= mp_["vh"] + 1 and mp_["sw"] <= vw, str(mp_))
         bp.close()
 
-    bp = boat_page(1536, 730, "BoatKeys")
-    boat_open(bp)
-    bp.evaluate("() => { BOAT.x = .5; S.bagMax = 30; save(); }"); bp.wait_for_timeout(100)
-    t0 = bp.evaluate("BOAT.x"); bp.keyboard.down("d"); bp.wait_for_timeout(500); bp.keyboard.up("d"); t1 = bp.evaluate("BOAT.x"); bp.wait_for_timeout(200); t1b = bp.evaluate("BOAT.x")
-    check("D moves the boat right at about 20% of the scene width per second (500 ms = 8-13%), and releasing the key stops it", .08 <= t1 - t0 <= .13 and abs(t1b - t1) < 1e-6, f"{t0} {t1} {t1b}")
-    bp.keyboard.down("a"); bp.wait_for_timeout(500); bp.keyboard.up("a"); t2 = bp.evaluate("BOAT.x")
-    check("A moves the boat left at the same speed", .08 <= t1 - t2 <= .13, f"{t1} {t2}")
-    bp.keyboard.down("ArrowRight"); bp.wait_for_timeout(400); bp.keyboard.up("ArrowRight"); t3 = bp.evaluate("BOAT.x"); bp.keyboard.down("ArrowLeft"); bp.wait_for_timeout(400); bp.keyboard.up("ArrowLeft"); t4 = bp.evaluate("BOAT.x")
-    check("the Right and Left arrow keys move the boat too", t3 > t2 + .05 and t4 < t3 - .05, f"{t2} {t3} {t4}")
-    bp.keyboard.down("d"); bp.wait_for_timeout(200); bp.evaluate("() => window.dispatchEvent(new Event('blur'))"); a1 = bp.evaluate("BOAT.x"); bp.wait_for_timeout(300); a2 = bp.evaluate("BOAT.x"); bp.keyboard.up("d")
-    check("the window losing focus (blur) stops the movement even while the key is still down", abs(a2 - a1) < 1e-6 and not bp.evaluate("BOAT.kR"), f"{a1} {a2}")
-    bp.keyboard.down("a"); bp.keyboard.down("d"); bp.wait_for_timeout(300); both = bp.evaluate("BOAT.v"); bp.keyboard.up("a"); bp.keyboard.up("d")
-    check("A and D held together cancel out (no movement)", both == 0)
-    # clamping at both edges (the whole hull stays inside the scene with a margin)
-    bp.evaluate("() => { BOAT.x = boatLimits().min + .04; }"); bp.keyboard.down("a"); bp.wait_for_timeout(900); bp.keyboard.up("a")
-    lo = bp.evaluate("({ x: BOAT.x, min: boatLimits().min, half: boatGeom(cv.width, cv.height).half })")
-    bp.evaluate("() => { BOAT.x = boatLimits().max - .04; }"); bp.keyboard.down("d"); bp.wait_for_timeout(900); bp.keyboard.up("d")
-    hi = bp.evaluate("({ x: BOAT.x, max: boatLimits().max, half: boatGeom(cv.width, cv.height).half })")
-    check("the boat is clamped at both edges and its whole hull stays inside the scene with a margin",
-          abs(lo["x"] - lo["min"]) < 1e-9 and abs(hi["x"] - hi["max"]) < 1e-9 and lo["x"] - lo["half"] >= .02 and hi["x"] + hi["half"] <= .98, f"{lo} {hi}")
-    # idle only: A / D are ignored while charging, casting, waiting, bite, reeling and on the Result screen
-    def hold_d(ms=350):
-        x = bp.evaluate("BOAT.x"); bp.keyboard.down("d"); bp.wait_for_timeout(ms); bp.keyboard.up("d"); return abs(bp.evaluate("BOAT.x") - x) < 1e-9
-    bp.evaluate("() => { BOAT.x = .4; }")
-    bp.keyboard.down("Space"); bp.wait_for_timeout(450); ch_on = bp.evaluate("CH.on && CH.shown"); ch_still = hold_d(); bp.keyboard.up("Space"); bp.wait_for_timeout(100)
-    check("A / D are ignored while the power cast is charging (the meter is shown, the boat holds still)", ch_on and ch_still)
-    frozen = {}
-    bp.wait_for_function("F.phase !== 'idle'"); frozen["casting"] = hold_d(250)
-    bp.wait_for_function("F.phase === 'waiting'"); frozen["waiting"] = hold_d(250)
-    bp.evaluate("() => { clearTimers(); F.fish = fishById('harbor_0'); bite(); }"); bp.wait_for_timeout(120); frozen["bite"] = hold_d(250)
-    bp.click("#actBtn"); bp.wait_for_timeout(150); frozen["reeling"] = bp.evaluate("F.phase") == "reeling" and hold_d(250)
-    bp.evaluate("() => { caught(false); }"); bp.wait_for_timeout(200); frozen["result"] = bp.evaluate("current") == "result" and hold_d(250)
-    check("A / D are ignored while casting, waiting, bite, reeling and on the Result screen (the boat does not move)", all(frozen.values()) and len(frozen) == 5, str(frozen))
-    bp.click("#keepBtn"); bp.wait_for_timeout(300)
-    moved = not hold_d(300)
-    check("after the catch the spot is still the Boat Trip and the boat moves again (idle)", bp.evaluate("island") == "boat" and moved)
-    # casting lands relative to the boat, in the water, inside the scene
-    land = []
-    for start in ("min", .5, "max"):
-        for pw in (0, .5, 1):
-            r = bp.evaluate("""([start, pw]) => { stopFishing(); S.pending = null; S.bag = []; go('home'); go('fishing'); BOAT.x = start === 'min' ? boatLimits().min : start === 'max' ? boatLimits().max : start;
-                const bx = BOAT.x; cast(pw, 0, false); const l = F.land; stopFishing(); return { bx, x: l.x, y: l.y, water: boatWater(l.x, l.y) }; }""", [start, pw])
-            r["pw"] = pw; land.append(r)
-    ok_l = all(r["water"] and r["x"] > r["bx"] and r["x"] <= .965 + 1e-9 for r in land)
-    rel = [r for r in land if r["x"] < .96]
-    check("casts from three boat positions land right of the boat, on open water and inside the scene (clamped at the right edge)", ok_l, str(land))
-    check("an unclamped cast lands relative to the boat: the offset from the boat is the old near > far line (.26 at power 0, .46 at power 1), the same from any boat position",
-          all(abs((r["x"] - r["bx"]) - (.26 + .2 * r["pw"])) < .01 for r in rel) and len(rel) >= 4, str([(round(r["bx"], 2), r["pw"], round(r["x"] - r["bx"], 3)) for r in rel]))
-    bp.close()
+    for vw, vh in [(1536, 730), (360, 640)]:
+        bp = boat_page(vw, vh, "BoatAll")
+        bp.evaluate("() => { window.__toasts = []; const o = toast; toast = (m, ...r) => { window.__toasts.push(String(m)); return o(m, ...r); }; window.__fn = 0; const d = drawFisherman; drawFisherman = (...a) => { window.__fn++; return d(...a); }; }")
+        bp.add_style_tag(content="#toast { display: none !important; }")
+        for isl in ISLES:
+            boat_open(bp, isl)
+            if isl == "harbor":
+                tt = bp.evaluate("window.__toasts")
+                check(f"{vw}x{vh}: the hint 'A / D or the arrow buttons: move the boat' shows the first time a fishing scene opens", tt == ["A / D or the arrow buttons: move the boat"], str(tt))
+            elif isl == "secret":
+                check(f"{vw}x{vh}: the hint is shown once per session (not again for the next scenes)", bp.evaluate("window.__toasts.length") == 1)
+            bp.screenshot(path=str(SHOTS / f"111_boat_{isl}_{vw}x{vh}.png"))
+            st0 = bp.evaluate("boatState()")
+            bp.evaluate("() => { window.__fn = 0; }"); bp.wait_for_timeout(250); nfr = bp.evaluate("window.__fn"); nrf = bp.evaluate("(() => new Promise(r => { let n = 0; const f = () => { n++; if (n < 6) requestAnimationFrame(f); else r(window.__fn); }; window.__fn = 0; requestAnimationFrame(f); }))()")
+            check(f"{vw}x{vh} {isl}: exactly one fisherman is drawn per frame (the old one is gone from the pier / shore, he sits in the boat)", nfr > 0 and 4 <= nrf <= 8, f"{nfr} {nrf}")
+            pads = bp.evaluate("""() => ['boatL', 'boatR'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(), s = document.getElementById('scene').getBoundingClientRect(), c = getComputedStyle(e);
+                return { vis: e.offsetParent !== null, w: Math.round(r.width), h: Math.round(r.height), inScene: r.left >= s.left && r.right <= s.right && r.top >= s.top && r.bottom <= s.bottom, us: c.userSelect, ta: c.touchAction }; })""")
+            check(f"{vw}x{vh} {isl}: the two arrow buttons are shown, at least 44 x 44 px, inside the scene, no text selection, touch-action none",
+                  all(x["vis"] and x["w"] >= 44 and x["h"] >= 44 and x["inScene"] and x["us"] == "none" and x["ta"] == "none" for x in pads), str(pads))
+            # the boat's limits: start inside, both ends inside the allowed range, the whole hull and the rod inside the canvas, the hull's waterline row on open water
+            bp.keyboard.down("a"); bp.wait_for_timeout(4800); bp.keyboard.up("a"); lo = bp.evaluate("boatState()")
+            bp.keyboard.down("d"); bp.wait_for_timeout(5500); bp.keyboard.up("d"); hi = bp.evaluate("boatState()")
+            sc_b = bp.evaluate(f"SCENES.{isl}.boat"); hh = lo["hullHalf"]
+            rng = (st0["lo"] - 1e-6 <= st0["u"] <= st0["hi"] + 1e-6)
+            at_lo = abs(lo["u"] - lo["lo"]) < 1e-6; at_hi = abs(hi["u"] - hi["hi"]) < 1e-6
+            inside = (lo["u"] - hh - bp.evaluate("CROP.sx")) / bp.evaluate("CROP.sw") >= .02 and (hi["u"] + hh - bp.evaluate("CROP.sx")) / bp.evaluate("CROP.sw") <= .98
+            wet = all(on_water(bp, isl, ix, sc_b["y"]) for ix in (lo["u"] - hh * .95, lo["u"], hi["u"], hi["u"] + hh * .95, st0["u"] - hh * .95, st0["u"] + hh * .95))
+            wet2 = all(on_water(bp, isl, ix, sc_b["y"] + 4 * bp.evaluate("SCENES." + isl + ".fisher.scale")) for ix in (lo["u"] - hh * .6, hi["u"] + hh * .6))      # the hull's bottom edge
+            check(f"{vw}x{vh} {isl}: the boat starts in the allowed range, stops at both limits, keeps the whole hull inside the scene with a margin, and sits on open water (water mask) at the start and at both limits",
+                  rng and at_lo and at_hi and inside and wet and wet2 and hi["u"] > lo["u"] + 100, f"start {st0['u']:.0f} [{st0['lo']:.0f}, {st0['hi']:.0f}] lo {lo['u']:.0f} hi {hi['u']:.0f} inside {inside} wet {wet} {wet2}")
+            check(f"{vw}x{vh} {isl}: the allowed range stays clear of the pier (its left end is right of x 450 in the picture) and of the right shore (the hull ends before x 1700)" if isl != "harbor" else f"{vw}x{vh} harbor: the allowed range stays right of the pier (hull left of the boat > x 335) and left of the rocks (hull right < x 1140)",
+                  (lo["u"] - hh > (450 if isl != "harbor" else 335)) and (hi["u"] + hh < (1700 if isl != "harbor" else 1140)), f"{lo['u'] - hh:.0f} {hi['u'] + hh:.0f}")
+            bp.evaluate("() => { BOAT.u = SCENES[island].boat.x; }")
+        bp.close()
 
-    # a full fishing cycle in the Boat Trip: cast, bite, hook, a Hold Fight win and a loss, the fish shadow, Harbor collection, save
-    bp = boat_page(1536, 730, "BoatCycle")
-    save_keys0 = sorted(bp.evaluate(SAVED).keys())
-    bp.evaluate("() => { S.fightStyle = 'hold'; S.bagMax = 30; save(); }")
-    boat_open(bp); bp.evaluate("() => { BOAT.x = .35; }")
-    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000)
-    bp.wait_for_function("(() => { const s = fishShadowState(); return !!s && s.alpha > .3; })()", timeout=8000)
-    sh = bp.evaluate("fishShadowState()")
-    check("the fish shadow appears under the boat's cast, on open water and inside the scene", sh is not None and bp.evaluate("(s) => boatWater(s.x, s.y)", sh) and 0 < sh["x"] < 1, str(sh))
-    bp.wait_for_function("F.phase === 'bite'", timeout=8000); bp.click("#actBtn"); bp.wait_for_timeout(200)
-    mode = bp.evaluate("[F.phase, F.mode]")
-    bp.evaluate("() => { F.fight.progress = 1; }"); bp.wait_for_timeout(1300)
-    won = bp.evaluate("[current, S.pending && S.pending.fishId]")
-    check("Hold Fight in the Boat Trip: cast, bite, hook, win -> the Result screen with a Harbor fish", mode == ["reeling", "hold"] and won[0] == "result" and won[1].startswith("harbor_"), f"{mode} {won}")
-    disc = bp.evaluate("() => [FISH.filter(f => f.island === 'harbor' && S.discovered[f.id]).length, discCount('harbor')]")
-    bp.click("#keepBtn"); bp.wait_for_timeout(300)
-    check("a Boat Trip catch counts as a Harbor fish in the Collection (Harbor 1 / 10) and goes into the bag", disc == [1, 1] and bp.evaluate("S.bag.length") == 1 and bp.evaluate("island") == "boat", str(disc))
-    bp.click("#actBtn"); bp.wait_for_function("F.phase === 'bite'", timeout=9000); bp.click("#actBtn"); bp.wait_for_timeout(200)
-    for _ in range(8):
-        if bp.evaluate("F.phase") != "reeling": break
-        bp.evaluate("() => { if (F.phase === 'reeling' && F.fight) { F.fight.started = true; F.fight.progress = 0; } }"); bp.wait_for_timeout(250)
-    check("Hold Fight loss in the Boat Trip: the fish escapes and the boat is back to idle (can cast again)", bp.evaluate("F.phase") == "idle" and bp.evaluate("current") == "fishing" and bp.evaluate("S.pending") is None and bp.evaluate("boatState().can"))
-    bp.evaluate("() => { S.fightStyle = 'tap'; save(); }")
-    catch_one(bp); bp.wait_for_timeout(1000)
-    check("the classic tap minigame also works in the Boat Trip (a perfect-timing catch reaches the Result screen)", bp.is_visible("#result"), bp.inner_text("#resName"))
-    bp.click("#keepBtn"); bp.wait_for_timeout(200)
-    sv = bp.evaluate(SAVED)
-    check("the save has exactly the same fields as before visiting the Boat Trip (no new field), and no 'boat' anywhere in it", sorted(sv.keys()) == save_keys0 and "boat" not in json.dumps(sv), f"{save_keys0} {sorted(sv.keys())}")
-    bp.reload(); bp.wait_for_timeout(300); bp.click("#contBtn"); bp.wait_for_timeout(300)
-    check("after a reload CONTINUE loads the save and goes Home with the Harbor as the default spot; the Boat Trip card is on the Town Map", bp.evaluate("[current, island]") == ["home", "harbor"] and bp.evaluate("(() => { go('map'); return !!document.getElementById('boatCard'); })()"))
-    bp.evaluate("""() => { localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 77, island: 'boat', spot: 'boat', rod: 2, bait: 3 })); S = load(); }""")
-    chk = bp.evaluate("[S.coins, S.rodEq, typeof S.spot, typeof S.island]")
-    check("an old / odd save (extra 'island' and 'spot' fields) loads safely with no new required field", chk == [77, "sturdy", "undefined", "undefined"], str(chk))
-    bp.evaluate("() => { island = 'boat'; go('fishing'); }"); bp.wait_for_timeout(300)
-    bp.click("#homeTop"); bp.wait_for_timeout(300)
-    check("HOME from the Boat Trip goes to the Home hub (the move buttons are gone with the scene)", bp.evaluate("current") == "home" and not bp.is_visible("#boatPad"))
-    bp.close()
+    # controls: A / D / arrows / buttons move the boat in idle only; key release, blur, A + D; casting lands relative to the boat inside the water
+    for isl in ISLES:
+        bp = boat_page(1536, 730, "BoatKeys")
+        boat_open(bp, isl)
+        def hold(key, ms): bp.keyboard.down(key); bp.wait_for_timeout(ms); bp.keyboard.up(key)
+        bp.evaluate("() => { BOAT.u = (boatState().lo + boatState().hi) / 2; }"); bp.wait_for_timeout(100)
+        u0 = bp.evaluate("BOAT.u"); sw_ = bp.evaluate("CROP.sw"); hold("d", 400); u1 = bp.evaluate("BOAT.u"); hold("a", 400); u2 = bp.evaluate("BOAT.u"); hold("ArrowRight", 300); u3 = bp.evaluate("BOAT.u"); hold("ArrowLeft", 300); u4 = bp.evaluate("BOAT.u")
+        speed = (u1 - u0) / sw_ / .4
+        check(f"{isl}: D / A and the arrow keys move the boat right and left at about 20% of the scene width per second", .14 <= speed <= .26 and u2 < u1 - 20 and u3 > u2 + 20 and u4 < u3 - 20, f"speed {speed:.3f} {u0:.0f} {u1:.0f} {u2:.0f} {u3:.0f} {u4:.0f}")
+        bp.keyboard.down("d"); bp.wait_for_timeout(200); bp.evaluate("() => window.dispatchEvent(new Event('blur'))"); ub = bp.evaluate("BOAT.u"); bp.wait_for_timeout(250); ub2 = bp.evaluate("BOAT.u"); bp.keyboard.up("d")
+        bp.keyboard.down("a"); bp.keyboard.down("d"); bp.wait_for_timeout(250); both = bp.evaluate("BOAT.v"); bp.keyboard.up("a"); bp.keyboard.up("d")
+        check(f"{isl}: losing window focus (blur) stops the boat even with the key down, and A + D together cancel out", abs(ub2 - ub) < 1e-6 and both == 0)
+        # touch buttons: held to move, released to stop, no cast charge started
+        bp.evaluate("() => { BOAT.u = (boatState().lo + boatState().hi) / 2; }"); bp.wait_for_timeout(100); mid_u = bp.evaluate("BOAT.u")
+        box = bp.locator("#boatR").bounding_box(); bp.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); bp.mouse.down(); bp.wait_for_timeout(500)
+        r1 = bp.evaluate("[BOAT.u, CH.on, F.phase]"); bp.mouse.up(); bp.wait_for_timeout(100); r2 = bp.evaluate("BOAT.u"); bp.wait_for_timeout(300); r3 = bp.evaluate("BOAT.u")
+        box = bp.locator("#boatL").bounding_box(); bp.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2); bp.mouse.down(); bp.wait_for_timeout(500); l1 = bp.evaluate("BOAT.u"); bp.mouse.up(); bp.wait_for_timeout(150); l2 = bp.evaluate("BOAT.u"); bp.wait_for_timeout(250); l3 = bp.evaluate("BOAT.u")
+        check(f"{isl}: holding the on-screen right / left button moves the boat, releasing stops it, and a press never starts a cast", r1[0] > mid_u + 20 and not r1[1] and r1[2] == "idle" and abs(r3 - r2) < 1e-6 and l1 < r3 - 20 and abs(l3 - l2) < 1e-6, f"{r1} {r2} {r3} {l1} {l2} {l3}")
+        prev = bp.evaluate("""() => { const o = {}; ['contextmenu', 'selectstart', 'dragstart'].forEach(t => { const e = new Event(t, { bubbles: true, cancelable: true }); document.getElementById('boatR').dispatchEvent(e); o[t] = e.defaultPrevented; });
+            const ts = new Event('touchstart', { bubbles: true, cancelable: true }); document.getElementById('boatR').dispatchEvent(ts); o.touchstart = ts.defaultPrevented; return o; }""")
+        check(f"{isl}: the buttons use the REEL button's long-press prevention (contextmenu, selectstart, dragstart, touchstart default-prevented)", all(prev.values()), str(prev))
+        # idle only
+        def hold_d(ms=300):
+            x = bp.evaluate("BOAT.u"); bp.keyboard.down("d"); bp.wait_for_timeout(ms); bp.keyboard.up("d"); return abs(bp.evaluate("BOAT.u") - x) < 1e-9
+        bp.evaluate("() => { BOAT.u = boatState().lo + 40; }")
+        bp.keyboard.down("Space"); bp.wait_for_timeout(450); ch_on = bp.evaluate("CH.on && CH.shown"); ch_still = hold_d(); bp.keyboard.up("Space"); bp.wait_for_timeout(100)
+        frozen = {"charging": ch_on and ch_still}
+        bp.wait_for_function("F.phase !== 'idle'"); frozen["casting"] = hold_d(200)
+        bp.wait_for_function("F.phase === 'waiting'"); frozen["waiting"] = hold_d(200)
+        bp.evaluate("() => { clearTimers(); F.fish = FISH.find(f => f.island === island); bite(); }"); bp.wait_for_timeout(120); frozen["bite"] = hold_d(200)
+        bp.click("#actBtn"); bp.wait_for_timeout(150); frozen["reeling"] = bp.evaluate("F.phase") == "reeling" and hold_d(200)
+        bp.evaluate("() => { caught(false); }"); bp.wait_for_timeout(200); frozen["result"] = bp.evaluate("current") == "result" and hold_d(200)
+        check(f"{isl}: A / D are ignored while charging, casting, waiting, bite, reeling and on the Result screen (the boat does not move)", all(frozen.values()) and len(frozen) == 6, str(frozen))
+        bp.wait_for_timeout(1200)
+        if bp.is_visible("#banner.show"): bp.click("#banOk")                      # the Lake Guardian banner
+        bp.click("#keepBtn"); bp.wait_for_timeout(300)
+        check(f"{isl}: after the catch the same island is open and the boat moves again (idle)", bp.evaluate("island") == isl and not hold_d(300))
+        # casting lands relative to the boat, in the water, inside the scene
+        sc_b = bp.evaluate(f"SCENES.{isl}.boat"); land = []
+        for start in ("lo", "mid", "hi"):
+            for pw in (0, .5, 1):
+                r = bp.evaluate("""([start, pw]) => { stopFishing(); S.pending = null; S.bag = []; go('home'); go('fishing'); const s = boatState(); BOAT.u = start === 'lo' ? s.lo : start === 'hi' ? s.hi : (s.lo + s.hi) / 2;
+                    const bx = (BOAT.u - CROP.sx) / CROP.sw; cast(pw, 0, false); const l = F.land; const ix = CROP.sx + l.x * CROP.sw, iy = CROP.sy + l.y * CROP.sh; stopFishing(); return { bx, x: l.x, y: l.y, ix, iy }; }""", [start, pw])
+                r["pw"] = pw; r["wet"] = on_water(bp, isl, r["ix"], r["iy"]); land.append(r)
+        ok_l = all(r["wet"] and r["x"] > r["bx"] and r["x"] <= .965 + 1e-9 for r in land)
+        rel = [r for r in land if r["x"] < .95 and (r["ix"] < sc_b["water"]["x1"] - 40)]
+        check(f"{isl}: casts from three boat positions at three powers land right of the boat, on open water (water mask) and inside the scene", ok_l, str([(round(r['bx'], 2), r['pw'], round(r['x'], 3), r['wet']) for r in land]))
+        check(f"{isl}: an unclamped cast lands relative to the boat: the offset from the boat is the old near > far line (.30 at power 0 to .50 at power 1) from every boat position",
+              len(rel) >= 2 and all(abs((r["x"] - r["bx"]) - (.30 + .2 * r["pw"])) < .01 for r in rel), str([(round(r["bx"], 2), r["pw"], round(r["x"] - r["bx"], 3)) for r in rel]))
+        bp.close()
 
-    # A and D do nothing on the other islands, on Home and on the Map; the pad exists only in the Boat Trip
-    bp = boat_page(1280, 800, "NoBoat")
-    bx0 = bp.evaluate("BOAT.x")
-    others = {}
-    for isl in ("harbor", "frost", "desert", "forest"):
-        bp.evaluate(f"() => {{ island = '{isl}'; go('fishing'); }}"); bp.wait_for_timeout(300)
+    # a full fishing cycle in every scene: cast, bite, hook, Hold Fight win and loss, the fish shadow, own fish table, collection
+    for isl in ISLES:
+        bp = boat_page(1536, 730, "Angler")
+        bp.evaluate("() => { S.fightStyle = 'hold'; save(); }")
+        allowed_keys = set(bp.evaluate("Object.keys(DEFAULT())"))
+        boat_open(bp, isl); bp.evaluate("() => { BOAT.u = SCENES[island].boat.x; }")
+        bp.click("#actBtn"); bp.wait_for_function("F.phase === 'waiting'", timeout=4000)
+        bp.wait_for_function("(() => { const s = fishShadowState(); return !!s && s.alpha > .3; })()", timeout=8000)
+        sh = bp.evaluate("fishShadowState()"); wr = sc_w = bp.evaluate(f"SCENES.{isl}.boat.water")
+        sx_ = bp.evaluate("[CROP.sx + fishShadowState().x * CROP.sw, CROP.sy + fishShadowState().y * CROP.sh]")
+        check(f"{isl}: the fish shadow appears in the boat's cast and stays on the water and inside the scene", sh is not None and 0 < sh["x"] < 1 and 0 < sh["y"] < 1 and wr["y0"] <= sx_[1] <= wr["y1"] and bp.evaluate("F.phase") == "waiting", str(sh))
+        bp.wait_for_function("F.phase === 'bite'", timeout=8000); bp.click("#actBtn"); bp.wait_for_timeout(200)
+        mode = bp.evaluate("[F.phase, F.mode]")
+        bp.evaluate("() => { F.fight.progress = 1; }"); bp.wait_for_timeout(1400)
+        won = bp.evaluate("[current, S.pending && S.pending.fishId]")
+        check(f"{isl}: Hold Fight win from the boat -> the Result screen with a fish of this island's own table", mode == ["reeling", "hold"] and won[0] == "result" and won[1].startswith(isl + "_"), f"{mode} {won}")
+        bp.wait_for_timeout(1200)
+        if bp.is_visible("#banner.show"): bp.click("#banOk")                      # the Lake Guardian (and mastery) banner
+        bp.click("#keepBtn"); bp.wait_for_timeout(300)
+        disc = bp.evaluate(f"[FISH.filter(f => f.island === '{isl}' && S.discovered[f.id]).length, discCount('{isl}'), FISH.filter(f => f.island !== '{isl}' && S.discovered[f.id]).length]")
+        check(f"{isl}: the catch counts for this island (1 found here, none elsewhere), is in the bag, and the island is still open", disc == [1, 1, 0] and bp.evaluate("S.bag.length") == 1 and bp.evaluate("island") == isl, str(disc))
+        bp.click("#actBtn"); bp.wait_for_function("F.phase === 'bite'", timeout=9000); bp.click("#actBtn"); bp.wait_for_timeout(200)
+        for _ in range(8):
+            if bp.evaluate("F.phase") != "reeling": break
+            bp.evaluate("() => { if (F.phase === 'reeling' && F.fight) { F.fight.started = true; F.fight.progress = 0; } }"); bp.wait_for_timeout(250)
+        check(f"{isl}: Hold Fight loss from the boat: the fish escapes and the boat can move and cast again", bp.evaluate("F.phase") == "idle" and bp.evaluate("current") == "fishing" and bp.evaluate("S.pending") is None and bp.evaluate("boatState().can"))
+        if isl == "harbor":
+            bp.evaluate("() => { S.fightStyle = 'tap'; save(); }")
+            catch_one(bp); bp.wait_for_timeout(1000)
+            check("harbor: the classic tap minigame also works from the boat (a perfect-timing catch reaches the Result screen)", bp.is_visible("#result"), bp.inner_text("#resName"))
+            bp.click("#keepBtn"); bp.wait_for_timeout(200)
+        sv = bp.evaluate(SAVED)
+        check(f"{isl}: the save has no new field (only the fields of a new game) and nothing about a boat in it", set(sv.keys()) <= allowed_keys and "boat" not in json.dumps(sv).lower(), f"{sorted(set(sv.keys()) - allowed_keys)}")
+        bp.close()
+
+    # painted fallback scenes (picture not loaded) also lose their painted angler in boat mode, and the dock stays
+    fb = b.new_page(viewport={"width": 1366, "height": 768}); fb.route("**/assets/frost.png", lambda r: r.abort())
+    fb.on("pageerror", lambda e: errs.append(str(e)))                              # (the aborted picture logs a failed-load console message on purpose)
+    fb.goto(URL); fb.evaluate("localStorage.clear()"); fb.reload(); fb.wait_for_timeout(300); start_new(fb, "Fallback")
+    fb.wait_for_function("SCENES.frost.failed", timeout=8000)
+    cnt = fb.evaluate("""() => { const res = {}; const o = line; let n = 0; line = (g, a, b, c, d, col) => { if (col === '#3b2a1a') n++; return o(g, a, b, c, d, col); };
+        for (const mode of [true, false]) { BOAT_MODE = mode; n = 0; sceneBg = null; island = 'frost'; go('home'); go('fishing'); drawScene(performance.now()); res[mode] = [n, sceneBg && sceneBg.canvas.width > 0]; }
+        line = o; BOAT_MODE = true; return res; }""")
+    fb.wait_for_timeout(100)
+    boat_fb = fb.evaluate("() => { island = 'frost'; go('home'); go('fishing'); return new Promise(r => setTimeout(() => r(boatState()), 400)); }")
+    check("painted fallback scene (frost picture failed to load): in boat mode no painted angler (rod line) is drawn and a boat is on the water; with the switch off the painted angler is back",
+          cnt["true"][0] == 0 and cnt["false"][0] > 0 and cnt["true"][1] and boat_fb["scene"] == "frost" and boat_fb["lo"] is not None and boat_fb["u"] >= boat_fb["lo"], f"{cnt} {boat_fb['u']}")
+    fb.close()
+
+    # BOAT_MODE = false: the old look and behaviour (fisherman at his old spot, no buttons, old landing, A / D do nothing)
+    bp = boat_page(1536, 730, "NoBoat", mode=False)
+    bp.evaluate("() => { window.__toasts = []; const o = toast; toast = (m, ...r) => { window.__toasts.push(String(m)); return o(m, ...r); }; }")
+    res = {}
+    for isl in ISLES:
+        boat_open(bp, isl)
         bp.keyboard.down("d"); bp.keyboard.down("ArrowLeft"); bp.wait_for_timeout(300); bp.keyboard.up("d"); bp.keyboard.up("ArrowLeft")
-        others[isl] = [bp.evaluate("BOAT.x") == bx0, not bp.evaluate("BOAT.kR || BOAT.kL"), not bp.is_visible("#boatPad"), bp.evaluate("getComputedStyle(document.getElementById('boatPad')).display") == "none", bp.evaluate("sceneOf() === SCENES." + isl)]
-    check("A / D and the arrows do nothing on Harbor, Frost, Desert and Forest, and the boat buttons are not shown there", all(all(v) for v in others.values()), str(others))
-    for scr in ("home", "map", "bag", "shop"):
-        bp.evaluate(f"() => go('{scr}')"); bp.wait_for_timeout(150); bp.keyboard.down("d"); bp.wait_for_timeout(200); bp.keyboard.up("d")
-    check("A / D do nothing on Home, Map, Bag and Shop either", bp.evaluate("BOAT.x") == bx0 and not bp.evaluate("BOAT.kR"))
-    nf = bp.evaluate("() => ({ ids: ISLAND_IDS, islands: Object.keys(ISLANDS), scenes: Object.keys(SCENES), fish: FISH.length, harborFish: FISH.filter(f => f.island === 'harbor').length, boatInFish: FISH.some(f => f.island === 'boat'), rods: Object.keys(RODS).length, baits: Object.keys(BAITS).length })")
-    check("no fish, island, scene, rod or bait was added: 4 islands + secret, 41 fish (10 per island + the Lake Guardian), nothing called 'boat' in the data tables",
-          nf["ids"] == ["harbor", "frost", "desert", "forest"] and nf["islands"] == ["harbor", "frost", "desert", "forest", "secret"] and "boat" not in nf["scenes"] and nf["fish"] == 41 and nf["harborFish"] == 10 and not nf["boatInFish"] and nf["rods"] == 4 and nf["baits"] == 3, str(nf))
+        o = bp.evaluate("""() => { const sc = SCENES[island], fc = sc.fisher, k = cv.width / CROP.sw; const exp = [(fc.x - CROP.sx) * k, (fc.y - CROP.sy) * k, fc.scale * k];
+            const ls = []; for (let i = 0; i < 40; i++) ls.push(landing(i % 2 ? 1 : 0, 0)); return { fc: [FCFG.x, FCFG.y, FCFG.p], exp, pad: getComputedStyle(document.getElementById('boatPad')).display, v: BOAT.v, kL: BOAT.kL || BOAT.kR,
+                lx: [Math.min(...ls.map(l => l.x)), Math.max(...ls.map(l => l.x))], ly: [Math.min(...ls.map(l => l.y)), Math.max(...ls.map(l => l.y))], mode: BOAT_MODE }; }""")
+        res[isl] = [all(abs(a - b_) < .01 for a, b_ in zip(o["fc"], o["exp"])), o["pad"] == "none", o["v"] == 0 and not o["kL"], abs(o["lx"][0] - .48) < 1e-9 and abs(o["lx"][1] - .68) < 1e-9 and .59 <= o["ly"][0] and o["ly"][1] <= .73, not o["mode"]]
+    check("BOAT_MODE = false: on all five islands the fisherman is drawn at his old spot (same x, y and size as before), no buttons are shown, A / D do nothing and the landing is the old line (.48 to .68)", all(all(v) for v in res.values()), str(res))
+    check("BOAT_MODE = false: no hint toast is shown", bp.evaluate("window.__toasts.filter(t => /move the boat/.test(t)).length") == 0)
+    bp.close()
+
+    # old / odd saves still load (no new field); the boat is not saved
+    bp = boat_page(1280, 800, "OldSave")
+    bp.evaluate("""() => { localStorage.setItem('littleLakeSave', JSON.stringify({ name: 'Old', coins: 77, boat: 5, rod: 2, bait: 3 })); S = load(); }""")
+    chk = bp.evaluate("[S.coins, S.rodEq, 'boat' in S]")
+    check("an old / odd save loads safely with no new required field (and an unknown 'boat' field is dropped)", chk == [77, "sturdy", False], str(chk))
     bp.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
