@@ -86,6 +86,22 @@ const FLOATS = {
   golden:  { name: "Golden Float",  short: "Golden",  price: 600, blurb: "Shiny gold with a slow sparkle." },
 };
 const FLOAT_IDS = Object.keys(FLOATS);
+// Boat skins (Playtest 3): pure cosmetics, bought once in the Shop, one equipped in S.boatEq; every skin has the same size, seat, bobbing and limits (js/boat.js), so no effect on fishing or selling.
+// pal: g = gunwale row, g1 = second row, band = rows 2 and 3, pa / pb = odd / even planks, ol = outline, sm = plank seams, rim = light on the gunwale, hi = highlight, plate = name plate, prow = the curl on the bow.
+// detail: "" | "rope" (a rope line) | "flag" (a tiny flag on the bow). Prices are all in this one table.
+const BOATS = {
+  classic: { name: "Classic Rowboat", short: "Classic", price: 0,   blurb: "The red and brown rowboat every angler starts with.", detail: "",
+    pal: { g: "#d9a05a", g1: "#b7773a", band: ["#c0392b", "#c0392b"], pa: "#8a5428", pb: "#9a6030", ol: "#3a210d", sm: "#4a2d14", rim: "#e8b872", hi: "#fff3d0", plate: "#c0392b", prow: "#d9a05a" } },
+  blue:    { name: "Blue Dory", short: "Blue", price: 200, blurb: "A blue hull with a white stripe.", detail: "",
+    pal: { g: "#b8d4ee", g1: "#2f6fb0", band: ["#f4f8fc", "#2a62a0"], pa: "#2459a0", pb: "#2c68b4", ol: "#10264a", sm: "#1c4682", rim: "#d8e8f6", hi: "#ffffff", plate: "#f4f8fc", prow: "#b8d4ee" } },
+  raft:    { name: "Yellow Raft", short: "Raft", price: 300, blurb: "A yellow inflatable raft with a rope line.", detail: "rope",
+    pal: { g: "#ffe070", g1: "#f2c230", band: ["#f2c230", "#e8b420"], pa: "#e8b420", pb: "#f0bf2a", ol: "#6a4a08", sm: "#e8b420", rim: "#fff0a8", hi: "#fffbe0", plate: "#e0541c", prow: "#ffe070" } },
+  pirate:  { name: "Pirate Boat", short: "Pirate", price: 500, blurb: "A dark hull with a tiny flag on the bow.", detail: "flag",
+    pal: { g: "#5a4a58", g1: "#3a2e3a", band: ["#2a2230", "#2a2230"], pa: "#231c28", pb: "#2e2634", ol: "#0c080e", sm: "#140f18", rim: "#8a7a88", hi: "#c8bcc6", plate: "#d8d0d8", prow: "#5a4a58" } },
+  gold:    { name: "Golden Boat", short: "Golden", price: 800, blurb: "A gold hull with a bright rim.", detail: "",
+    pal: { g: "#fff2a0", g1: "#f0b820", band: ["#ffd54f", "#e8a810"], pa: "#d89a10", pb: "#e8aa18", ol: "#5a3a04", sm: "#b87c08", rim: "#ffffe0", hi: "#ffffff", plate: "#fff2a0", prow: "#fff2a0" } },
+};
+const BOAT_IDS = Object.keys(BOATS);
 const BASE_ODDS = [60, 30, 8, 2];            // no bait, no bonuses
 const LUCKY_ROD_ODDS = BAITS.shrimp.odds;    // Lucky Rod: "like Shrimp bait"
 const LUCKY_LURE_ODDS = [-8, 0, 5, 3];       // Desert mastery reward

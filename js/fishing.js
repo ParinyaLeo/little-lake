@@ -609,12 +609,16 @@ function renderFishingHud() {
   const fl = FLOATS[S.floatEq] || FLOATS.classic;
   $("floatChip").innerHTML = `${floatIcon(S.floatEq)}<span class="k">FLOAT</span>${fl.short}`;
   $("floatChip").title = `${fl.name}: ${fl.blurb} (only a look). Tap to choose a float.`;
-  $("rodChip").disabled = $("baitChip").disabled = $("floatChip").disabled = busy;
+  const bt = BOATS[S.boatEq] || BOATS.classic, bc = $("boatChip");                         // BOAT chip: only in boat mode
+  bc.style.display = BOAT_MODE ? "" : "none"; document.querySelector("#fishing .gearbar").classList.toggle("has-boat", BOAT_MODE);
+  bc.innerHTML = `${boatIcon(S.boatEq, true)}<span class="k">BOAT</span>${bt.short}`;
+  bc.title = `${bt.name}: ${bt.blurb} (only a look). Tap to choose a boat.`;
+  $("rodChip").disabled = $("baitChip").disabled = $("floatChip").disabled = bc.disabled = busy;
   $("homeTop").disabled = busy;                                  // HOME (part 13): only when idle, so a cast or catch is never lost
   // small icons for the island rewards that are active (tap for details; hover shows the same text)
   $("bonuses").innerHTML = ISLAND_IDS.filter(i => S.mastery[i]).map(i => { const I = ISLANDS[i], tip = `${I.reward}: ${I.effect}`;
     return `<button class="bonus" data-tip="${tip}" title="${tip}" aria-label="${tip}"><span class="ico i-${I.icon}"></span></button>`; }).join("")
-    || `<span class="hint">Tap ROD, BAIT or FLOAT to change</span>`;
+    || `<span class="hint">${BOAT_MODE ? "Tap ROD, BAIT, FLOAT or BOAT to change" : "Tap ROD, BAIT or FLOAT to change"}</span>`;
   $("sellTop").classList.toggle("glow", bagFull());   // SELL beside the coins glows when the bag is full
   const a = $("actBtn");
   if (F.phase === "idle") {
@@ -633,21 +637,27 @@ let pickKind = null;
 function openPicker(kind) {
   if (F.phase !== "idle" || current !== "fishing") return;          // never mid-catch
   pickKind = kind; renderPicker();
-  openModal("pickBox", `pick-${kind === "rod" ? S.rodEq : kind === "float" ? S.floatEq : S.baitSel}`);
+  openModal("pickBox", `pick-${kind === "rod" ? S.rodEq : kind === "float" ? S.floatEq : kind === "boat" ? S.boatEq : S.baitSel}`);
 }
 // label for an item you can't use yet: full text, or just the price on narrow screens (CSS picks one)
 const lockedLabel = price => `<span class="long">${price} COINS · Buy in Shop</span><span class="short">🪙${price}</span>`;
 function renderPicker() {
-  const isRod = pickKind === "rod", isFloat = pickKind === "float", charm = S.mastery.forest ? " +1 miss from Master's Charm." : "";
-  $("pickTitle").textContent = isRod ? "Choose Rod" : isFloat ? "Choose Float" : "Choose Bait";
+  const isRod = pickKind === "rod", isFloat = pickKind === "float", isBoat = pickKind === "boat", charm = S.mastery.forest ? " +1 miss from Master's Charm." : "";
+  $("pickTitle").textContent = isRod ? "Choose Rod" : isFloat ? "Choose Float" : isBoat ? "Choose Boat" : "Choose Bait";
   $("pickSub").textContent = isRod ? `Odds are shown with your current bait (${baitName(S.baitSel)}).`
+    : isBoat ? "Boats only change how your boat looks. Buy more in the Shop."
     : isFloat ? "Floats only change how your bobber looks. Buy more in the Shop."
     : `Odds are shown with your ${rod().name}. One bait is used per cast.`;
   const card = (id, icon, name, fx, odds, state, label) =>
     `<button type="button" class="pick-card ${state}" id="pick-${id}" data-nosound data-id="${id}"${state === "locked" ? " disabled" : ""}>` +
-    (icon.startsWith("fl:") ? floatIcon(icon.slice(3)) : `<span class="ico i-${icon}"></span>`) + `<span class="grow"><span class="top"><b>${name}</b><span class="chip">${label}</span></span>` +
+    (icon.startsWith("fl:") ? floatIcon(icon.slice(3)) : icon.startsWith("bt:") ? boatIcon(icon.slice(3)) : `<span class="ico i-${icon}"></span>`) + `<span class="grow"><span class="top"><b>${name}</b><span class="chip">${label}</span></span>` +
     `<span class="fx">${fx}</span><span class="odds">${odds}</span></span></button>`;
-  $("pickList").innerHTML = isFloat
+  $("pickList").innerHTML = isBoat
+    ? BOAT_IDS.map(id => {
+        const b = BOATS[id], own = S.boatsOwned.includes(id), eq = S.boatEq === id;
+        return card(id, `bt:${id}`, b.name, b.blurb, "Only a look: no effect on fishing.", eq ? "equipped" : own ? "" : "locked", eq ? "EQUIPPED" : own ? "EQUIP" : lockedLabel(b.price));
+      }).join("")
+    : isFloat
     ? FLOAT_IDS.map(id => {
         const f = FLOATS[id], own = S.floatsOwned.includes(id), eq = S.floatEq === id;
         return card(id, `fl:${id}`, f.name, f.blurb, "Only a look: no effect on fishing.", eq ? "equipped" : own ? "" : "locked", eq ? "EQUIPPED" : own ? "EQUIP" : lockedLabel(f.price));
@@ -667,6 +677,7 @@ function renderPicker() {
 $("rodChip").onclick = () => openPicker("rod");
 $("baitChip").onclick = () => openPicker("bait");
 $("floatChip").onclick = () => openPicker("float");
+$("boatChip").onclick = () => openPicker("boat");
 $("pickList").onclick = e => {
   const c = e.target.closest(".pick-card"); if (!c || c.disabled) return;
   const id = c.dataset.id, kind = pickKind;
@@ -674,6 +685,7 @@ $("pickList").onclick = e => {
   if (kind === "rod" && id !== S.rodEq) equipRod(id);                  // equip / select toast and re-render the HUD
   if (kind === "bait" && id !== S.baitSel) selectBait(id);
   if (kind === "float" && id !== S.floatEq) equipFloat(id);
+  if (kind === "boat" && id !== S.boatEq) equipBoat(id);
 };
 $("pickClose").onclick = () => closeModal("pickBox");
 $("pickShop").onclick = () => { closeModal("pickBox"); go("shop"); };

@@ -1,7 +1,7 @@
 // Save data, shared helpers (toast, sound, confetti, banner, fish drawing) and progress checks. Loaded after data.js.
 /* ===================== SAVE / STATE ===================== */
 const SAVE_KEY = "littleLakeSave";
-const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none", floatsOwned: ["classic"], floatEq: "classic",
+const DEFAULT = () => ({ name: "Angler", coins: 300, rods: ["bamboo"], rodEq: "bamboo", baits: { worm: 0, shrimp: 0, golden: 0 }, baitSel: "none", floatsOwned: ["classic"], floatEq: "classic", boatsOwned: ["classic"], boatEq: "classic",
   bagMax: 5, bag: [], discovered: {}, records: {}, mastery: {}, totalCaught: 0, mythical: false, sound: true, music: true, pending: null, holdCasts: 0, fightStyle: DEFAULT_FIGHT, tank: [], tankTheme: DEFAULT_THEME, tankThemes: [DEFAULT_THEME], tankDecos: [], tankDecoOn: [] });
 const num = (v, d, min = 0) => (typeof v === "number" && Number.isFinite(v) && v >= min) ? Math.floor(v) : d;
 function load() {
@@ -22,6 +22,8 @@ function cleanSave(raw) {
   if (!BAITS[baitSel] || !baits[baitSel]) baitSel = "none";
   const floatsOwned = [...new Set(["classic", ...(Array.isArray(raw.floatsOwned) ? raw.floatsOwned.filter(id => FLOATS[id]) : [])])];
   const floatEq = FLOATS[raw.floatEq] && floatsOwned.includes(raw.floatEq) ? raw.floatEq : "classic";
+  const boatsOwned = [...new Set(["classic", ...(Array.isArray(raw.boatsOwned) ? raw.boatsOwned.filter(id => typeof id === "string" && Object.prototype.hasOwnProperty.call(BOATS, id)) : [])])];
+  const boatEq = typeof raw.boatEq === "string" && boatsOwned.includes(raw.boatEq) ? raw.boatEq : "classic";
   const own = (list, table) => Array.isArray(list) ? [...new Set(list.filter(id => typeof id === "string" && Object.prototype.hasOwnProperty.call(table, id)))] : [];   // owned ids: unknown ids dropped, no duplicates
   const tankThemes = [...new Set([DEFAULT_THEME, ...own(raw.tankThemes, TANK_THEMES)])];
   const tankTheme = typeof raw.tankTheme === "string" && tankThemes.includes(raw.tankTheme) ? raw.tankTheme : DEFAULT_THEME;   // the theme in use must be owned
@@ -31,6 +33,7 @@ function cleanSave(raw) {
     coins: num(raw.coins, d.coins) + (legacy && oldRod > 2 ? (oldRod - 2) * 200 : 0),
     rods: [...new Set(rods)], rodEq: legacy ? (oldRod >= 2 ? "sturdy" : "bamboo") : rods.includes(raw.rodEq) ? raw.rodEq : "bamboo",
     baits, baitSel, bagMax: num(raw.bagMax, 5, 5),
+    boatsOwned, boatEq,     // boat skins (Playtest 3): like the floats, older saves own and use the classic rowboat
     floatsOwned: floatsOwned, floatEq,          // cosmetic floats: older saves have none, so they own and use the classic float
     bag: Array.isArray(raw.bag) ? raw.bag.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)).map(b => ({ ...b, locked: b.locked === true })) : [],   // locked: kept out of SELL ALL (old saves: unlocked)
     tank: Array.isArray(raw.tank) ? raw.tank.filter(b => b && fishById(b.fishId) && Number.isFinite(b.weight) && Number.isFinite(b.price)).slice(0, TANK_SIZE).map(b => ({ ...b, locked: b.locked === true })) : [],   // the Aquarium (same entries as the bag, kept out of SELL / SELL ALL); old saves: empty
@@ -611,6 +614,12 @@ function equipFloat(id) {
   sfx.tick();
   if (!FLOATS[id] || !S.floatsOwned.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
   S.floatEq = id; save(); toast(`Equipped: ${FLOATS[id].name}`); render();
+}
+// equip a boat skin you own (Tackle Box, the BOAT chip, or right after buying it); never mid-cast
+function equipBoat(id) {
+  sfx.tick();
+  if (!BOATS[id] || !S.boatsOwned.includes(id) || (typeof F !== "undefined" && F.phase !== "idle")) return;
+  S.boatEq = id; save(); toast(`Equipped: ${BOATS[id].name}`); render();
 }
 // equip a rod you own / select a bait you have (or "none"); used by the Tackle Box and the fishing HUD
 function equipRod(id) {

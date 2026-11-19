@@ -2252,7 +2252,7 @@ with sync_playwright() as p:
     bp.evaluate("localStorage.clear()"); bp.reload(); bp.wait_for_timeout(300); start_new(bp, "Floater")
     # Shop: Floats section after Bait, with previews, descriptions, prices and states
     bp.evaluate("() => { S.coins = 200; S.bagMax = 20; save(); go('shop'); }"); bp.wait_for_timeout(400)
-    sh = bp.evaluate("""() => { const h = [...document.querySelectorAll('#shop .shop-h')].map(x => x.firstChild.textContent.trim()), items = [...document.querySelectorAll('#shopFloats .item')];
+    sh = bp.evaluate("""() => { const h = [...document.querySelectorAll('#shop .shop-h')].filter(x => x.offsetParent).map(x => x.firstChild.textContent.trim()), items = [...document.querySelectorAll('#shopFloats .item')];
         return { heads: h, n: items.length, icons: items.every(i => i.querySelector('.ico.fl') && i.querySelector('.ico.fl').getBoundingClientRect().height >= 24 && i.querySelector('.ico.fl').getBoundingClientRect().height <= 32),
                  names: items.map(i => i.querySelector('b').textContent.trim()), btns: items.map(i => i.querySelector('button').textContent.trim()), dis: items.map(i => i.querySelector('button').disabled),
                  need: items.map(i => (i.querySelector('.need') || {}).textContent || ''), desc: items.every(i => i.querySelector('.fx').textContent.length > 12) }; }""")
@@ -3615,10 +3615,10 @@ with sync_playwright() as p:
 
     # ---------- Playtest 2, part 10: the Shop category filter bar (ALL | RODS | BAIT | FLOATS | THEMES | DECOR) ----------
     SECS = ["rods", "bait", "floats", "themes", "decor", "bag"]
-    VIS = """() => Object.fromEntries([...document.querySelectorAll('#shop .shop-sec')].map(e => [e.dataset.sec, getComputedStyle(e).display !== 'none']))"""
+    VIS = """() => Object.fromEntries([...document.querySelectorAll('#shop .shop-sec')].filter(e => e.dataset.sec !== 'boats').map(e => [e.dataset.sec, getComputedStyle(e).display !== 'none']))"""
     fp = aq_page(1536, 730, "Filter")
     fp.evaluate("() => { S.coins = 5000; S.bagMax = 20; save(); go('shop'); }"); fp.wait_for_timeout(300)
-    labels = fp.evaluate("[...document.querySelectorAll('#shopFilter .tab')].map(b => b.textContent)")
+    labels = fp.evaluate("[...document.querySelectorAll('#shopFilter .tab')].filter(b => b.offsetParent).map(b => b.textContent)")
     v0 = fp.evaluate(VIS)
     check("the Shop has the filter bar ALL | RODS | BAIT | FLOATS | THEMES | DECOR; ALL is the default and shows every section", labels == ["ALL", "RODS", "BAIT", "FLOATS", "THEMES", "DECOR"] and all(v0.values()) and len(v0) == 6 and fp.evaluate("document.querySelector('#shopFilter .tab.on').textContent") == "ALL", str(v0))
     ok = True; det = []
@@ -3660,7 +3660,7 @@ with sync_playwright() as p:
     for vw, vh in [(1536, 730), (360, 640), (390, 844)]:
         fl = aq_page(vw, vh, "FilterLook")
         fl.evaluate("() => { S.coins = 100; save(); go('shop'); }"); fl.wait_for_timeout(300)
-        def fm(): return fl.evaluate("""() => { const bar = document.getElementById('shopFilter'), bs = [...bar.querySelectorAll('.tab')], r = bar.getBoundingClientRect(), bb = bs.map(b => b.getBoundingClientRect()), ys = new Set(bb.map(x => Math.round(x.top)));
+        def fm(): return fl.evaluate("""() => { const bar = document.getElementById('shopFilter'), bs = [...bar.querySelectorAll('.tab')].filter(b => b.offsetParent), r = bar.getBoundingClientRect(), bb = bs.map(b => b.getBoundingClientRect()), ys = new Set(bb.map(x => Math.round(x.top)));
             const card = [...document.querySelectorAll('#shop .item')].find(i => i.offsetParent), cr = card && card.getBoundingClientRect();
             return { sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, ih: innerHeight, top: r.top, bottom: r.bottom, rows: ys.size, n: bs.length, minH: Math.min(...bb.map(x => x.height)),
               barScroll: bar.scrollWidth > bar.clientWidth + 1, inside: bb.every(x => x.left >= 0 && x.right <= innerWidth), clipped: bs.filter(b => b.scrollWidth > b.clientWidth + 1).length, vis: r.top >= 0 && r.bottom <= innerHeight,
@@ -3889,7 +3889,7 @@ with sync_playwright() as p:
             check("harbor: the classic tap minigame also works from the boat (a perfect-timing catch reaches the Result screen)", bp.is_visible("#result"), bp.inner_text("#resName"))
             bp.click("#keepBtn"); bp.wait_for_timeout(200)
         sv = bp.evaluate(SAVED)
-        check(f"{isl}: the save has no new field (only the fields of a new game) and nothing about a boat in it", set(sv.keys()) <= allowed_keys and "boat" not in json.dumps(sv).lower(), f"{sorted(set(sv.keys()) - allowed_keys)}")
+        check(f"{isl}: the save has no new field (only the fields of a new game) and nothing about a boat in it", set(sv.keys()) <= allowed_keys and "boat" not in json.dumps({k: v for k, v in sv.items() if k not in ("boatsOwned", "boatEq")}).lower(), f"{sorted(set(sv.keys()) - allowed_keys)}")
         bp.close()
 
     # painted fallback scenes (picture not loaded) also lose their painted angler in boat mode, and the dock stays
@@ -3927,6 +3927,132 @@ with sync_playwright() as p:
     chk = bp.evaluate("[S.coins, S.rodEq, 'boat' in S]")
     check("an old / odd save loads safely with no new required field (and an unknown 'boat' field is dropped)", chk == [77, "sturdy", False], str(chk))
     bp.close()
+
+    # ---------- Playtest 3: boat skins (BOATS, shop section, BOAT chip, Tackle Box) ----------
+    SKIN_PRICES = {"classic": 0, "blue": 200, "raft": 300, "pirate": 500, "gold": 800}
+    bs = boat_page(1280, 800, "Skins")
+    d = bs.evaluate("() => ({ ids: BOAT_IDS, prices: Object.fromEntries(BOAT_IDS.map(i => [i, BOATS[i].price])), names: BOAT_IDS.map(i => BOATS[i].name), blurbs: BOAT_IDS.every(i => BOATS[i].blurb.length > 5), own: S.boatsOwned, eq: S.boatEq })")
+    check("BOATS table: classic / blue / raft / pirate / gold with the right names and prices (0 / 200 / 300 / 500 / 800), a one-line description each", d["ids"] == list(SKIN_PRICES) and d["prices"] == SKIN_PRICES and d["names"] == ["Classic Rowboat", "Blue Dory", "Yellow Raft", "Pirate Boat", "Golden Boat"] and d["blurbs"], str(d))
+    check("a new game owns only the classic boat and has it equipped", d["own"] == ["classic"] and d["eq"] == "classic")
+    chk = bs.evaluate("""() => { const r = {};
+        r.old = (() => { const s = cleanSave({ name: 'Old', coins: 9, rods: ['bamboo'] }); return [s.boatsOwned, s.boatEq]; })();
+        r.junk = (() => { const s = cleanSave({ name: 'J', boatsOwned: ['nonsense', 'gold', 'gold', 7, 'toString', '__proto__'], boatEq: 'blue' }); return [s.boatsOwned.slice().sort(), s.boatEq]; })();
+        r.eqOk = (() => { const s = cleanSave({ name: 'J', boatsOwned: ['gold'], boatEq: 'gold' }); return [s.boatsOwned.slice().sort(), s.boatEq]; })();
+        r.bad = cleanSave({ name: 'J', boatsOwned: 'x', boatEq: {} }).boatEq; r.noClassic = cleanSave({ name: 'J', boatsOwned: ['pirate'], boatEq: 'pirate' }).boatsOwned.slice().sort(); return r; }""")
+    check("saves: old saves load with the classic boat; unknown ids / duplicates / junk are dropped; the equipped boat must be owned; classic is always owned",
+          chk["old"] == [["classic"], "classic"] and chk["junk"] == [["classic", "gold"], "classic"] and chk["eqOk"] == [["classic", "gold"], "gold"] and chk["bad"] == "classic" and chk["noClassic"] == ["classic", "pirate"], str(chk))
+    bs.evaluate("() => { S.boatsOwned = ['classic', 'gold']; S.boatEq = 'gold'; save(); }"); bs.reload(); bs.wait_for_timeout(250); bs.click("#contBtn"); bs.wait_for_timeout(200)
+    check("a saved boat choice survives a reload", bs.evaluate("[S.boatsOwned.slice().sort(), S.boatEq]") == [["classic", "gold"], "gold"])
+    bs.evaluate("() => { go('titleScreen'); }"); bs.click("#newBtn"); bs.click("#confirmYes"); bs.fill("#nameInput", "Fresh"); bs.click("#nameStart"); bs.wait_for_timeout(200)
+    check("NEW GAME resets the boats (classic owned and equipped)", bs.evaluate("[S.boatsOwned, S.boatEq]") == [["classic"], "classic"])
+    bs.evaluate("() => { BOAT_MODE = true; S.coins = 199; S.bagMax = 40; save(); go('shop'); }"); bs.wait_for_timeout(250)
+    dis = bs.evaluate("document.querySelector('#shopBoats [data-buy=\"boat:blue\"]').disabled")
+    bs.evaluate("() => buyBoat('blue')")
+    check("a boat you can't afford is refused ('Not enough coins.'), coins unchanged, button disabled with 'Need 1 more coins'", dis and bs.evaluate("[S.coins, S.boatsOwned.includes('blue')]") == [199, False] and "Not enough coins." in bs.inner_text("#toast") and "Need 1 more coins" in bs.inner_text("#shopBoats"))
+    bs.evaluate("() => { S.coins = 1000; save(); render(); }"); bs.wait_for_timeout(100)
+    bs.click("#shopBoats [data-buy='boat:blue']"); bs.wait_for_timeout(150)
+    check("buying the Blue Dory costs 200, owns it, equips it at once and toasts 'Bought: Blue Dory'", bs.evaluate("[S.coins, S.boatsOwned, S.boatEq]") == [800, ["classic", "blue"], "blue"] and "Bought: Blue Dory" in bs.inner_text("#toast"))
+    bs.evaluate("() => buyBoat('blue')")
+    check("buying the same boat twice is refused (no coins lost)", bs.evaluate("[S.coins, S.boatsOwned.length]") == [800, 2])
+    tags = bs.evaluate("() => [...document.querySelectorAll('#shopBoats .item')].map(i => i.querySelector('button').textContent)")
+    check("shop cards show EQUIPPED / OWNED / price states like the floats", tags == ["OWNED", "EQUIPPED", "300 COINS", "500 COINS", "800 COINS"], str(tags))
+    bs.evaluate("() => { S.coins = 5000; save(); }")
+    for bid, price in [("raft", 300), ("pirate", 500), ("gold", 800)]:
+        c0 = bs.evaluate("S.coins"); bs.evaluate(f"() => buyBoat('{bid}')")
+        check(f"buying {bid} deducts exactly {price}", bs.evaluate("S.coins") == c0 - price and bs.evaluate(f"S.boatsOwned.includes('{bid}') && S.boatEq === '{bid}'"))
+    bs.evaluate("() => { S.boatsOwned = ['classic', 'gold']; S.boatEq = 'classic'; equipBoat('pirate'); }"); e2 = bs.evaluate("S.boatEq")
+    bs.evaluate("() => { equipBoat('nonsense'); }"); e3 = bs.evaluate("S.boatEq")
+    bs.evaluate("() => { equipBoat('gold'); }")
+    check("equipBoat works for an owned boat only (not unowned or unknown ids), saves and toasts 'Equipped: Golden Boat'", e2 == "classic" and e3 == "classic" and bs.evaluate("S.boatEq") == "gold" and "Equipped: Golden Boat" in bs.inner_text("#toast") and bs.evaluate(SAVED)["boatEq"] == "gold")
+    bs.evaluate("() => { S.fightStyle = 'tap'; S.baitSel = 'none'; island = 'harbor'; go('fishing'); }"); bs.wait_for_timeout(400)
+    bs.evaluate("() => { act(); }"); bs.wait_for_timeout(300)
+    bs.evaluate("() => { equipBoat('classic'); }"); m1 = bs.evaluate("[F.phase, S.boatEq]")
+    check("equipBoat is ignored while the line is out (not idle)", m1[0] != "idle" and m1[1] == "gold", str(m1))
+    bs.evaluate("() => { openPicker('boat'); }"); check("the boat picker does not open mid-cast", not bs.is_visible("#pickBox"))
+    bs.evaluate("() => { stopFishing(); S.pending = null; go('home'); }")
+    # the equipped skin is drawn; size, seat, limits and landing are identical across skins
+    HULL = {"blue": "#2a62a0", "gold": "#e8a810", "classic": "#c0392b", "raft": "#e8b420", "pirate": "#2a2230"}
+    bs.evaluate("() => { S.boatsOwned = BOAT_IDS.slice(); save(); S.boatEq = 'classic'; island = 'frost'; go('fishing'); }"); bs.wait_for_timeout(500)
+    geo = {}
+    for sk in ["classic", "blue", "raft", "pirate", "gold"]:
+        geo[sk] = bs.evaluate("""(sk) => { S.boatEq = sk; const seen = new Set(), f0 = ctx.fillRect; ctx.fillRect = function (...a) { seen.add(String(ctx.fillStyle).toLowerCase()); return f0.apply(this, a); };
+            drawScene(performance.now()); ctx.fillRect = f0; const st = boatState(); const ls = []; for (let i = 0; i < 20; i++) ls.push(boatLanding(i % 2 ? 1 : .5, 0));
+            return { cols: [...seen], skin: st.skin, st: [st.loX, st.hiX, st.hullHalf, st.cx, st.wy, st.p], fc: [FCFG.x, FCFG.y, FCFG.p], land: [Math.min(...ls.map(l => l.x)), Math.max(...ls.map(l => l.x))], len: [BOAT_LEN, BOAT_ROWS] }; }""", sk)
+    check("the equipped skin is what the fishing scene draws: its own hull colour is painted for each of the five skins (blue and gold included)",
+          all(HULL[k] in g["cols"] and g["skin"] == k for k, g in geo.items()) and "#2a62a0" not in geo["gold"]["cols"] and "#e8a810" not in geo["blue"]["cols"], str({k: g["skin"] for k, g in geo.items()}))
+    ref = geo["classic"]
+    check("every skin has the same size, seat (fisherman position), waterline, limits and landing range as the classic boat",
+          all(g["st"] == ref["st"] and g["fc"] == ref["fc"] and g["len"] == [60, 13] and abs(g["land"][0] - ref["land"][0]) < 1e-9 and abs(g["land"][1] - ref["land"][1]) < 1e-9 for g in geo.values()), str({k: (g["st"], g["fc"]) for k, g in geo.items()}))
+    px = bs.evaluate("""async () => { const out = {}; for (const id of BOAT_IDS) { const img = new Image(); img.src = boatThumbUrl(id); await img.decode(); const c = document.createElement('canvas'); c.width = 72; c.height = 28; const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+        const d = g.getImageData(36, 11, 1, 1).data; out[id] = '#' + [...d].slice(0, 3).map(v => v.toString(16).padStart(2, '0')).join(''); } return out; }""")
+    check("the thumbnails are drawn in the skins' own hull colours (sampled pixels: blue and gold included)", px == HULL, str(px))
+    bs.evaluate("() => { S.boatEq = 'gold'; island = 'harbor'; go('home'); go('fishing'); }"); bs.wait_for_timeout(500)
+    bs.keyboard.down("d"); bs.wait_for_timeout(300); bs.keyboard.up("d"); ms = bs.evaluate("boatState()")
+    check("the boat still moves and stays inside its limits with a skin equipped", ms["x"] > 0 and ms["loX"] - 1e-6 <= ms["x"] <= ms["hiX"] + 1e-6 and ms["skin"] == "gold", str(ms))
+    bs.close()
+
+    for vw, vh in [(1536, 730), (360, 640)]:
+        sp_ = boat_page(vw, vh, "ShopBoats")
+        sp_.evaluate("() => { S.coins = 5000; S.boatsOwned = ['classic', 'gold']; S.boatEq = 'gold'; save(); go('shop'); }"); sp_.wait_for_timeout(300)
+        labels = sp_.evaluate("[...document.querySelectorAll('#shopFilter .tab')].filter(b => b.offsetParent).map(b => b.textContent)")
+        check(f"{vw}x{vh}: the Shop filter bar has 7 buttons ALL | RODS | BAIT | FLOATS | BOATS | THEMES | DECOR", labels == ["ALL", "RODS", "BAIT", "FLOATS", "BOATS", "THEMES", "DECOR"], str(labels))
+        geo_ = sp_.evaluate("""() => { const bar = document.getElementById('shopFilter'), bb = [...bar.querySelectorAll('.tab')].map(b => b.getBoundingClientRect());
+            return { inside: bb.every(q => q.left >= 0 && q.right <= innerWidth && q.top >= 0 && q.bottom <= innerHeight), minH: Math.min(...bb.map(q => q.height)), sw: document.documentElement.scrollWidth, barScroll: bar.scrollWidth <= bar.clientWidth + 1, rows: new Set(bb.map(q => Math.round(q.top))).size }; }""")
+        check(f"{vw}x{vh}: all seven filter buttons are fully inside the viewport, at least 40 px high, with no sideways scrolling ({'one row' if vw > 700 else '4 + 3 grid'})",
+              geo_["inside"] and geo_["minH"] >= 39.9 and geo_["sw"] <= vw and geo_["barScroll"] and geo_["rows"] == (1 if vw > 700 else 2), str(geo_))
+        sp_.click("#shopFilter [data-filter=boats]"); sp_.wait_for_timeout(150)
+        vis = sp_.evaluate("() => [...document.querySelectorAll('#shop .shop-sec')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.dataset.sec)")
+        txt = sp_.inner_text("#shopScroll")
+        check(f"{vw}x{vh}: the BOATS filter shows only the Boats section, with its heading and line", vis == ["boats"] and "Boats" in txt and "your boat on every island (only a look: no effect on fishing or selling)" in txt, str(vis))
+        cards = sp_.evaluate("() => [...document.querySelectorAll('#shopBoats .item')].map(i => [i.querySelector('b').innerText.trim(), !!i.querySelector('.ico.bt'), !!i.querySelector('.fx'), i.querySelector('button').textContent])")
+        check(f"{vw}x{vh}: five boat cards, each with a thumbnail, name, description and a BUY / OWNED / EQUIPPED button", [c[0] for c in cards] == ["Classic Rowboat", "Blue Dory", "Yellow Raft", "Pirate Boat", "Golden Boat"] and all(c[1] and c[2] for c in cards) and [c[3] for c in cards] == ["OWNED", "200 COINS", "300 COINS", "500 COINS", "EQUIPPED"], str(cards))
+        sp_.screenshot(path=str(SHOTS / f"112_shop_boats_{vw}x{vh}.png"))
+        sp_.evaluate("() => { S.fightStyle = 'tap'; island = 'harbor'; go('fishing'); }"); sp_.wait_for_timeout(700)
+        gb = sp_.evaluate("""() => { const bar = document.querySelector('#fishing .gearbar'), br = bar.getBoundingClientRect(), ids = ['rodChip', 'baitChip', 'floatChip', 'boatChip'], cs = ids.map(id => document.getElementById(id).getBoundingClientRect());
+            const bon = document.getElementById('bonuses').getBoundingClientRect(), ov = (a, c) => a.left < c.right - .5 && c.left < a.right - .5 && a.top < c.bottom - .5 && c.top < a.bottom - .5;
+            let overlap = false; for (let i = 0; i < cs.length; i++) { for (let j = i + 1; j < cs.length; j++) if (ov(cs[i], cs[j])) overlap = true; if (ov(cs[i], bon)) overlap = true; }
+            const chips = ids.map(id => document.getElementById(id)), h = document.querySelector('#bonuses .hint'); return { n: cs.length, inside: cs.every(q => q.left >= br.left - 1 && q.right <= br.right + 1 && q.bottom <= br.bottom + 1), overlap, chipClip: chips.every(c => c.scrollWidth <= c.clientWidth + 1),
+              sameRow: new Set(cs.map(q => Math.round(q.top))).size, minH: Math.min(...cs.map(q => q.height)), hint: h.textContent, hintClip: h.scrollWidth <= h.clientWidth + 1,
+              sw: document.documentElement.scrollWidth, page: document.documentElement.scrollHeight, vh: innerHeight, text: document.getElementById('boatChip').innerText, scene: document.getElementById('scene').getBoundingClientRect().height }; }""")
+        check(f"{vw}x{vh}: the fishing bar has ROD, BAIT, FLOAT and BOAT ('{gb['text'].replace(chr(10), ' ')}'), none overlaps, none is clipped, {'four in one row' if vw > 700 else 'a 2 x 2 grid'}, no sideways scroll, no page scroll",
+              gb["n"] == 4 and gb["inside"] and not gb["overlap"] and gb["chipClip"] and gb["sameRow"] == (1 if vw > 700 else 2) and gb["minH"] >= 36 and gb["sw"] <= vw and gb["page"] <= gb["vh"] + 1 and "Golden" in gb["text"], str(gb))
+        check(f"{vw}x{vh}: the hint reads 'Tap ROD, BAIT, FLOAT or BOAT to change' and fits; the scene stays at least 110 px high",
+              gb["hint"] == "Tap ROD, BAIT, FLOAT or BOAT to change" and gb["hintClip"] and gb["scene"] >= 110, str(gb))
+        sp_.evaluate("() => { S.mastery.harbor = true; renderFishingHud(); }"); sp_.wait_for_timeout(100)
+        mi = sp_.evaluate("""() => { const b = document.querySelector('#bonuses .bonus').getBoundingClientRect(), g = document.querySelector('#fishing .gearbar').getBoundingClientRect(); return [b.width > 20, b.bottom <= g.bottom + 1, b.left >= g.left - 1, document.documentElement.scrollWidth <= innerWidth, document.documentElement.scrollHeight <= innerHeight + 1]; }""")
+        check(f"{vw}x{vh}: with a mastery icon the bar still fits (icon visible inside the bar, no overflow)", all(mi), str(mi))
+        sp_.evaluate("() => { S.mastery.harbor = false; renderFishingHud(); }")
+        sp_.screenshot(path=str(SHOTS / f"113_fishing_bar_{vw}x{vh}.png"))
+        sp_.click("#boatChip"); sp_.wait_for_timeout(250)
+        pk = sp_.evaluate("() => [document.getElementById('pickBox').classList.contains('show'), document.getElementById('pickTitle').textContent, [...document.querySelectorAll('#pickList .pick-card')].map(c => [c.dataset.id, c.disabled, c.classList.contains('equipped')])]")
+        check(f"{vw}x{vh}: tapping BOAT opens the Choose Boat popup (like ROD / BAIT / FLOAT) with owned boats selectable, the rest locked", pk[0] and pk[1] == "Choose Boat" and pk[2] == [["classic", False, False], ["blue", True, False], ["raft", True, False], ["pirate", True, False], ["gold", False, True]], str(pk))
+        sp_.click("#pick-classic"); sp_.wait_for_timeout(200)
+        check(f"{vw}x{vh}: choosing an owned boat in the popup equips it, closes the popup and toasts 'Equipped: Classic Rowboat'", sp_.evaluate("S.boatEq") == "classic" and not sp_.is_visible("#pickBox") and "Equipped: Classic Rowboat" in sp_.inner_text("#toast") and "Classic" in sp_.inner_text("#boatChip"))
+        sp_.evaluate("() => { go('tackle'); }"); sp_.wait_for_timeout(250)
+        tb = sp_.evaluate("() => [...document.querySelectorAll('#gearList h3')].map(h => h.textContent.split(' ')[0])")
+        rows = sp_.evaluate("() => [...document.querySelectorAll('#gearList .gear-row')].filter(r => r.querySelector('.ico.bt')).map(r => [r.querySelector('b').textContent, r.querySelector('button') ? r.querySelector('button').textContent : r.querySelector('.chip').textContent])")
+        check(f"{vw}x{vh}: the Tackle Box has a Boat section after Float listing the owned boats with a preview and EQUIP / EQUIPPED", "Boat" in tb and tb.index("Boat") == tb.index("Float") + 1 and rows == [["Classic Rowboat", "EQUIPPED"], ["Golden Boat", "EQUIP"]], str(rows))
+        sp_.click("#gearList [data-boat='gold']"); sp_.wait_for_timeout(200)
+        check(f"{vw}x{vh}: EQUIP in the Tackle Box equips the Golden Boat (toast 'Equipped: Golden Boat')", sp_.evaluate("S.boatEq") == "gold" and "Equipped: Golden Boat" in sp_.inner_text("#toast"))
+        check(f"{vw}x{vh}: no sideways scroll in the Tackle Box with the boat section", sp_.evaluate("document.documentElement.scrollWidth") <= vw)
+        sp_.evaluate("() => { island = 'harbor'; go('fishing'); }"); sp_.wait_for_timeout(700)
+        sp_.screenshot(path=str(SHOTS / f"114_fishing_golden_boat_{vw}x{vh}.png"))
+        sp_.close()
+
+    # BOAT_MODE = false: none of the boat UI exists
+    bf = boat_page(1536, 730, "NoBoatUI", mode=False)
+    bf.evaluate("() => { S.coins = 5000; save(); go('shop'); }"); bf.wait_for_timeout(250)
+    off = bf.evaluate("""() => { const vis = e => !!e && getComputedStyle(e).display !== 'none' && e.offsetParent !== null; return { tab: vis(document.getElementById('boatsTab')), sec: vis(document.getElementById('shopBoatsSec')), tabs: [...document.querySelectorAll('#shopFilter .tab')].filter(b => vis(b)).length }; }""")
+    bf.evaluate("() => { go('tackle'); }"); bf.wait_for_timeout(200)
+    off["tackle"] = bf.evaluate("() => !!document.querySelector('#gearList .ico.bt') || /Boat/.test(document.querySelector('#gearList').innerText)")
+    bf.evaluate("() => { island = 'harbor'; go('fishing'); }"); bf.wait_for_timeout(500)
+    off["chip"] = bf.evaluate("() => getComputedStyle(document.getElementById('boatChip')).display !== 'none'"); off["hint"] = bf.evaluate("document.querySelector('#bonuses .hint').textContent")
+    off["bar"] = bf.evaluate("document.querySelector('#fishing .gearbar').classList.contains('has-boat')")
+    check("BOAT_MODE = false: no BOAT chip, no Boats section, no BOATS filter button (six buttons), no Boat section in the Tackle Box, and the old hint text",
+          not off["tab"] and not off["sec"] and off["tabs"] == 6 and not off["tackle"] and not off["chip"] and not off["bar"] and off["hint"] == "Tap ROD, BAIT or FLOAT to change", str(off))
+    bf.evaluate("() => { go('shop'); shopFilter = 'boats'; render(); }"); bf.wait_for_timeout(150)
+    check("BOAT_MODE = false: a stale BOATS filter falls back to ALL", bf.evaluate("shopFilter") == "all")
+    bf.close()
 
     check("no JavaScript errors", not errs, "; ".join(errs[:3]))
     b.close()

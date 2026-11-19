@@ -15,7 +15,7 @@ let BOAT_MODE = true;
    - boatLanding(): the same landing line as landing() (POWER.near > POWER.far, same jitter); the x offsets are measured from the boat (BOAT_REF = where the old fisherman stood), then clamped to the
      scene's water rectangle (and to BOAT_LAND_MAX of the canvas), so the bobber never lands on land, ice, rocks or off the scene. Everything after the landing is unchanged. */
 const BOAT_SPEED = .20, BOAT_REF = .18, BOAT_MARGIN = .03, BOAT_LAND_MAX = .965, BOAT_LAND_PAD = 24;   // pad = picture pixels kept clear of the water rectangle's edge
-const BOAT = { u: 0, scene: "", kL: false, kR: false, tL: false, tR: false, v: 0, wake: 0, wdir: 1, lastT: 0, hinted: false, cx: 0, wy: 0, p: 1 };
+const BOAT = { u: 0, scene: "", kL: false, kR: false, tL: false, tR: false, v: 0, wake: 0, wdir: 1, lastT: 0, hinted: false, skin: "classic", cx: 0, wy: 0, p: 1 };
 const BOAT_LEN = 60, BOAT_ROWS = 13, BOAT_WROW = 9;                                        // hull size in art pixels, and the row where the waterline is
 const boatScene = () => SCENES[island] && SCENES[island].boat ? SCENES[island] : null;
 // the allowed range of the boat centre (picture pixels): the scene's range cut to what the canvas shows
@@ -82,28 +82,55 @@ function boatStep(t) {
 // for the tests only: the boat in picture pixels, as a share of the canvas, its allowed range, and the canvas pixels
 function boatState() {
   const sc = boatScene(), r = boatRange(), V = CROP;
-  return { u: BOAT.u, x: (BOAT.u - V.sx) / V.sw, lo: r && r.lo, hi: r && r.hi, loX: r && (r.lo - V.sx) / V.sw, hiX: r && (r.hi - V.sx) / V.sw, v: BOAT.v, wake: BOAT.wake, cx: BOAT.cx, wy: BOAT.wy, p: BOAT.p,
+  return { u: BOAT.u, x: (BOAT.u - V.sx) / V.sw, lo: r && r.lo, hi: r && r.hi, loX: r && (r.lo - V.sx) / V.sw, hiX: r && (r.hi - V.sx) / V.sw, v: BOAT.v, wake: BOAT.wake, cx: BOAT.cx, wy: BOAT.wy, p: BOAT.p, skin: BOAT.skin,
     scene: BOAT.scene, can: boatCan(), hinted: BOAT.hinted, hullHalf: r && r.hh, water: sc && sc.boat.water, mode: BOAT_MODE };
 }
 
 /* ---------- drawing ---------- */
 // the hull, drawn from rects in art pixels: (cx, top) = centre of the gunwale; p = canvas px per art pixel. Row BOAT_WROW is the waterline.
-function boatHull(c, cx, top, p) {
+// `skin` = an entry of BOATS (palette + detail); every skin uses the same rows, so the size, the seat and the limits never change. `water` = false for the thumbnails (no water tint).
+function boatHull(c, cx, top, p, skin, water) {
+  const k = (skin || BOATS.classic).pal, det = (skin || BOATS.classic).detail;
   const px = (x, y, w, h, col) => { c.fillStyle = col; const x0 = Math.round(cx + x * p), y0 = Math.round(top + y * p); c.fillRect(x0, y0, Math.round(cx + (x + w) * p) - x0, Math.round(top + (y + h) * p) - y0); };
   const L = BOAT_LEN / 2;
   for (let r = 0; r < BOAT_ROWS; r++) {
     const l = -L + r * .9 + (r === 0 ? 0 : 1), rt = L - r * 1.25 + (r < 3 ? 2 : 0), w = rt - l;                    // stern (left) is blunt, the bow (right) sweeps up and in
-    const col = r === 0 ? "#d9a05a" : r === 1 ? "#b7773a" : r === 2 || r === 3 ? "#c0392b" : r % 2 ? "#8a5428" : "#9a6030";
+    const col = r === 0 ? k.g : r === 1 ? k.g1 : r === 2 || r === 3 ? k.band[r - 2] : r % 2 ? k.pa : k.pb;
     px(l, r, w, 1, col);
-    px(l, r, 1, 1, "#3a210d"); px(rt - 1, r, 1, 1, "#3a210d");                                                 // outline
-    if (r >= 4 && r < BOAT_ROWS - 1) for (let x = Math.ceil(l + 5); x < rt - 2; x += 11) px(x + (r % 2) * 4, r, 1, 1, "#4a2d14");   // plank seams
+    px(l, r, 1, 1, k.ol); px(rt - 1, r, 1, 1, k.ol);                                                           // outline
+    if (r >= 4 && r < BOAT_ROWS - 1) for (let x = Math.ceil(l + 5); x < rt - 2; x += 11) px(x + (r % 2) * 4, r, 1, 1, k.sm);   // plank seams
   }
-  px(-L + 6.5, BOAT_ROWS - 1, BOAT_LEN - 11, 1, "#3a210d");                                                    // keel
-  px(L - 1.5, -2, 3, 2, "#d9a05a"); px(L - .5, -3, 2, 1, "#3a210d"); px(L - 1.5, -2, 1, 2, "#3a210d");         // the prow curls up
-  px(-L + 1, 0, 1, 1, "#fff3d0"); px(-L + 3, 0, BOAT_LEN - 9, 1, "#e8b872");                                     // light on the gunwale
-  px(-L + 1, 4, 3, 2, "#fff3d0"); px(-L + 2, 4.5, 1, 1, "#c0392b");                                              // a little name plate on the stern
-  c.fillStyle = "rgba(10,60,95,.5)"; const y0 = Math.round(top + BOAT_WROW * p); c.fillRect(Math.round(cx - L * p - 2), y0, Math.round(BOAT_LEN * p + 4), Math.round(4 * p));   // under the waterline
+  px(-L + 6.5, BOAT_ROWS - 1, BOAT_LEN - 11, 1, k.ol);                                                         // keel
+  px(L - 1.5, -2, 3, 2, k.prow); px(L - .5, -3, 2, 1, k.ol); px(L - 1.5, -2, 1, 2, k.ol);                      // the prow curls up
+  px(-L + 1, 0, 1, 1, k.hi); px(-L + 3, 0, BOAT_LEN - 9, 1, k.rim);                                            // light on the gunwale
+  px(-L + 1, 4, 3, 2, k.hi); px(-L + 2, 4.5, 1, 1, k.plate);                                                   // a little name plate on the stern
+  if (det === "rope") for (let x = -L + 4; x < L - 6; x += 4) { px(x, 1, 2, 1, "#c8a46a"); px(x + 2, 1, 2, 1, "#8a6a3a"); }   // the rope line along the raft
+  if (det === "flag") { px(L - 3, -7, 1, 5, k.ol); px(L - 2, -7, 4, 3, "#15101a"); px(L - 1, -6, 1, 1, "#f4f0f4"); }          // a tiny pirate flag on the bow (above the hull: no change of size or limits)
+  if (water !== false) { c.fillStyle = "rgba(10,60,95,.5)"; const y0 = Math.round(top + BOAT_WROW * p); c.fillRect(Math.round(cx - L * p - 2), y0, Math.round(BOAT_LEN * p + 4), Math.round(4 * p)); }   // under the waterline
 }
+// a boat skin alone on a plain dark-blue panel (the Shop thumbnail, the Tackle Box row, the Choose Boat popup): a data URL made once per skin, 72 x 28 art pixels
+const BOAT_THUMBS = {}, BOAT_MINIS = {};
+function boatThumbUrl(id) {
+  if (!BOAT_THUMBS[id]) {
+    const c = document.createElement("canvas"); c.width = 72; c.height = 28; const g = c.getContext("2d");
+    g.fillStyle = "#1b3a5c"; g.fillRect(0, 0, 72, 28); g.fillStyle = "#24507c"; g.fillRect(0, 17, 72, 11);
+    boatHull(g, 36, 8, 1, BOATS[id], false); BOAT_THUMBS[id] = c.toDataURL();
+  }
+  return BOAT_THUMBS[id];
+}
+// a 16 x 8 mini boat for the BOAT chip (same colours as the skin)
+function boatMiniUrl(id) {
+  if (!BOAT_MINIS[id]) {
+    const k = BOATS[id].pal, c = document.createElement("canvas"); c.width = 16; c.height = 8; const g = c.getContext("2d");
+    const r = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+    r(1, 1, 14, 1, k.ol); r(0, 0, 2, 1, k.prow); r(1, 2, 14, 1, k.g); r(2, 3, 12, 1, k.band[0]); r(2, 4, 11, 1, k.band[1]); r(3, 5, 9, 1, k.pa); r(4, 6, 7, 1, k.ol);
+    r(1, 2, 1, 4, k.ol); r(14, 2, 1, 2, k.ol);
+    if (BOATS[id].detail === "flag") { r(13, 0, 1, 2, k.ol); r(14, 0, 2, 1, "#15101a"); }
+    BOAT_MINIS[id] = c.toDataURL();
+  }
+  return BOAT_MINIS[id];
+}
+const boatIcon = (id, mini) => `<span class="ico bt${mini ? " mini" : ""}" data-skin="${id}" style="background-image:url(${mini ? boatMiniUrl(id) : boatThumbUrl(id)})"></span>`;
 // the boat and the fisherman on the scene's water (called by drawScene instead of drawFisherman). CROP must describe the picture that was just drawn (image px -> canvas px: x * W / CROP.sw).
 function boatDraw(sc, W, H, t, still) {
   const b = sc.boat, V = CROP, k = W / V.sw, p = sc.fisher.scale * k, ft = still ? 0 : t;
@@ -126,7 +153,8 @@ function boatDraw(sc, W, H, t, still) {
   const top0 = wl - BOAT_WROW * p;                                                            // top of the gunwale
   FCFG.x = cx - 21 * p; FCFG.y = top0 + 6 * p - 36 * p; FCFG.p = p; FCFG.outfit = sc.fisher.outfit;   // he sits in the stern, his lower legs behind the hull
   drawFisherman(ctx, FCFG, fisherPoseFor(F.phase, t), t, still);
-  boatHull(ctx, cx, top0, p);
+  boatHull(ctx, cx, top0, p, BOATS[S.boatEq] || BOATS.classic);
+  BOAT.skin = S.boatEq;
   ctx.restore();
   const dx = FISHER.tipX - cx, dy = FISHER.tipY - wl, c = Math.cos(tilt), s = Math.sin(tilt);   // the rod tip after the same turn, where the line starts
   ROD_TIP = TIP; TIP.x = (cx + dx * c - dy * s) / W; TIP.y = (wl + bob + dx * s + dy * c) / H;

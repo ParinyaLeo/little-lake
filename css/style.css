@@ -313,8 +313,8 @@ body.fit #bagList:not(.has-more)::after { display: none; }   /* bottom fade only
 .shop-filter::-webkit-scrollbar { display: none; }
 .shop-filter .tab { flex: 1 0 auto; min-height: 40px; white-space: nowrap; }
 #shopFilter .tab { --rivets: none; }
-@media (max-width: 700px) {   /* phones: all six categories at once, 3 x 2, no sideways scrolling (part 10b) */
-  .shop-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; overflow: visible; margin-bottom: 8px; }
+@media (max-width: 700px) {   /* phones: all categories at once (7 in boat mode: 4 + 3), no sideways scrolling (part 10b) */
+  .shop-filter { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; overflow: visible; margin-bottom: 8px; }
   .shop-filter .tab { flex: none; min-width: 0; padding: 6px 2px; font-size: 14px; }
   .shop-sec .shop-h { margin-top: 10px; }
 }
@@ -392,6 +392,17 @@ p.small { font-size: 14px; margin: 0 0 12px; }
 .item b .ico[class*="i-rodlg-"] { margin-right: 10px; vertical-align: middle; }
 /* float previews: the sprite as a background image, whole-pixel scaling */
 .ico.fl { background-size: contain; }
+/* boat skin previews (Playtest 3): the skin alone on a dark-blue panel (72 x 28 art px, shown 2x on wide windows, 1x on phones) and a 16 x 8 mini boat for the chip */
+.ico.bt { background-size: 100% 100%; filter: none; width: 144px; height: 56px; border: 2px solid var(--gold); box-sizing: content-box; }
+.item b .ico.bt { display: block; margin: 0 0 6px; }
+.gear-row > .ico.bt { width: 108px; height: 42px; }
+.pick-card > .ico.bt { width: 72px; height: 28px; }
+.ico.bt.mini { width: 32px; height: 16px; border: 0; background-size: contain; filter: drop-shadow(1px 1px 0 rgba(26,13,4,.85)); }
+.chip-btn .ico.bt.mini { margin-right: 6px; vertical-align: -.25em; }
+.gearbar .bonuses { min-width: 0; flex-shrink: 1; overflow: hidden; }
+.gearbar.has-boat .chip-btn { flex: 0 0 auto; padding: 0 9px; }
+.gearbar.has-boat .bonuses .hint { font-size: 11px; }
+.bonuses .hint { overflow: hidden; text-overflow: ellipsis; }
 /* the frog's UI preview is a bigger 16 x 16 picture (part 12d) */
 .item b .ico.fl.big, .pick-card > .ico.fl.big { width: 32px; height: 32px; }
 .gear-row > .ico.fl.big { width: 40px; height: 40px; }
@@ -558,6 +569,13 @@ body.plain .app { height: calc(100vh - 28px - env(safe-area-inset-top) - env(saf
   .gearbar { height: 76px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: 40px 30px; gap: 6px; }
   .gearbar .chip-btn { font-size: 11px; padding: 0 2px; letter-spacing: 0; border-width: 3px; }   /* three chips share the row: the longest labels (Precision, Shrimp x12) must fit */
   .gearbar .chip-btn .ico { margin-right: 3px; }
+  .gearbar.has-boat { height: 122px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 40px 40px 30px; }   /* boat mode: four chips in a 2 x 2 grid, the reward icons on the third row */
+  .ico.bt { width: 72px; height: 28px; }
+  .gearbar.has-boat .chip-btn { flex: none; }
+  .gearbar.has-boat .bonuses .hint { font-size: 11px; }
+  .gear-row > .ico.bt { width: 72px; height: 28px; }
+  .pick-card > .ico.bt { width: 72px; height: 28px; }
+  .ico.bt.mini, .chip-btn .ico.bt.mini { width: 24px; height: 12px; margin-right: 3px; }
   .chip-btn .ico.fl { width: 12px; height: 19px; vertical-align: -.35em; }
   .chip-btn .ico.fl.big { width: 16px; height: 16px; vertical-align: -.3em; }
   .modal .picker { padding: 14px; }
